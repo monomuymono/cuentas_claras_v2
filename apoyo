@@ -41,10 +41,40 @@ https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsi
 const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO!
 const SHEET_NAME = 'Sessions'; // Asegúrate de que este nombre coincida con el de tu hoja.
 
+// =======================================================================================
+// === FUNCIÓN DE DIAGNÓSTICO: Ejecuta esta función manualmente desde el editor ===
+// =======================================================================================
+/**
+ * Ejecuta esta función manualmente (con el botón 'Run' ▷) para verificar si tu entorno
+ * de Apps Script funciona correctamente. Si esta prueba tiene éxito, significa que
+ * el método 'addHeader' existe y el problema está en el DESPLIEGUE de tu aplicación web.
+ */
+function testEnvironment() {
+  try {
+    console.log("Iniciando prueba de entorno...");
+    const output = ContentService.createTextOutput("Prueba");
+    console.log("Objeto ContentService.TextOutput creado. Tipo: " + typeof output);
+    console.log("¿Existe 'addHeader' en el objeto? " + ('addHeader' in output));
+    
+    if ('addHeader' in output && typeof output.addHeader === 'function') {
+      console.log("Intentando llamar a output.addHeader()...");
+      output.addHeader("X-Test-Header", "Success");
+      console.log("Llamada a addHeader() exitosa.");
+      // Muestra una alerta en la UI de la Hoja de Cálculo para confirmar el éxito.
+      SpreadsheetApp.getUi().alert("¡Prueba exitosa! El método 'addHeader' funciona. El problema está en el despliegue. Por favor, crea una 'Nueva implementación' (New deployment).");
+    } else {
+      throw new Error("¡ERROR CRÍTICO! El método 'addHeader' NO se encontró o no es una función en el objeto TextOutput.");
+    }
+  } catch (e) {
+    console.error("Error en la prueba de entorno: " + e.toString());
+    SpreadsheetApp.getUi().alert("Error en la prueba: " + e.toString());
+  }
+}
+// =======================================================================================
+
 /**
  * Función auxiliar para obtener el objeto de la hoja de cálculo.
  * @returns {GoogleAppsScript.Spreadsheet.Sheet} La hoja de trabajo.
- * @throws {Error} Si la hoja no se encuentra.
  */
 function getSheet() {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
@@ -56,14 +86,13 @@ function getSheet() {
 
 /**
  * CONFIGURACIÓN INICIAL: Ejecutar esta función manualmente UNA VEZ desde el editor.
- * Prepara la hoja con los encabezados necesarios ('shareId', 'JSON_DATA').
  */
 function setupSheetHeaders() {
   try {
     const sheet = getSheet();
     const headers = sheet.getRange("A1:B1").getValues()[0];
     if (sheet.getLastRow() < 1 || headers[0] !== "shareId" || headers[1] !== "JSON_DATA") {
-      sheet.clear(); // Limpia completamente para un estado limpio.
+      sheet.clear();
       sheet.getRange("A1:B1").setValues([["shareId", "JSON_DATA"]]);
       console.log("Encabezados de la hoja configurados correctamente.");
     } else {
@@ -76,22 +105,21 @@ function setupSheetHeaders() {
 }
 
 /**
- * Maneja las solicitudes pre-vuelo OPTIONS para CORS.
- * Es crucial para que los navegadores permitan las solicitudes POST desde otros dominios.
- * @param {object} e - El objeto del evento de la solicitud.
+ * Maneja las solicitudes pre-vuelo OPTIONS para CORS. NO EJECUTAR MANUALMENTE.
+ * @param {object} e El objeto del evento de la solicitud.
  * @returns {GoogleAppsScript.Content.TextOutput} La respuesta con las cabeceras CORS.
  */
 function doOptions(e) {
+  console.log("Recibida solicitud OPTIONS. Construyendo respuesta CORS.");
   return ContentService.createTextOutput()
     .addHeader('Access-Control-Allow-Origin', '*')
     .addHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
-    // ACTUALIZACIÓN: Se permiten más cabeceras para evitar errores de CORS.
     .addHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 }
 
 /**
- * Maneja las solicitudes GET para recuperar los datos de una sesión.
- * @param {object} e - El objeto del evento. Espera un parámetro 'id' en la URL.
+ * Maneja las solicitudes GET. NO EJECUTAR MANUALMENTE.
+ * @param {object} e El objeto del evento.
  * @returns {GoogleAppsScript.Content.TextOutput} La respuesta JSON.
  */
 function doGet(e) {
@@ -105,10 +133,9 @@ function doGet(e) {
     const data = sheet.getDataRange().getValues();
     let sessionData = null;
 
-    // Itera desde la segunda fila (índice 1) para saltar los encabezados
     for (let i = 1; i < data.length; i++) {
-      if (data[i][0] == shareId) { // Compara el ID en la primera columna
-        sessionData = data[i][1]; // Obtiene los datos de la segunda columna
+      if (data[i][0] == shareId) {
+        sessionData = data[i][1];
         break;
       }
     }
@@ -129,8 +156,8 @@ function doGet(e) {
 }
 
 /**
- * Maneja las solicitudes POST para guardar o eliminar datos de una sesión.
- * @param {object} e - El objeto del evento. El cuerpo de la solicitud debe ser JSON.
+ * Maneja las solicitudes POST. NO EJECUTAR MANUALMENTE.
+ * @param {object} e El objeto del evento.
  * @returns {GoogleAppsScript.Content.TextOutput} La respuesta JSON con el estado de la operación.
  */
 function doPost(e) {
@@ -147,24 +174,21 @@ function doPost(e) {
     let response = { status: 'error', message: 'Acción no válida o ID no encontrado.' };
     let rowFound = -1;
 
-    // Buscar la fila correspondiente al shareId
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] == shareId) {
-        rowFound = i + 1; // El índice de la hoja es base 1
+        rowFound = i + 1;
         break;
       }
     }
 
     if (action === 'save') {
-      if (!dataToSave) throw new Error("La acción 'save' requiere un campo 'data'.");
+      if (typeof dataToSave === 'undefined') throw new Error("La acción 'save' requiere un campo 'data'.");
       
       const jsonDataString = JSON.stringify(dataToSave);
       if (rowFound > -1) {
-        // Actualizar fila existente
         sheet.getRange(rowFound, 2).setValue(jsonDataString);
         response = { status: 'success', message: 'Datos actualizados correctamente.' };
       } else {
-        // Añadir nueva fila
         sheet.appendRow([shareId, jsonDataString]);
         response = { status: 'success', message: 'Datos guardados correctamente.' };
       }
