@@ -8,7 +8,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Debes reemplazar esta URL con la URL de despliegue de tu Apps Script
 // Ejemplo: const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/exec";
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsisgt8O3Qm07tHj5iWGh9dCdg-leQ/exec"; // <<-- ¡REEMPLAZA ESTO CON TU URL REAL!
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE"; // <<-- ¡REEMPLAZA ESTO CON TU URL REAL!
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -337,7 +337,7 @@ const App = () => {
     // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
     if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida. Por favor, reemplaza el placeholder con tu URL de Apps Script.");
-      // Optionally, show a user-facing error message
+      alert("Error de configuración: la URL de Google Apps Script no es válida."); // Alert the user
       return;
     }
     if (!currentShareId || !userId) return;
@@ -351,9 +351,11 @@ const App = () => {
       const result = await response.json();
       if (result.status === 'error') {
         console.error("Error saving to Google Sheets:", result.message);
+        alert("Error al guardar en Google Sheets: " + result.message); // Alert the user
       }
     } catch (error) {
       console.error("Network error saving to Google Sheets:", error);
+      alert("Error de red al guardar en Google Sheets. Consulta la consola para más detalles."); // Alert the user
     }
   }, [userId]); // Removed comensales, availableProducts etc. to prevent endless loop, dataToSave is passed directly
 
@@ -361,7 +363,7 @@ const App = () => {
     // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
     if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida. Por favor, reemplaza el placeholder con tu URL de Apps Script.");
-      // Optionally, show a user-facing error message
+      alert("Error de configuración: la URL de Google Apps Script no es válida."); // Alert the user
       return;
     }
     if (!idToLoad) return;
@@ -392,6 +394,7 @@ const App = () => {
       }
     } catch (error) {
       console.error("Error loading from Google Sheets:", error);
+      alert("Error al cargar desde Google Sheets. Consulta la consola para más detalles."); // Alert the user
       // Fallback to empty state on error
       setComensales([]);
       setAvailableProducts(new Map());
@@ -405,7 +408,7 @@ const App = () => {
     // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
     if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida. Por favor, reemplaza el placeholder con tu URL de Apps Script.");
-      // Optionally, show a user-facing error message
+      alert("Error de configuración: la URL de Google Apps Script no es válida."); // Alert the user
       return;
     }
     if (!idToDelete) return;
@@ -418,9 +421,11 @@ const App = () => {
       const result = await response.json();
       if (result.status === 'error') {
         console.error("Error deleting from Google Sheets:", result.message);
+        alert("Error al eliminar de Google Sheets: " + result.message); // Alert the user
       }
     } catch (error) {
       console.error("Network error deleting from Google Sheets:", error);
+      alert("Error de red al eliminar de Google Sheets. Consulta la consola para más detalles."); // Alert the user
     }
   }, []);
 
@@ -459,7 +464,6 @@ const App = () => {
   // --- Polling for Updates (simulated real-time for Google Sheets) ---
   useEffect(() => {
     // Only poll if shareId exists AND the URL is properly configured.
-    // This prevents polling errors if GOOGLE_SHEET_WEB_APP_URL is still a placeholder.
     if (!shareId || !userId || GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return; 
 
     const pollingInterval = setInterval(() => {
@@ -763,10 +767,8 @@ const App = () => {
 
     setComensales(prevComensales => [...prevComensales, newComensal]);
     setNewComensalName(''); // Clear the input field
-    setAddComensalMessage({ type: 'success', text: `¡Comensal "${newComensal.name}" añadido con éxito!` });
-
-    // Clear message after 3 seconds
-    setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
+    setAddComensalMessage({ type: '', text: '' }); // Clear message on success
+    setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000); // Clear after 3 seconds
   };
 
   // Function to remove a single comensal - Refactored for single update
@@ -978,7 +980,7 @@ const App = () => {
             }
         };
 
-        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; // Read from environment variable
+        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // Read from environment variable
 
         if (apiKey === "TU_CLAVE_DE_API_DE_GEMINI_AQUI" || apiKey.trim() === "") {
           setImageProcessingError("Error: Falta la clave de API de Gemini. Por favor, edita el código e inserta tu clave.");
@@ -1411,7 +1413,7 @@ const App = () => {
 
 
       {/* Add New Comensal Section */}
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">
           <i className="lucide-user-plus text-3xl mr-2"></i>
           Agregar Nuevo Comensal
