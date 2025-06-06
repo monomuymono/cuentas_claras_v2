@@ -23,152 +23,170 @@ https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsi
   }
 }
 
-const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO CON EL ID DE TU HOJA DE CÁLCULO!
-const SHEET_NAME = 'Sessions';
+/**
+ * @fileoverview
+ * Google Apps Script para actuar como un backend simple usando una Hoja de Cálculo de Google.
+ *
+ * Funcionalidad:
+ * - Guarda (POST), carga (GET) y elimina (POST con acción 'delete') sesiones de datos JSON.
+ * - Maneja solicitudes CORS (OPTIONS) para permitir el acceso desde aplicaciones web externas.
+ * - Se requiere una configuración única ejecutando `setupSheetHeaders` manualmente.
+ *
+ * ¡IMPORTANTE!
+ * 1. Reemplaza 'YOUR_GOOGLE_SHEET_ID_HERE' con el ID real de tu Hoja de Cálculo.
+ * 2. Despliega esto como una Aplicación Web, dando acceso a "Cualquier persona".
+ */
 
-// Función auxiliar para obtener la hoja de cálculo
+// --- CONFIGURACIÓN ---
+const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO!
+const SHEET_NAME = 'Sessions'; // Asegúrate de que este nombre coincida con el de tu hoja.
+
+/**
+ * Función auxiliar para obtener el objeto de la hoja de cálculo.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet} La hoja de trabajo.
+ * @throws {Error} Si la hoja no se encuentra.
+ */
 function getSheet() {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
   if (!sheet) {
-    throw new Error('Sheet not found: ' + SHEET_NAME + '. Make sure the sheet name is correct.');
+    throw new Error('Hoja no encontrada: ' + SHEET_NAME + '. Asegúrate de que el nombre sea correcto.');
   }
   return sheet;
 }
 
-// Función para configurar los encabezados de la hoja (ejecutar una vez manualmente desde Apps Script)
-// Para ejecutar: En el editor de Apps Script, selecciona 'setupSheetHeaders' en el desplegable y haz clic en el botón 'Ejecutar' (▷).
+/**
+ * CONFIGURACIÓN INICIAL: Ejecutar esta función manualmente UNA VEZ desde el editor.
+ * Prepara la hoja con los encabezados necesarios ('shareId', 'JSON_DATA').
+ */
 function setupSheetHeaders() {
   try {
     const sheet = getSheet();
-    if (sheet.getLastRow() < 1 || sheet.getRange("A1").getValue() !== "shareId" || sheet.getRange("B1").getValue() !== "JSON_DATA") {
-      sheet.clearContents(); // Borra el contenido existente si los encabezados son incorrectos
-      sheet.getRange("A1").setValue("shareId");
-      sheet.getRange("B1").setValue("JSON_DATA");
-      console.log("Encabezados de hoja configurados correctamente.");
+    const headers = sheet.getRange("A1:B1").getValues()[0];
+    if (sheet.getLastRow() < 1 || headers[0] !== "shareId" || headers[1] !== "JSON_DATA") {
+      sheet.clear(); // Limpia completamente para un estado limpio.
+      sheet.getRange("A1:B1").setValues([["shareId", "JSON_DATA"]]);
+      console.log("Encabezados de la hoja configurados correctamente.");
     } else {
-      console.log("Encabezados de hoja ya son correctos.");
+      console.log("Los encabezados de la hoja ya son correctos.");
     }
   } catch (e) {
-    console.error("Error al configurar encabezados de hoja: " + e.message);
-    throw e; // Lanza el error para mostrarlo en los registros de Apps Script
+    console.error("Error al configurar los encabezados de la hoja: " + e.toString());
+    throw e;
   }
 }
 
-// *** Función CLAVE para CORS: Maneja las solicitudes OPTIONS (pre-vuelo) ***
-// Los navegadores envían una solicitud OPTIONS antes de las solicitudes POST/GET "complejas" (como las que tienen un Content-Type JSON).
-// Esta función DEBE responder con las cabeceras CORS adecuadas.
+/**
+ * Maneja las solicitudes pre-vuelo OPTIONS para CORS.
+ * Es crucial para que los navegadores permitan las solicitudes POST desde otros dominios.
+ * @param {object} e - El objeto del evento de la solicitud.
+ * @returns {GoogleAppsScript.Content.TextOutput} La respuesta con las cabeceras CORS.
+ */
 function doOptions(e) {
-  console.log("doOptions recibido.");
-  const output = ContentService.createTextOutput('');
-  output.setMimeType(ContentService.MimeType.TEXT);
-  // CORRECCIÓN: Se cambió .setHeader por .addHeader
-  output.addHeader('Access-Control-Allow-Origin', '*');
-  output.addHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE');
-  output.addHeader('Access-Control-Allow-Headers', 'Content-Type');
-  return output;
+  return ContentService.createTextOutput()
+    .addHeader('Access-Control-Allow-Origin', '*')
+    .addHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+    // ACTUALIZACIÓN: Se permiten más cabeceras para evitar errores de CORS.
+    .addHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 }
 
-// Función para manejar solicitudes GET (para cargar datos)
+/**
+ * Maneja las solicitudes GET para recuperar los datos de una sesión.
+ * @param {object} e - El objeto del evento. Espera un parámetro 'id' en la URL.
+ * @returns {GoogleAppsScript.Content.TextOutput} La respuesta JSON.
+ */
 function doGet(e) {
   try {
-    const shareId = e && e.parameter ? e.parameter.id : undefined;
+    const shareId = e.parameter.id;
+    if (!shareId) {
+        throw new Error("No se proporcionó 'id' en la solicitud GET.");
+    }
 
     const sheet = getSheet();
     const data = sheet.getDataRange().getValues();
-
     let sessionData = null;
-    if (shareId) {
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][0] === shareId) {
-          sessionData = data[i][1];
-          break;
-        }
+
+    // Itera desde la segunda fila (índice 1) para saltar los encabezados
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == shareId) { // Compara el ID en la primera columna
+        sessionData = data[i][1]; // Obtiene los datos de la segunda columna
+        break;
       }
     }
+    
+    const responseJson = sessionData ? sessionData : JSON.stringify({ status: "not_found", message: "No data found for the provided id." });
 
-    const output = ContentService.createTextOutput(sessionData || JSON.stringify({ message: "No data found" }));
-    output.setMimeType(ContentService.MimeType.JSON);
-    // CORRECCIÓN: Se cambió .setHeader por .addHeader
-    output.addHeader('Access-Control-Allow-Origin', '*');
+    return ContentService.createTextOutput(responseJson)
+      .setMimeType(ContentService.MimeType.JSON)
+      .addHeader('Access-Control-Allow-Origin', '*');
 
-    return output;
   } catch (error) {
-    console.error("Error en doGet:", error);
-    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doGet' }));
-    errorOutput.setMimeType(ContentService.MimeType.JSON);
-    // CORRECCIÓN: Se cambió .setHeader por .addHeader
-    errorOutput.addHeader('Access-Control-Allow-Origin', '*');
+    console.error("Error en doGet:", error.toString());
+    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
+      .setMimeType(ContentService.MimeType.JSON)
+      .addHeader('Access-Control-Allow-Origin', '*');
     return errorOutput;
   }
 }
 
-// Función para manejar solicitudes POST (para guardar/eliminar datos)
+/**
+ * Maneja las solicitudes POST para guardar o eliminar datos de una sesión.
+ * @param {object} e - El objeto del evento. El cuerpo de la solicitud debe ser JSON.
+ * @returns {GoogleAppsScript.Content.TextOutput} La respuesta JSON con el estado de la operación.
+ */
 function doPost(e) {
   try {
-    if (!e || !e.postData || !e.postData.contents) {
-      console.error("doPost recibido: cuerpo de solicitud vacío o mal formado. Objeto de evento:", JSON.stringify(e));
-      const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No request body or malformed request. Ensure it is a POST request with Content-Type: application/json.' }));
-      errorOutput.setMimeType(ContentService.MimeType.JSON);
-      // CORRECCIÓN: Se cambió .setHeader por .addHeader
-      errorOutput.addHeader('Access-Control-Allow-Origin', '*');
-      return errorOutput;
-    }
-
     const requestData = JSON.parse(e.postData.contents);
-    const action = requestData.action;
-    const shareId = requestData.shareId;
-    const dataToSave = requestData.data;
+    const { action, shareId, data: dataToSave } = requestData;
+
+    if (!action || !shareId) {
+        throw new Error("La solicitud debe incluir 'action' y 'shareId'.");
+    }
 
     const sheet = getSheet();
     const data = sheet.getDataRange().getValues();
+    let response = { status: 'error', message: 'Acción no válida o ID no encontrado.' };
+    let rowFound = -1;
 
-    let response = { status: 'error', message: 'Invalid action' };
-
-    if (action === 'save') {
-      let rowFound = false;
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][0] === shareId) {
-          sheet.getRange(i + 1, 2).setValue(JSON.stringify(dataToSave));
-          rowFound = true;
-          response = { status: 'success', message: 'Data saved' };
-          break;
-        }
-      }
-      if (!rowFound) {
-        if (sheet.getLastRow() < 1 || sheet.getRange("A1").getValue() !== "shareId") {
-            sheet.appendRow(["shareId", "JSON_DATA"]);
-        }
-        sheet.appendRow([shareId, JSON.stringify(dataToSave)]);
-        response = { status: 'success', message: 'Data saved' };
-      }
-    } else if (action === 'delete') {
-      let rowDeleted = false;
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][0] === shareId) {
-          sheet.deleteRow(i + 1);
-          rowDeleted = true;
-          response = { status: 'success', message: rowDeleted ? 'Data deleted' : 'Data not found' };
-          break;
-        }
-      }
-      // Asegurarse de que la respuesta sea consistente si no se encontró la fila
-      if (!rowDeleted) {
-        response = { status: 'error', message: 'Data not found' };
+    // Buscar la fila correspondiente al shareId
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == shareId) {
+        rowFound = i + 1; // El índice de la hoja es base 1
+        break;
       }
     }
 
-    const output = ContentService.createTextOutput(JSON.stringify(response));
-    output.setMimeType(ContentService.MimeType.JSON);
-    // CORRECCIÓN: Se cambió .setHeader por .addHeader
-    output.addHeader('Access-Control-Allow-Origin', '*');
-    return output;
+    if (action === 'save') {
+      if (!dataToSave) throw new Error("La acción 'save' requiere un campo 'data'.");
+      
+      const jsonDataString = JSON.stringify(dataToSave);
+      if (rowFound > -1) {
+        // Actualizar fila existente
+        sheet.getRange(rowFound, 2).setValue(jsonDataString);
+        response = { status: 'success', message: 'Datos actualizados correctamente.' };
+      } else {
+        // Añadir nueva fila
+        sheet.appendRow([shareId, jsonDataString]);
+        response = { status: 'success', message: 'Datos guardados correctamente.' };
+      }
+    } else if (action === 'delete') {
+      if (rowFound > -1) {
+        sheet.deleteRow(rowFound);
+        response = { status: 'success', message: 'Datos eliminados correctamente.' };
+      } else {
+        response = { status: 'not_found', message: 'No se encontraron datos para eliminar.' };
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify(response))
+      .setMimeType(ContentService.MimeType.JSON)
+      .addHeader('Access-Control-Allow-Origin', '*');
 
   } catch (error) {
-    console.error("Error en doPost:", error);
-    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doPost' }));
-    errorOutput.setMimeType(ContentService.MimeType.JSON);
-    // CORRECCIÓN: Se cambió .setHeader por .addHeader
-    errorOutput.addHeader('Access-Control-Allow-Origin', '*');
+    console.error("Error en doPost:", error.toString());
+    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
+      .setMimeType(ContentService.MimeType.JSON)
+      .addHeader('Access-Control-Allow-Origin', '*');
     return errorOutput;
   }
 }
+
