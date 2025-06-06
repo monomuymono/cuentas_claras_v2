@@ -1,8 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// Firebase Imports (asegúrate de que estén instalados: npm install firebase)
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 
 // Polyfill para 'process' si no está definido (por ejemplo, en algunos entornos de cliente)
 // Esto es necesario porque algunos módulos de Firebase (o dependencias) pueden intentar acceder a 'process.env' directamente.
@@ -10,27 +6,15 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
   window.process = { env: {} };
 }
 
+// NO Firebase Imports, cambiamos a Google Sheets
 
-// Firebase Config: Lee de variables de entorno para despliegues como Vercel.
-// Si estás en el entorno Canvas, usa __firebase_config y __app_id (globales).
-// Para Vercel, debes configurar estas como variables de entorno con prefijo REACT_APP_
-const firebaseConfig =  {
-  // Reemplaza con la configuración real de tu proyecto Firebase para pruebas locales
-  apiKey: "AIzaSyBAgH0KuO-nxboxB6suNlQtzTqK3s0K5mc",
-  authDomain: "cuentas-claras-e759c.firebaseapp.com",
-  projectId: "cuentas-claras-e759c",
-  storageBucket: "cuentas-claras-e759c.firebasestorage.app",
-  messagingSenderId: "22302451025",
-  appId: "1:22302451025:web:415ee0649018f7b0bddf70"
-};
+// URL de tu Google Apps Script Web App
+// ¡IMPORTANTE! Debes reemplazar esta URL con la URL de despliegue de tu Apps Script
+// Ejemplo: const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/exec";
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE"; // <<-- ¡REEMPLAZA ESTO CON TU URL REAL!
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
-
-// App ID: Lee de variables de entorno.
-// Usa un valor por defecto si no está definido.
-const canvasAppId = 'default-bill-splitter-app';
+// Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas
+const canvasAppId = 'default-bill-splitter-app'; 
 
 
 // Componente para el modal de confirmación personalizado
@@ -291,25 +275,25 @@ const parseReceiptData = (rawData) => {
 };
 
 const App = () => {
-  // Authentication states
+  // Authentication states (simplified for Google Sheets)
   const [userId, setUserId] = useState(null);
   const [authReady, setAuthReady] = useState(false);
 
-  // Firestore share ID for current session
+  // Google Sheets share ID for current session
   const [shareId, setShareId] = useState(null);
   const [shareLink, setShareLink] = useState('');
 
   // availableProducts is now a Map for easier quantity management
   const [availableProducts, setAvailableProducts] = useState(new Map());
   // Initialize totals to 0
-  const [totalGeneralMesa, setTotalGeneralMesa] = useState(0); // This will now represent the sum of availableProducts base prices
-  const [propinaSugerida, setPropinaSugerida] = useState(0); // This will now be 10% of totalGeneralMesa
+  const [totalGeneralMesa, setTotalGeneralMesa] = useState(0); 
+  const [propinaSugerida, setPropinaSugerida] = useState(0); 
 
 
   const [comensales, setComensales] = useState([]);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [newComensalName, setNewComensalName] = useState(''); // State for comensal name input
-  const [addComensalMessage, setAddComensalMessage] = useState({ type: '', text: '' }); // State for feedback on adding comensal
+  const [newComensalName, setNewComensalName] = useState(''); 
+  const [addComensalMessage, setAddComensalMessage] = useState({ type: '', text: '' }); 
 
   // Manual Item input states
   const [manualItemName, setManualItemName] = useState('');
@@ -329,7 +313,7 @@ const App = () => {
   const [isRemoveComensalModalOpen, setIsRemoveComensalModalOpen] = useState(false);
   const [comensalToRemoveId, setComensalToRemoveId] = useState(null);
   const [isClearAllComensalesModalOpen, setIsClearAllComensalesModalOpen] = useState(false);
-  const [isResetAllModalOpen, setIsResetAllModalOpen] = useState(false); // New state for Reset All confirmation
+  const [isResetAllModalOpen, setIsResetAllModalOpen] = useState(false); 
 
 
   // States for image processing
@@ -350,113 +334,159 @@ const App = () => {
   // Maximum number of comensales to prevent UI from becoming too crowded
   const MAX_COMENSALES = 20;
 
-  // --- Firebase Authentication and Data Loading ---
-  useEffect(() => {
-    // Authenticate anonymously or with custom token if provided (Canvas)
-    const authenticate = async () => {
-      try {
-        // __initial_auth_token is provided by the Canvas environment.
-        // On Vercel, it won't exist, so we fall back to anonymous sign-in.
-        // Added window check to ensure __initial_auth_token is only accessed in browser environment.
-        if (typeof window !== 'undefined' && typeof window.__initial_auth_token !== 'undefined') {
-          await signInWithCustomToken(auth, window.__initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.error("Firebase Auth Error:", error);
-      } finally {
-        setAuthReady(true);
-      }
-    };
-
-    authenticate();
-
-    // Listen for auth state changes to get user ID
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUserId(user.uid);
-      } else {
-        setUserId(null); // No user signed in
-      }
-    });
-
-    return () => unsubscribe(); // Cleanup auth listener
-  }, []);
-
-  // --- Firestore Data Subscription ---
-  useEffect(() => {
-    if (!authReady || !userId) return; // Wait for authentication
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const idFromUrl = urlParams.get('id');
-
-    let currentDocId = idFromUrl;
-    if (!currentDocId) {
-      // If no ID in URL, create a new one for this session (not immediately saved)
-      currentDocId = `${userId}-${Date.now()}`; // Unique ID for this session's document
+  // --- Google Sheets Data Loading and Saving Functions ---
+  // Using useCallback for save function to prevent re-creation and issues in useEffect dependencies
+  const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
+    // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
+    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+      console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida. Por favor, reemplaza el placeholder con tu URL de Apps Script.");
+      // Optionally, show a user-facing error message
+      return;
     }
-    setShareId(currentDocId); // Store the document ID in state
+    if (!currentShareId || !userId) return;
 
-    // Construct the Firestore document reference
-    // The path should be: artifacts/{appId}/public/data/shared_sessions/{docId}
-    const docRef = doc(db, 'artifacts', String(canvasAppId), 'public', 'data', 'shared_sessions', String(currentDocId));
+    try {
+      const response = await fetch(GOOGLE_SHEET_WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save', shareId: currentShareId, data: dataToSave })
+      });
+      const result = await response.json();
+      if (result.status === 'error') {
+        console.error("Error saving to Google Sheets:", result.message);
+      }
+    } catch (error) {
+      console.error("Network error saving to Google Sheets:", error);
+    }
+  }, [userId]); // Removed comensales, availableProducts etc. to prevent endless loop, dataToSave is passed directly
 
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+  const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
+    // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
+    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+      console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida. Por favor, reemplaza el placeholder con tu URL de Apps Script.");
+      // Optionally, show a user-facing error message
+      return;
+    }
+    if (!idToLoad) return;
+
+    try {
+      const response = await fetch(`${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}`);
+      const data = await response.json();
+
+      if (data && data.message !== "No data found") {
         setComensales(data.comensales || []);
-        // Convert plain object back to Map for availableProducts
         setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
         setTotalGeneralMesa(data.totalGeneralMesa || 0);
         setPropinaSugerida(data.propinaSugerida || 0);
-        // Convert plain object of arrays back to Map of Sets for activeSharedInstances
         setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
       } else {
-        // Doc doesn't exist, reset to initial state (already set in useEffect above)
+        // No data found for this ID, reset to default empty state
         setComensales([]);
         setAvailableProducts(new Map());
         setTotalGeneralMesa(0);
         setPropinaSugerida(0);
         setActiveSharedInstances(new Map());
+        // If loaded from URL, and no data, clear the ID from URL to signify fresh start
+        const url = new URL(window.location.href);
+        url.searchParams.delete('id');
+        window.history.replaceState({}, document.title, url.toString());
+        setShareId(null);
       }
-    }, (error) => {
-      console.error("Error subscribing to Firestore:", error);
-    });
-
-    return () => unsubscribe(); // Cleanup Firestore listener
-  }, [authReady, userId, canvasAppId]); // Re-run if authReady or userId changes
-
-  // --- Firestore Data Saving ---
-  const saveStateToFirestore = useCallback(async () => {
-    if (!shareId || !userId) return; // Need a shareId and userId to save
-
-    const dataToSave = {
-      comensales: comensales,
-      availableProducts: Object.fromEntries(availableProducts), // Convert Map to object for Firestore
-      totalGeneralMesa: totalGeneralMesa,
-      propinaSugerida: propinaSugerida,
-      activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), // Convert Map of Sets to object of arrays
-      lastUpdated: new Date()
-    };
-
-    // Corrected Firestore path: artifacts/{appId}/public/data/shared_sessions/{docId}
-    const docRef = doc(db, 'artifacts', String(canvasAppId), 'public', 'data', 'shared_sessions', String(shareId));
-    try {
-      await setDoc(docRef, dataToSave, { merge: true }); // Use merge to avoid overwriting entire document
-      // console.log("State saved to Firestore with ID:", shareId);
     } catch (error) {
-      console.error("Error saving to Firestore:", error);
+      console.error("Error loading from Google Sheets:", error);
+      // Fallback to empty state on error
+      setComensales([]);
+      setAvailableProducts(new Map());
+      setTotalGeneralMesa(0);
+      setPropinaSugerida(0);
+      setActiveSharedInstances(new Map());
     }
-  }, [comensales, availableProducts, totalGeneralMesa, propinaSugerida, activeSharedInstances, shareId, userId, canvasAppId]);
+  }, []);
 
-  // Save state whenever relevant states change
+  const deleteStateFromGoogleSheets = useCallback(async (idToDelete) => {
+    // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
+    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+      console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida. Por favor, reemplaza el placeholder con tu URL de Apps Script.");
+      // Optionally, show a user-facing error message
+      return;
+    }
+    if (!idToDelete) return;
+    try {
+      const response = await fetch(GOOGLE_SHEET_WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', shareId: idToDelete })
+      });
+      const result = await response.json();
+      if (result.status === 'error') {
+        console.error("Error deleting from Google Sheets:", result.message);
+      }
+    } catch (error) {
+      console.error("Network error deleting from Google Sheets:", error);
+    }
+  }, []);
+
+
+  // --- Authentication (simplified for Google Sheets) ---
   useEffect(() => {
-    const handler = setTimeout(() => {
-      saveStateToFirestore();
-    }, 500); // Debounce saving
-    return () => clearTimeout(handler);
-  }, [comensales, availableProducts, saveStateToFirestore]);
+    const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
+    if (uniqueSessionUserId) {
+      setUserId(uniqueSessionUserId);
+    } else {
+      const newUniqueId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      localStorage.setItem('billSplitterUserId', newUniqueId);
+      setUserId(newUniqueId);
+    }
+    setAuthReady(true); 
+  }, []);
+
+  // --- Initial Load from URL or New Session ---
+  useEffect(() => {
+    if (!authReady || !userId) return; 
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const idFromUrl = urlParams.get('id');
+
+    if (idFromUrl) {
+      setShareId(idFromUrl);
+      loadStateFromGoogleSheets(idFromUrl);
+    } else {
+      // Start a fresh session if no ID in URL
+      const newSessionId = `${userId}-${Date.now()}`;
+      setShareId(newSessionId);
+      // Don't save empty state immediately, it will save on first change.
+    }
+  }, [authReady, userId, loadStateFromGoogleSheets]);
+
+  // --- Polling for Updates (simulated real-time for Google Sheets) ---
+  useEffect(() => {
+    if (!shareId || !userId || GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return; // Added check for placeholder URL
+
+    // Only poll if there's a shareId (meaning we are in a shared session)
+    const pollingInterval = setInterval(() => {
+      loadStateFromGoogleSheets(shareId);
+    }, 3000); // Poll every 3 seconds for updates
+
+    return () => clearInterval(pollingInterval); // Cleanup interval
+  }, [shareId, userId, loadStateFromGoogleSheets]);
+
+  // --- Save state whenever relevant states change (debounced) ---
+  useEffect(() => {
+    if (shareId && GOOGLE_SHEET_WEB_APP_URL !== "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" && GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { // Added check for placeholder URL
+        const dataToSave = {
+            comensales: comensales,
+            availableProducts: Object.fromEntries(availableProducts),
+            totalGeneralMesa: totalGeneralMesa,
+            propinaSugerida: propinaSugerida,
+            activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            lastUpdated: new Date().toISOString()
+        };
+        const handler = setTimeout(() => {
+            saveStateToGoogleSheets(shareId, dataToSave);
+        }, 500); // Debounce saving
+        return () => clearTimeout(handler);
+    }
+  }, [comensales, availableProducts, totalGeneralMesa, propinaSugerida, activeSharedInstances, shareId, saveStateToGoogleSheets]);
 
 
   // Recalculate main totals whenever availableProducts changes
@@ -948,7 +978,7 @@ const App = () => {
             }
         };
 
-        const apiKey =  "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; // Read from environment variable
+        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // Read from environment variable
 
         if (apiKey === "TU_CLAVE_DE_API_DE_GEMINI_AQUI" || apiKey.trim() === "") {
           setImageProcessingError("Error: Falta la clave de API de Gemini. Por favor, edita el código e inserta tu clave.");
@@ -1067,7 +1097,7 @@ const App = () => {
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      document.body.removeChild(link); // Corrected to remove 'link' element
       URL.revokeObjectURL(url); // Clean up
     } else {
       // Fallback for older browsers
@@ -1194,19 +1224,12 @@ const App = () => {
     setIsResetAllModalOpen(true); // Open confirmation modal
   };
 
-  const confirmResetAll = async () => { // Made async to await deleteDoc
+  const confirmResetAll = async () => { 
     setIsResetAllModalOpen(false); // Close modal
 
-    // If there's a shareId, try to delete the document from Firestore
+    // If there's a shareId, try to delete the document from Google Sheets
     if (shareId && userId) {
-      const docRef = doc(db, 'artifacts', String(canvasAppId), 'public', 'data', 'shared_sessions', String(shareId)); // Corrected path
-      try {
-        await deleteDoc(docRef);
-        console.log("Documento de Firestore eliminado:", shareId);
-      } catch (error) {
-        console.error("Error al eliminar documento de Firestore:", error);
-        // Optionally, show a message to the user that deletion failed
-      }
+      await deleteStateFromGoogleSheets(shareId);
     }
 
     // Reset all state to initial values
@@ -1225,9 +1248,9 @@ const App = () => {
     setRemoveInventoryItemMessage({ type: '', text: '' });
     setIsImageProcessing(false);
     setImageProcessingError(null);
-    setUploadedImageUrl(null); // <-- THIS LINE RESETS THE UPLOADED IMAGE URL
+    setUploadedImageUrl(null); 
     setActiveSharedInstances(new Map());
-    setShareId(null); // Clear the shareId after reset
+    setShareId(null); 
 
     // Clear the shareId from the URL
     const url = new URL(window.location.href);
@@ -1253,7 +1276,7 @@ const App = () => {
     const newShareId = `${userId}-${Date.now()}`;
     setShareId(newShareId); // Update the state with the new shareId
 
-    // Save the current state to this new Firestore document
+    // Save the current state to this new Google Sheet document
     const dataToSave = {
       comensales: comensales,
       availableProducts: Object.fromEntries(availableProducts),
@@ -1263,10 +1286,8 @@ const App = () => {
       lastUpdated: new Date()
     };
 
-    // Corrected Firestore path: artifacts/{appId}/public/data/shared_sessions/{docId}
-    const docRef = doc(db, 'artifacts', String(canvasAppId), 'public', 'data', 'shared_sessions', String(newShareId));
     try {
-      await setDoc(docRef, dataToSave);
+      await saveStateToGoogleSheets(newShareId, dataToSave); // Call save function
       const currentBaseUrl = window.location.origin + window.location.pathname;
       const generatedLink = `${currentBaseUrl}?id=${newShareId}`;
       setShareLink(generatedLink);
@@ -1522,11 +1543,10 @@ const App = () => {
           </p>
         )}
         {imageProcessingError && (
-          <p className="mt-4 text-center text-red-600 text-sm">
+          <p className={`mt-4 text-center text-red-600 text-sm ${imageProcessingError ? '' : 'hidden'}`}> {/* Always render but hide if no error */}
             Error: {imageProcessingError}
           </p>
         )}
-        {/* Only show image preview if uploadedImageUrl exists and there's no processing/error */}
         {uploadedImageUrl && !isImageProcessing && !imageProcessingError && (
             <div className="mt-4 text-center">
                 <p className="text-sm text-gray-500 mb-2">Imagen cargada:</p>
