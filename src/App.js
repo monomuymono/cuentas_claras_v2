@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'; // Corrected import syntax
 
 // Componente para el modal de confirmación personalizado
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => {
@@ -808,7 +808,18 @@ const App = () => {
             }
         };
 
-        const apiKey = ""; // Keep empty string, Canvas will provide it
+        const apiKey = "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // <<-- ¡IMPORTANTE! Inserta tu clave aquí.
+                                                    // ADVERTENCIA: Exponer API keys directamente en el código del lado del cliente no es seguro para aplicaciones públicas.
+                                                    // Para producción, usa un proxy seguro en el backend o Vercel Edge Functions.
+
+        if (apiKey === "TU_CLAVE_DE_API_DE_GEMINI_AQUI" || apiKey.trim() === "") {
+          setImageProcessingError("Error: Falta la clave de API de Gemini. Por favor, edita el código e inserta tu clave.");
+          setIsImageProcessing(false);
+          setUploadedImageUrl(null);
+          return;
+        }
+
+
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
         const response = await fetch(apiUrl, {
@@ -1101,7 +1112,7 @@ const App = () => {
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-extrabold text-blue-700 mb-2 drop-shadow-md">
           <i className="lucide-salad text-5xl mr-2"></i>
-          Cuentas Claras
+          Calculadora de Cuentas por Comensal
         </h1>
         <p className="text-xl text-gray-600">
           Selecciona los ítems del recibo para cada comensal y calcula el total individual.
