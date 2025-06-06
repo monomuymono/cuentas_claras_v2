@@ -24,7 +24,7 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 
 // Global variable for Canvas App ID if available, otherwise a default for testing
-const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-bill-splitter-app';
+const canvasAppId = 'default-bill-splitter-app';
 
 
 // Componente para el modal de confirmación personalizado
