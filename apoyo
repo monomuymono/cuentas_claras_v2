@@ -58,18 +58,19 @@ function setupSheetHeaders() {
 // Los navegadores envían una solicitud OPTIONS antes de las solicitudes POST/GET "complejas" (como las que tienen un Content-Type JSON).
 // Esta función DEBE responder con las cabeceras CORS adecuadas.
 function doOptions(e) {
-  console.log("doOptions recibido."); // Descomentar para depurar
-  return ContentService.createTextOutput('') // Una respuesta vacía está bien para OPTIONS
-    .setMimeType(ContentService.MimeType.TEXT)
-    .setHeader('Access-Control-Allow-Origin', '*') // Permite que CUALQUIER origen (dominio) acceda a tu Apps Script
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE') // Define los métodos HTTP que tu script acepta
-    .setHeader('Access-Control-Allow-Headers', 'Content-Type'); // Permite la cabecera Content-Type
+  console.log("doOptions recibido.");
+  const output = ContentService.createTextOutput('')
+    .setMimeType(ContentService.MimeType.TEXT);
+  output.setHeader('Access-Control-Allow-Origin', '*'); // Cabecera CORS
+  output.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE'); // Métodos permitidos
+  output.setHeader('Access-Control-Allow-Headers', 'Content-Type'); // Cabeceras permitidas
+  return output;
 }
 
 // Función para manejar solicitudes GET (para cargar datos)
 function doGet(e) {
   try {
-    // console.log("doGet event object (e):", JSON.stringify(e)); // Descomentar para depurar
+    // console.log("doGet event object (e):", JSON.stringify(e));
 
     const shareId = e && e.parameter ? e.parameter.id : undefined;
 
@@ -77,10 +78,10 @@ function doGet(e) {
     const data = sheet.getDataRange().getValues();
 
     let sessionData = null;
-    if (shareId) { // Solo intenta buscar datos si se proporciona un shareId
-      for (let i = 1; i < data.length; i++) { // Empieza el bucle desde la fila 1 para saltar el encabezado
-        if (data[i][0] === shareId) { // shareId está en la primera columna (índice 0)
-          sessionData = data[i][1]; // JSON_DATA está en la segunda columna (índice 1)
+    if (shareId) {
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === shareId) {
+          sessionData = data[i][1];
           break;
         }
       }
@@ -88,8 +89,7 @@ function doGet(e) {
 
     const output = ContentService.createTextOutput(sessionData || JSON.stringify({ message: "No data found" }))
       .setMimeType(ContentService.MimeType.JSON);
-      // IMPORTANTE: setHeader debe encadenarse al ContentService.createTextOutput().setMimeType()
-    output.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta GET!
+    output.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS!
 
     return output;
   } catch (error) {
@@ -104,7 +104,7 @@ function doGet(e) {
 // Función para manejar solicitudes POST (para guardar/eliminar datos)
 function doPost(e) {
   try {
-    // console.log("doPost event object (e):", JSON.stringify(e)); // Descomentar para depurar
+    // console.log("doPost event object (e):", JSON.stringify(e));
 
     if (!e || !e.postData || !e.postData.contents) {
       console.error("doPost recibido: cuerpo de solicitud vacío o mal formado. Objeto de evento:", JSON.stringify(e));
