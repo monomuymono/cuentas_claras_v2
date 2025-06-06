@@ -1,5 +1,6 @@
 AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U
 
+https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsisgt8O3Qm07tHj5iWGh9dCdg-leQ/exec
 
 const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO CON EL ID DE TU HOJA DE CÁLCULO!
 const SHEET_NAME = 'Sessions';
