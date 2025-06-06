@@ -134,9 +134,15 @@ function doOptions(e) {
  */
 function doGet(e) {
   try {
-    const shareId = e.parameter.id;
+    // CORRECCIÓN: Se maneja de forma segura el caso en que no se proporciona un ID.
+    // Esto evita que la ejecución falle si se llama a la URL base.
+    const shareId = e && e.parameter ? e.parameter.id : null;
+
     if (!shareId) {
-        throw new Error("No se proporcionó 'id' en la solicitud GET.");
+      // Si no hay ID, devuelve una respuesta informativa en lugar de fallar.
+      return ContentService.createTextOutput(JSON.stringify({ status: 'info', message: 'API activa. Proporciona un ID para obtener datos, ej: ?id=123' }))
+        .setMimeType(ContentService.MimeType.JSON)
+        .addHeader('Access-Control-Allow-Origin', '*');
     }
 
     const sheet = getSheet();
@@ -150,7 +156,7 @@ function doGet(e) {
       }
     }
     
-    const responseJson = sessionData ? sessionData : JSON.stringify({ status: "not_found", message: "No data found for the provided id." });
+    const responseJson = sessionData ? sessionData : JSON.stringify({ status: "not_found", message: "No se encontraron datos para el ID proporcionado." });
 
     return ContentService.createTextOutput(responseJson)
       .setMimeType(ContentService.MimeType.JSON)
@@ -223,4 +229,3 @@ function doPost(e) {
     return errorOutput;
   }
 }
-
