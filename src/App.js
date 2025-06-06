@@ -808,7 +808,7 @@ const App = () => {
             }
         };
 
-        const apiKey = "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // <<-- ¡IMPORTANTE! Inserta tu clave aquí.
+        const apiKey = "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; // <<-- ¡IMPORTANTE! Inserta tu clave aquí.
                                                     // ADVERTENCIA: Exponer API keys directamente en el código del lado del cliente no es seguro para aplicaciones públicas.
                                                     // Para producción, usa un proxy seguro en el backend o Vercel Edge Functions.
 
