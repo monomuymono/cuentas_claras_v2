@@ -9,7 +9,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'fireba
 // Placeholder for Firebase Config (replace with your actual Firebase project config)
 // IMPORTANT: For Canvas environment, __firebase_config and __app_id are provided globally.
 // For Vercel, you'd set these as environment variables.
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+const firebaseConfig = : {
   // Your Firebase project configuration
   apiKey: "AIzaSyBAgH0KuO-nxboxB6suNlQtzTqK3s0K5mc",
   authDomain: "cuentas-claras-e759c.firebaseapp.com",
