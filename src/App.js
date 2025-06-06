@@ -14,7 +14,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'fireba
 // Firebase Config: Lee de variables de entorno para despliegues como Vercel.
 // Si estás en el entorno Canvas, usa __firebase_config y __app_id (globales).
 // Para Vercel, debes configurar estas como variables de entorno con prefijo REACT_APP_
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+const firebaseConfig =  {
   // Reemplaza con la configuración real de tu proyecto Firebase para pruebas locales
   apiKey: "AIzaSyBAgH0KuO-nxboxB6suNlQtzTqK3s0K5mc",
   authDomain: "cuentas-claras-e759c.firebaseapp.com",
@@ -30,7 +30,7 @@ const auth = getAuth(app);
 
 // App ID: Lee de variables de entorno.
 // Usa un valor por defecto si no está definido.
-const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : (process.env.REACT_APP_CANVAS_APP_ID || 'default-bill-splitter-app');
+const canvasAppId = 'default-bill-splitter-app';
 
 
 // Componente para el modal de confirmación personalizado
