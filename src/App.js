@@ -6,9 +6,9 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 }
 
 // URL de tu Google Apps Script Web App
-// ¡IMPORTANTE! Debes reemplazar esta URL con la URL de despliegue de tu Apps Script
-// Ejemplo: const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/exec";
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsisgt8O3Qm07tHj5iWGh9dCdg-leQ/exec"; // <<-- ¡REEMPLAZA ESTO CON TU URL REAL!
+// ¡IMPORTANTE! He insertado la URL que proporcionaste en tu último mensaje.
+// Si esta URL no es la correcta para tu Apps Script desplegado, DEBES CAMBIARLA.
+const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsisgt8O3Qm07tHj5iWGh9dCdg-leQ/exec"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -343,6 +343,7 @@ const App = () => {
     if (!currentShareId || !userId) return;
 
     try {
+      // console.log("Intentando guardar en Google Sheets. URL:", GOOGLE_SHEET_WEB_APP_URL, "ShareId:", currentShareId, "Data:", dataToSave); // Added console log
       const response = await fetch(GOOGLE_SHEET_WEB_APP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -350,12 +351,14 @@ const App = () => {
       });
       const result = await response.json();
       if (result.status === 'error') {
-        console.error("Error saving to Google Sheets:", result.message);
+        console.error("Error al guardar en Google Sheets:", result.message);
         alert("Error al guardar en Google Sheets: " + result.message); // Alert the user
+      } else {
+        // console.log("Guardado exitoso en Google Sheets:", result.message); // Added console log
       }
     } catch (error) {
       console.error("Network error saving to Google Sheets:", error);
-      alert("Error de red al guardar en Google Sheets. Consulta la consola para más detalles."); // Alert the user
+      alert("Error de red al guardar en Google Sheets. Consulta la consola para más detalles. Posiblemente un problema de CORS o URL incorrecta."); // Alert the user
     }
   }, [userId]); // Removed comensales, availableProducts etc. to prevent endless loop, dataToSave is passed directly
 
@@ -369,6 +372,7 @@ const App = () => {
     if (!idToLoad) return;
 
     try {
+      // console.log("Intentando cargar de Google Sheets. URL:", `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}`); // Added console log
       const response = await fetch(`${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}`);
       const data = await response.json();
 
@@ -379,7 +383,9 @@ const App = () => {
         setTotalGeneralMesa(data.totalGeneralMesa || 0);
         setPropinaSugerida(data.propinaSugerida || 0);
         setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
+        // console.log("Carga exitosa de Google Sheets:", data); // Added console log
       } else {
+        // console.log("No se encontraron datos para el ID:", idToLoad); // Added console log
         // No data found for this ID, reset to default empty state
         setComensales([]);
         setAvailableProducts(new Map());
@@ -393,8 +399,8 @@ const App = () => {
         setShareId(null);
       }
     } catch (error) {
-      console.error("Error loading from Google Sheets:", error);
-      alert("Error al cargar desde Google Sheets. Consulta la consola para más detalles."); // Alert the user
+      console.error("Error al cargar desde Google Sheets:", error);
+      alert("Error al cargar desde Google Sheets. Consulta la consola para más detalles. Posiblemente un problema de CORS o URL incorrecta."); // Alert the user
       // Fallback to empty state on error
       setComensales([]);
       setAvailableProducts(new Map());
@@ -413,6 +419,7 @@ const App = () => {
     }
     if (!idToDelete) return;
     try {
+      // console.log("Intentando eliminar de Google Sheets. URL:", GOOGLE_SHEET_WEB_APP_URL, "ShareId:", idToDelete); // Added console log
       const response = await fetch(GOOGLE_SHEET_WEB_APP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -420,12 +427,14 @@ const App = () => {
       });
       const result = await response.json();
       if (result.status === 'error') {
-        console.error("Error deleting from Google Sheets:", result.message);
+        console.error("Error al eliminar de Google Sheets:", result.message);
         alert("Error al eliminar de Google Sheets: " + result.message); // Alert the user
+      } else {
+        // console.log("Eliminación exitosa en Google Sheets:", result.message); // Added console log
       }
     } catch (error) {
       console.error("Network error deleting from Google Sheets:", error);
-      alert("Error de red al eliminar de Google Sheets. Consulta la consola para más detalles."); // Alert the user
+      alert("Error de red al eliminar de Google Sheets. Consulta la consola para más detalles. Posiblemente un problema de CORS o URL incorrecta."); // Alert the user
     }
   }, []);
 
@@ -728,7 +737,7 @@ const App = () => {
               id: productToShare.id, // Original product ID
               name: productToShare.name,
               price: priceWithTipPerShare, // Store the price with tip for this portion
-              originalBasePrice: basePricePerShare, // Keep original base price for this portion
+              originalBasePrice: basePricePerShare, // Keep original base price for reference
               quantity: 1, // Represents one share instance
               type: 'shared',
               sharedByCount: Number(sharingComensalIds.length), // Ensure sharedByCount is number
@@ -767,7 +776,7 @@ const App = () => {
 
     setComensales(prevComensales => [...prevComensales, newComensal]);
     setNewComensalName(''); // Clear the input field
-    setAddComensalMessage({ type: '', text: '' }); // Clear message on success
+    setAddComensalMessage({ type: 'success', text: `¡Comensal "${newComensal.name}" añadido con éxito!` });
     setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000); // Clear after 3 seconds
   };
 
@@ -822,7 +831,7 @@ const App = () => {
   };
 
 
-  // Function to clear all comensales - Refactored for single update
+  // Function to clear all items for a comensal (but keep the comensal) - Refactored for single update
   const confirmClearAllComensales = () => {
     setIsClearAllComensalesModalOpen(false); // Close modal
 
@@ -980,7 +989,7 @@ const App = () => {
             }
         };
 
-        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; // Read from environment variable
+        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // Read from environment variable
 
         if (apiKey === "TU_CLAVE_DE_API_DE_GEMINI_AQUI" || apiKey.trim() === "") {
           setImageProcessingError("Error: Falta la clave de API de Gemini. Por favor, edita el código e inserta tu clave.");
@@ -1249,7 +1258,6 @@ const App = () => {
     setItemToRemoveFromInventoryId('');
     setRemoveInventoryItemMessage({ type: '', text: '' });
     setIsImageProcessing(false);
-    setImageProcessingError(null);
     setUploadedImageUrl(null); 
     setActiveSharedInstances(new Map());
     setShareId(null); 
@@ -1350,7 +1358,7 @@ const App = () => {
       </header>
 
       {/* Summary Totals */}
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-2xl mx-auto border border-blue-200">
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w_2xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Resumen de Totales</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
           <div className="flex justify-between items-center bg-blue-50 p-3 rounded-md shadow-sm">
@@ -1383,7 +1391,7 @@ const App = () => {
 
       {/* User Session Info */}
       {userId && (
-        <div className="bg-white p-4 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200 text-center text-sm text-gray-600">
+        <div className="bg-white p-4 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200 text-center text-sm text-gray-600">
           <p>Tu ID de sesión: <span className="font-semibold text-gray-800">{userId}</span></p>
           {shareId && <p>ID del documento de la sesión actual: <span className="font-semibold text-gray-800">{shareId}</span></p>}
           {shareLink && (
@@ -1559,7 +1567,7 @@ const App = () => {
         {uploadedImageUrl && !isImageProcessing && !imageProcessingError && (
             <div className="mt-4 text-center">
                 <p className="text-sm text-gray-500 mb-2">Imagen cargada:</p>
-                <img src={uploadedImageUrl} alt="Recibo cargado" className="max-w-full h-auto rounded-md border border-gray-300 mx-auto" style={{ maxHeight: '200px' }} />
+                <img src={uploadedImageUrl} alt="Recibo cargado" className="max-w_xl h-auto rounded-md border border-gray-300 mx-auto" style={{ maxHeight: '200px' }} />
             </div>
         )}
       </div>
