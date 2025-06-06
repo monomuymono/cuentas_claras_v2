@@ -1,4 +1,30 @@
-import React, { useState, useEffect } from 'react'; // Corrected import syntax
+import React, { useState, useEffect, useCallback } from 'react';
+
+// Firebase Imports (ensure these are installed: npm install firebase)
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore'; // Added deleteDoc
+
+// Placeholder for Firebase Config (replace with your actual Firebase project config)
+// IMPORTANT: For Canvas environment, __firebase_config and __app_id are provided globally.
+// For Vercel, you'd set these as environment variables.
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+  // Your Firebase project configuration
+  apiKey: "YOUR_FIREBASE_API_KEY", // Replace with your Firebase API Key
+  authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
+  projectId: "YOUR_FIREBASE_PROJECT_ID",
+  storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_FIREBASE_MESSAGING_SENDER_ID",
+  appId: "YOUR_FIREBASE_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+// Global variable for Canvas App ID if available, otherwise a default for testing
+const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-bill-splitter-app';
+
 
 // Componente para el modal de confirmación personalizado
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => {
@@ -258,6 +284,14 @@ const parseReceiptData = (rawData) => {
 };
 
 const App = () => {
+  // Authentication states
+  const [userId, setUserId] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  // Firestore share ID for current session
+  const [shareId, setShareId] = useState(null);
+  const [shareLink, setShareLink] = useState('');
+
   // availableProducts is now a Map for easier quantity management
   const [availableProducts, setAvailableProducts] = useState(new Map());
   // Initialize totals to 0
@@ -309,15 +343,110 @@ const App = () => {
   // Maximum number of comensales to prevent UI from becoming too crowded
   const MAX_COMENSALES = 20;
 
+  // --- Firebase Authentication and Data Loading ---
   useEffect(() => {
-    // Start with no products or comensales initially, and totals at 0.
-    setAvailableProducts(new Map()); // Start with an empty product list
-    setComensales([]); // Start with no comensales
-    setTotalGeneralMesa(0); // Ensure totals are zero at start
-    setPropinaSugerida(0); // Ensure propina is zero at start
-    setActiveSharedInstances(new Map()); // Reset shared instances tracker
+    // Authenticate anonymously or with custom token if provided (Canvas)
+    const authenticate = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined') {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Firebase Auth Error:", error);
+      } finally {
+        setAuthReady(true);
+      }
+    };
 
+    authenticate();
+
+    // Listen for auth state changes to get user ID
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserId(user.uid);
+      } else {
+        setUserId(null); // No user signed in
+      }
+    });
+
+    return () => unsubscribe(); // Cleanup auth listener
   }, []);
+
+  // --- Firestore Data Subscription ---
+  useEffect(() => {
+    if (!authReady || !userId) return; // Wait for authentication
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const idFromUrl = urlParams.get('id');
+
+    let currentDocId = idFromUrl;
+    if (!currentDocId) {
+      // If no ID in URL, create a new one for this session (not immediately saved)
+      currentDocId = `${userId}-${Date.now()}`; // Unique ID for this session's document
+    }
+    setShareId(currentDocId); // Store the document ID in state
+
+    // Corrected Firestore path: artifacts/{appId}/public/data/shared_sessions/{docId}
+    const docRef = doc(db, 'artifacts', canvasAppId, 'public', 'data', 'shared_sessions', currentDocId);
+
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setComensales(data.comensales || []);
+        setAvailableProducts(new Map(Object.entries(data.availableProducts || {}))); // Convert back to Map
+        setTotalGeneralMesa(data.totalGeneralMesa || 0);
+        setPropinaSugerida(data.propinaSugerida || 0);
+        setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)]))); // Convert back to Map of Sets
+      } else {
+        // Doc doesn't exist, reset to initial state (already set in useEffect above)
+        // If it's a new shareId from URL, this means the doc was deleted.
+        // If it's a generated new shareId, it means a fresh start.
+        setComensales([]);
+        setAvailableProducts(new Map());
+        setTotalGeneralMesa(0);
+        setPropinaSugerida(0);
+        setActiveSharedInstances(new Map());
+      }
+    }, (error) => {
+      console.error("Error subscribing to Firestore:", error);
+    });
+
+    return () => unsubscribe(); // Cleanup Firestore listener
+  }, [authReady, userId, canvasAppId]); // Re-run if authReady or userId changes
+
+  // --- Firestore Data Saving ---
+  const saveStateToFirestore = useCallback(async () => {
+    if (!shareId || !userId) return; // Need a shareId and userId to save
+
+    const dataToSave = {
+      comensales: comensales,
+      availableProducts: Object.fromEntries(availableProducts), // Convert Map to object for Firestore
+      totalGeneralMesa: totalGeneralMesa,
+      propinaSugerida: propinaSugerida,
+      activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), // Convert Map of Sets to object of arrays
+      lastUpdated: new Date()
+    };
+
+    // Corrected Firestore path: artifacts/{appId}/public/data/shared_sessions/{docId}
+    const docRef = doc(db, 'artifacts', canvasAppId, 'public', 'data', 'shared_sessions', shareId);
+    try {
+      await setDoc(docRef, dataToSave, { merge: true }); // Use merge to avoid overwriting entire document
+      // console.log("State saved to Firestore with ID:", shareId);
+    } catch (error) {
+      console.error("Error saving to Firestore:", error);
+    }
+  }, [comensales, availableProducts, totalGeneralMesa, propinaSugerida, activeSharedInstances, shareId, userId, canvasAppId]);
+
+  // Save state whenever relevant states change
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      saveStateToFirestore();
+    }, 500); // Debounce saving
+    return () => clearTimeout(handler);
+  }, [comensales, availableProducts, saveStateToFirestore]);
+
 
   // Recalculate main totals whenever availableProducts changes
   useEffect(() => {
@@ -599,7 +728,7 @@ const App = () => {
     setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
   };
 
-  // NEW: Function to remove a single comensal - Refactored for single update
+  // Function to remove a single comensal - Refactored for single update
   const confirmRemoveComensal = () => {
     setIsRemoveComensalModalOpen(false); // Close modal
     const comensalToRemove = comensales.find(c => c.id === comensalToRemoveId);
@@ -650,7 +779,7 @@ const App = () => {
   };
 
 
-  // NEW: Function to clear all comensales - Refactored for single update
+  // Function to clear all comensales - Refactored for single update
   const confirmClearAllComensales = () => {
     setIsClearAllComensalesModalOpen(false); // Close modal
 
@@ -808,7 +937,7 @@ const App = () => {
             }
         };
 
-        const apiKey = "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; // <<-- ¡IMPORTANTE! Inserta tu clave aquí.
+        const apiKey = "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // <<-- ¡IMPORTANTE! Inserta tu clave aquí.
                                                     // ADVERTENCIA: Exponer API keys directamente en el código del lado del cliente no es seguro para aplicaciones públicas.
                                                     // Para producción, usa un proxy seguro en el backend o Vercel Edge Functions.
 
@@ -1056,8 +1185,20 @@ const App = () => {
     setIsResetAllModalOpen(true); // Open confirmation modal
   };
 
-  const confirmResetAll = () => {
+  const confirmResetAll = async () => { // Made async to await deleteDoc
     setIsResetAllModalOpen(false); // Close modal
+
+    // If there's a shareId, try to delete the document from Firestore
+    if (shareId && userId) {
+      const docRef = doc(db, 'artifacts', canvasAppId, 'public', 'data', 'shared_sessions', shareId); // Corrected path
+      try {
+        await deleteDoc(docRef);
+        console.log("Documento de Firestore eliminado:", shareId);
+      } catch (error) {
+        console.error("Error al eliminar documento de Firestore:", error);
+        // Optionally, show a message to the user that deletion failed
+      }
+    }
 
     // Reset all state to initial values
     setAvailableProducts(new Map());
@@ -1077,11 +1218,61 @@ const App = () => {
     setImageProcessingError(null);
     setUploadedImageUrl(null); // <-- THIS LINE RESETS THE UPLOADED IMAGE URL
     setActiveSharedInstances(new Map());
+    setShareId(null); // Clear the shareId after reset
+
+    // Clear the shareId from the URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete('id');
+    window.history.replaceState({}, document.title, url.toString());
+
 
     // Also clear any open modals
     setIsClearComensalModalOpen(false);
     setIsRemoveComensalModalOpen(false);
     setIsClearAllComensalesModalOpen(false);
+  };
+
+
+  // Function to generate a shareable link
+  const handleGenerateShareLink = async () => {
+    if (!userId) {
+      alert("Por favor, espera a que la autenticación se complete o recarga la página.");
+      return;
+    }
+
+    // Generate a new unique ID for this shared session
+    const newShareId = `${userId}-${Date.now()}`;
+    setShareId(newShareId); // Update the state with the new shareId
+
+    // Save the current state to this new Firestore document
+    const dataToSave = {
+      comensales: comensales,
+      availableProducts: Object.fromEntries(availableProducts),
+      totalGeneralMesa: totalGeneralMesa,
+      propinaSugerida: propinaSugerida,
+      activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+      lastUpdated: new Date()
+    };
+
+    // Corrected Firestore path: artifacts/{appId}/public/data/shared_sessions/{docId}
+    const docRef = doc(db, 'artifacts', canvasAppId, 'public', 'data', 'shared_sessions', newShareId);
+    try {
+      await setDoc(docRef, dataToSave);
+      const currentBaseUrl = window.location.origin + window.location.pathname;
+      const generatedLink = `${currentBaseUrl}?id=${newShareId}`;
+      setShareLink(generatedLink);
+      // Automatically copy to clipboard (using document.execCommand for broader iframe compatibility)
+      const el = document.createElement('textarea');
+      el.value = generatedLink;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      alert('¡Enlace copiado al portapapeles!');
+    } catch (error) {
+      console.error("Error al generar o guardar el enlace compartible:", error);
+      alert("Error al generar el enlace compartible. Intenta de nuevo.");
+    }
   };
 
 
@@ -1112,7 +1303,7 @@ const App = () => {
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-extrabold text-blue-700 mb-2 drop-shadow-md">
           <i className="lucide-salad text-5xl mr-2"></i>
-          Cuentas Claras
+          Calculadora de Cuentas por Comensal
         </h1>
         <p className="text-xl text-gray-600">
           Selecciona los ítems del recibo para cada comensal y calcula el total individual.
@@ -1150,6 +1341,37 @@ const App = () => {
             <span className="text-yellow-900 font-bold">${Math.max(0, remainingPropinaDisplay).toLocaleString('es-CL')}</span>
           </div>
       </div>
+
+      {/* User Session Info */}
+      {userId && (
+        <div className="bg-white p-4 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200 text-center text-sm text-gray-600">
+          <p>Tu ID de sesión: <span className="font-semibold text-gray-800">{userId}</span></p>
+          {shareId && <p>ID del documento de la sesión actual: <span className="font-semibold text-gray-800">{shareId}</span></p>}
+          {shareLink && (
+            <div className="mt-2 flex flex-col items-center">
+              <p>Enlace compartible:</p>
+              <a href={shareLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
+                {shareLink}
+              </a>
+              <button
+                onClick={() => {
+                  const el = document.createElement('textarea');
+                  el.value = shareLink;
+                  document.body.appendChild(el);
+                  el.select();
+                  document.execCommand('copy');
+                  document.body.removeChild(el);
+                  alert('¡Enlace copiado al portapapeles!');
+                }}
+                className="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
+              >
+                Copiar Enlace
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
 
       {/* Add New Comensal Section */}
       <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
@@ -1307,6 +1529,13 @@ const App = () => {
 
       {/* Global Action Buttons (Share and Clear All Comensales) */}
       <div className="text-center mb-8 flex flex-col sm:flex-row justify-center gap-4">
+        <button
+          onClick={handleGenerateShareLink} // Added button for sharing
+          className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
+        >
+          <i className="lucide-link mr-2"></i> Generar Enlace Compartible
+        </button>
+
         <button
           onClick={() => setIsShareModalOpen(true)}
           className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
