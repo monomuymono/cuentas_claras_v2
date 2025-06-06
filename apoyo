@@ -59,8 +59,8 @@ function setupSheetHeaders() {
 // Esta función DEBE responder con las cabeceras CORS adecuadas.
 function doOptions(e) {
   console.log("doOptions recibido.");
-  const output = ContentService.createTextOutput('')
-    .setMimeType(ContentService.MimeType.TEXT);
+  const output = ContentService.createTextOutput('');
+  output.setMimeType(ContentService.MimeType.TEXT);
   output.setHeader('Access-Control-Allow-Origin', '*'); // Cabecera CORS
   output.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE'); // Métodos permitidos
   output.setHeader('Access-Control-Allow-Headers', 'Content-Type'); // Cabeceras permitidas
@@ -78,24 +78,24 @@ function doGet(e) {
     const data = sheet.getDataRange().getValues();
 
     let sessionData = null;
-    if (shareId) {
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][0] === shareId) {
-          sessionData = data[i][1];
+    if (shareId) { // Solo intenta buscar datos si se proporciona un shareId
+      for (let i = 1; i < data.length; i++) { // Empieza el bucle desde la fila 1 para saltar el encabezado
+        if (data[i][0] === shareId) { // shareId está en la primera columna (índice 0)
+          sessionData = data[i][1]; // JSON_DATA está en la segunda columna (índice 1)
           break;
         }
       }
     }
 
-    const output = ContentService.createTextOutput(sessionData || JSON.stringify({ message: "No data found" }))
-      .setMimeType(ContentService.MimeType.JSON);
+    const output = ContentService.createTextOutput(sessionData || JSON.stringify({ message: "No data found" }));
+    output.setMimeType(ContentService.MimeType.JSON);
     output.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS!
 
     return output;
   } catch (error) {
     console.error("Error en doGet:", error);
-    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doGet' }))
-      .setMimeType(ContentService.MimeType.JSON);
+    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doGet' }));
+    errorOutput.setMimeType(ContentService.MimeType.JSON);
     errorOutput.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta de error GET!
     return errorOutput;
   }
@@ -108,8 +108,8 @@ function doPost(e) {
 
     if (!e || !e.postData || !e.postData.contents) {
       console.error("doPost recibido: cuerpo de solicitud vacío o mal formado. Objeto de evento:", JSON.stringify(e));
-      const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No request body or malformed request. Ensure it is a POST request with Content-Type: application/json.' }))
-        .setMimeType(ContentService.MimeType.JSON);
+      const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No request body or malformed request. Ensure it is a POST request with Content-Type: application/json.' }));
+      errorOutput.setMimeType(ContentService.MimeType.JSON);
       errorOutput.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta de error POST!
       return errorOutput;
     }
@@ -154,15 +154,15 @@ function doPost(e) {
       }
     }
 
-    const output = ContentService.createTextOutput(JSON.stringify(response))
-      .setMimeType(ContentService.MimeType.JSON);
+    const output = ContentService.createTextOutput(JSON.stringify(response));
+    output.setMimeType(ContentService.MimeType.JSON);
     output.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta POST!
     return output;
 
   } catch (error) {
     console.error("Error en doPost:", error);
-    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doPost' }))
-      .setMimeType(ContentService.MimeType.JSON);
+    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doPost' }));
+    errorOutput.setMimeType(ContentService.MimeType.JSON);
     errorOutput.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta de error POST!
     return errorOutput;
   }
