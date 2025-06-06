@@ -8,6 +8,21 @@ https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsi
   }
 }
 
+
+{
+  "action": "save",
+  "shareId": "mi_id_de_prueba_app_react",
+  "data": {
+    "comensales": [
+      {"id":1,"name":"Alice","selectedItems":[],"total":0}
+    ],
+    "availableProducts": {},
+    "totalGeneralMesa": 10000,
+    "propinaSugerida": 1000,
+    "activeSharedInstances": {}
+  }
+}
+
 const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO CON EL ID DE TU HOJA DE CÁLCULO!
 const SHEET_NAME = 'Sessions';
 
