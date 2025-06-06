@@ -1,70 +1,104 @@
-google sheets
-
 const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO CON EL ID DE TU HOJA DE CÁLCULO!
 const SHEET_NAME = 'Sessions';
 
-function doGet(e) {
-  // Maneja las solicitudes GET (para cargar datos)
-  const shareId = e.parameter.id;
+// Función auxiliar para obtener la hoja de cálculo
+function getSheet() {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-  const data = sheet.getDataRange().getValues();
-
-  let sessionData = null;
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][0] === shareId) { // shareId is in the first column
-      sessionData = data[i][1]; // JSON_DATA is in the second column
-      break;
-    }
+  if (!sheet) {
+    throw new Error('Sheet not found: ' + SHEET_NAME + '. Make sure the sheet name is correct.');
   }
+  return sheet;
+}
 
-  if (sessionData) {
-    return ContentService.createTextOutput(sessionData).setMimeType(ContentService.MimeType.JSON);
-  } else {
-    return ContentService.createTextOutput(JSON.stringify({ message: "No data found" })).setMimeType(ContentService.MimeType.JSON);
+// Función para configurar los encabezados de la hoja (ejecutar una vez manualmente desde Apps Script)
+function setupSheetHeaders() {
+  try {
+    const sheet = getSheet();
+    if (sheet.getLastRow() < 1 || sheet.getRange("A1").getValue() !== "shareId" || sheet.getRange("B1").getValue() !== "JSON_DATA") {
+      sheet.clearContents(); // Clear existing content if headers are wrong
+      sheet.getRange("A1").setValue("shareId");
+      sheet.getRange("B1").setValue("JSON_DATA");
+      console.log("Sheet headers set successfully.");
+    } else {
+      console.log("Sheet headers already correct.");
+    }
+  } catch (e) {
+    console.error("Error setting up sheet headers: " + e.message);
+    throw e; // Re-throw to show in Apps Script logs
+  }
+}
+
+
+function doGet(e) {
+  try {
+    const shareId = e.parameter.id;
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+
+    let sessionData = null;
+    // Skip header row (index 0)
+    for (let i = 1; i < data.length; i++) { // Start loop from 1 to skip headers
+      if (data[i][0] === shareId) { // shareId is in the first column
+        sessionData = data[i][1]; // JSON_DATA is in the second column
+        break;
+      }
+    }
+
+    if (sessionData) {
+      return ContentService.createTextOutput(sessionData).setMimeType(ContentService.MimeType.JSON);
+    } else {
+      return ContentService.createTextOutput(JSON.stringify({ message: "No data found" })).setMimeType(ContentService.MimeType.JSON);
+    }
+  } catch (error) {
+    console.error("Error in doGet:", error);
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doGet' })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
 function doPost(e) {
-  // Maneja las solicitudes POST (para guardar/eliminar datos)
-  const requestData = JSON.parse(e.postData.contents);
-  const action = requestData.action; // 'save' or 'delete'
-  const shareId = requestData.shareId;
-  const dataToSave = requestData.data; // Full app state for 'save'
+  try {
+    const requestData = JSON.parse(e.postData.contents);
+    const action = requestData.action; // 'save' or 'delete'
+    const shareId = requestData.shareId;
+    const dataToSave = requestData.data; // Full app state for 'save'
 
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Sheet not found' })).setMimeType(ContentService.MimeType.JSON);
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+
+    if (action === 'save') {
+      let rowFound = false;
+      // Start loop from 1 to skip headers if they exist
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === shareId) {
+          sheet.getRange(i + 1, 2).setValue(JSON.stringify(dataToSave)); // Update JSON_DATA column
+          rowFound = true;
+          break;
+        }
+      }
+      if (!rowFound) {
+        // Ensure headers are present before appending new row if sheet was empty or headers were manually deleted
+        if (sheet.getLastRow() < 1 || sheet.getRange("A1").getValue() !== "shareId") {
+            sheet.appendRow(["shareId", "JSON_DATA"]);
+        }
+        sheet.appendRow([shareId, JSON.stringify(dataToSave)]); // Add new row
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Data saved' })).setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'delete') {
+      let rowDeleted = false;
+      // Start loop from 1 to skip headers
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === shareId) {
+          sheet.deleteRow(i + 1); // Delete the row (i+1 because Apps Script is 1-indexed)
+          rowDeleted = true;
+          break;
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: rowDeleted ? 'Data deleted' : 'Data not found' })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid action' })).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    console.error("Error in doPost:", error);
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doPost' })).setMimeType(ContentService.MimeType.JSON);
   }
-  const data = sheet.getDataRange().getValues();
-
-  if (action === 'save') {
-    let rowFound = false;
-    for (let i = 0; i < data.length; i++) {
-      if (data[i][0] === shareId) {
-        sheet.getRange(i + 1, 2).setValue(JSON.stringify(dataToSave)); // Update JSON_DATA column
-        rowFound = true;
-        break;
-      }
-    }
-    if (!rowFound) {
-      // If header row is missing or sheet is empty, add headers first
-      if (data.length === 0 || data[0][0] !== "shareId") {
-          sheet.appendRow(["shareId", "JSON_DATA"]);
-      }
-      sheet.appendRow([shareId, JSON.stringify(dataToSave)]); // Add new row
-    }
-    return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Data saved' })).setMimeType(ContentService.MimeType.JSON);
-  } else if (action === 'delete') {
-    let rowDeleted = false;
-    for (let i = 0; i < data.length; i++) {
-      if (data[i][0] === shareId) {
-        sheet.deleteRow(i + 1); // Delete the row (i+1 because Apps Script is 1-indexed)
-        rowDeleted = true;
-        break;
-      }
-    }
-    return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: rowDeleted ? 'Data deleted' : 'Data not found' })).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid action' })).setMimeType(ContentService.MimeType.JSON);
 }
