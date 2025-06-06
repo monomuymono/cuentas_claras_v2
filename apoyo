@@ -58,7 +58,7 @@ function setupSheetHeaders() {
 // Los navegadores envían una solicitud OPTIONS antes de las solicitudes POST/GET "complejas" (como las que tienen un Content-Type JSON).
 // Esta función DEBE responder con las cabeceras CORS adecuadas.
 function doOptions(e) {
-  // console.log("doOptions recibido:", JSON.stringify(e)); // Descomentar para depurar
+  console.log("doOptions recibido."); // Descomentar para depurar
   return ContentService.createTextOutput('') // Una respuesta vacía está bien para OPTIONS
     .setMimeType(ContentService.MimeType.TEXT)
     .setHeader('Access-Control-Allow-Origin', '*') // Permite que CUALQUIER origen (dominio) acceda a tu Apps Script
@@ -87,15 +87,17 @@ function doGet(e) {
     }
 
     const output = ContentService.createTextOutput(sessionData || JSON.stringify({ message: "No data found" }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta GET!
+      .setMimeType(ContentService.MimeType.JSON);
+      // IMPORTANTE: setHeader debe encadenarse al ContentService.createTextOutput().setMimeType()
+    output.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta GET!
 
     return output;
   } catch (error) {
     console.error("Error en doGet:", error);
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doGet' }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta de error GET!
+    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doGet' }))
+      .setMimeType(ContentService.MimeType.JSON);
+    errorOutput.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta de error GET!
+    return errorOutput;
   }
 }
 
@@ -104,12 +106,12 @@ function doPost(e) {
   try {
     // console.log("doPost event object (e):", JSON.stringify(e)); // Descomentar para depurar
 
-    // VALIDACIÓN CRÍTICA: Asegurarse de que e.postData y e.postData.contents existen
     if (!e || !e.postData || !e.postData.contents) {
       console.error("doPost recibido: cuerpo de solicitud vacío o mal formado. Objeto de evento:", JSON.stringify(e));
-      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No request body or malformed request. Ensure it is a POST request with Content-Type: application/json.' }))
-        .setMimeType(ContentService.MimeType.JSON)
-        .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta de error POST!
+      const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No request body or malformed request. Ensure it is a POST request with Content-Type: application/json.' }))
+        .setMimeType(ContentService.MimeType.JSON);
+      errorOutput.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta de error POST!
+      return errorOutput;
     }
 
     const requestData = JSON.parse(e.postData.contents);
@@ -126,7 +128,7 @@ function doPost(e) {
       let rowFound = false;
       for (let i = 1; i < data.length; i++) { // Empieza desde la fila 1 para saltar el encabezado
         if (data[i][0] === shareId) {
-          sheet.getRange(i + 1, 2).setValue(JSON.stringify(dataToSave)); // Actualiza la columna JSON_DATA
+          sheet.getRange(i + 1, 2).setValue(JSON.stringify(dataToSave));
           rowFound = true;
           response = { status: 'success', message: 'Data saved' };
           break;
@@ -137,14 +139,14 @@ function doPost(e) {
         if (sheet.getLastRow() < 1 || sheet.getRange("A1").getValue() !== "shareId") {
             sheet.appendRow(["shareId", "JSON_DATA"]);
         }
-        sheet.appendRow([shareId, JSON.stringify(dataToSave)]); // Añade una nueva fila
+        sheet.appendRow([shareId, JSON.stringify(dataToSave)]);
         response = { status: 'success', message: 'Data saved' };
       }
     } else if (action === 'delete') {
       let rowDeleted = false;
       for (let i = 1; i < data.length; i++) { // Empieza desde la fila 1 para saltar el encabezado
         if (data[i][0] === shareId) {
-          sheet.deleteRow(i + 1); // Elimina la fila (i+1 porque Apps Script es 1-indexed)
+          sheet.deleteRow(i + 1);
           rowDeleted = true;
           response = { status: 'success', message: rowDeleted ? 'Data deleted' : 'Data not found' };
           break;
@@ -152,14 +154,16 @@ function doPost(e) {
       }
     }
 
-    return ContentService.createTextOutput(JSON.stringify(response))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta POST!
+    const output = ContentService.createTextOutput(JSON.stringify(response))
+      .setMimeType(ContentService.MimeType.JSON);
+    output.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta POST!
+    return output;
 
   } catch (error) {
     console.error("Error en doPost:", error);
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doPost' }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta de error POST!
+    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doPost' }))
+      .setMimeType(ContentService.MimeType.JSON);
+    errorOutput.setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS en la respuesta de error POST!
+    return errorOutput;
   }
 }
