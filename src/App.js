@@ -1,30 +1,36 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-// Firebase Imports (ensure these are installed: npm install firebase)
-// Corrected import paths for Firebase modules
+// Polyfill para 'process' si no está definido (por ejemplo, en algunos entornos de cliente)
+// Esto es necesario porque algunos módulos de Firebase (o dependencias) pueden intentar acceder a 'process.env' directamente.
+if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
+  window.process = { env: {} };
+}
+
+// Firebase Imports (asegúrate de que estén instalados: npm install firebase)
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore'; 
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 
-// Placeholder for Firebase Config (replace with your actual Firebase project config)
-// IMPORTANT: For Canvas environment, __firebase_config and __app_id are provided globally.
-// For Vercel, you'd set these as environment variables.
-const firebaseConfig = {
-  // Your Firebase project configuration
-  apiKey: "AIzaSyBAgH0KuO-nxboxB6suNlQtzTqK3s0K5mc",
-  authDomain: "cuentas-claras-e759c.firebaseapp.com",
-  projectId: "cuentas-claras-e759c",
-  storageBucket: "cuentas-claras-e759c.firebasestorage.app",
-  messagingSenderId: "22302451025",
-  appId: "1:22302451025:web:415ee0649018f7b0bddf70"
+// Firebase Config: Lee de variables de entorno para despliegues como Vercel.
+// Si estás en el entorno Canvas, usa __firebase_config y __app_id (globales).
+// Para Vercel, debes configurar estas como variables de entorno con prefijo REACT_APP_
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+  // Reemplaza con la configuración real de tu proyecto Firebase para pruebas locales
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "",
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || ""
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Global variable for Canvas App ID if available, otherwise a default for testing
-const canvasAppId = 'default-bill-splitter-app';
+// App ID: Lee de variables de entorno.
+// Usa un valor por defecto si no está definido.
+const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : (process.env.REACT_APP_CANVAS_APP_ID || 'default-bill-splitter-app');
 
 
 // Componente para el modal de confirmación personalizado
@@ -349,8 +355,11 @@ const App = () => {
     // Authenticate anonymously or with custom token if provided (Canvas)
     const authenticate = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined') {
-          await signInWithCustomToken(auth, __initial_auth_token);
+        // __initial_auth_token is provided by the Canvas environment.
+        // On Vercel, it won't exist, so we fall back to anonymous sign-in.
+        // Added window check to ensure __initial_auth_token is only accessed in browser environment.
+        if (typeof window !== 'undefined' && typeof window.__initial_auth_token !== 'undefined') {
+          await signInWithCustomToken(auth, window.__initial_auth_token);
         } else {
           await signInAnonymously(auth);
         }
@@ -389,21 +398,22 @@ const App = () => {
     }
     setShareId(currentDocId); // Store the document ID in state
 
-    // Corrected Firestore path: artifacts/{appId}/public/data/shared_sessions/{docId}
-    const docRef = doc(db, 'artifacts', canvasAppId, 'public', 'data', 'shared_sessions', currentDocId);
+    // Construct the Firestore document reference
+    // The path should be: artifacts/{appId}/public/data/shared_sessions/{docId}
+    const docRef = doc(db, 'artifacts', String(canvasAppId), 'public', 'data', 'shared_sessions', String(currentDocId));
 
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setComensales(data.comensales || []);
-        setAvailableProducts(new Map(Object.entries(data.availableProducts || {}))); // Convert back to Map
+        // Convert plain object back to Map for availableProducts
+        setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
         setTotalGeneralMesa(data.totalGeneralMesa || 0);
         setPropinaSugerida(data.propinaSugerida || 0);
-        setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)]))); // Convert back to Map of Sets
+        // Convert plain object of arrays back to Map of Sets for activeSharedInstances
+        setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
       } else {
         // Doc doesn't exist, reset to initial state (already set in useEffect above)
-        // If it's a new shareId from URL, this means the doc was deleted.
-        // If it's a generated new shareId, it means a fresh start.
         setComensales([]);
         setAvailableProducts(new Map());
         setTotalGeneralMesa(0);
@@ -431,7 +441,7 @@ const App = () => {
     };
 
     // Corrected Firestore path: artifacts/{appId}/public/data/shared_sessions/{docId}
-    const docRef = doc(db, 'artifacts', canvasAppId, 'public', 'data', 'shared_sessions', shareId);
+    const docRef = doc(db, 'artifacts', String(canvasAppId), 'public', 'data', 'shared_sessions', String(shareId));
     try {
       await setDoc(docRef, dataToSave, { merge: true }); // Use merge to avoid overwriting entire document
       // console.log("State saved to Firestore with ID:", shareId);
@@ -938,9 +948,7 @@ const App = () => {
             }
         };
 
-        const apiKey = "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; // <<-- ¡IMPORTANTE! Inserta tu clave aquí.
-                                                    // ADVERTENCIA: Exponer API keys directamente en el código del lado del cliente no es seguro para aplicaciones públicas.
-                                                    // Para producción, usa un proxy seguro en el backend o Vercel Edge Functions.
+        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // Read from environment variable
 
         if (apiKey === "TU_CLAVE_DE_API_DE_GEMINI_AQUI" || apiKey.trim() === "") {
           setImageProcessingError("Error: Falta la clave de API de Gemini. Por favor, edita el código e inserta tu clave.");
@@ -1140,7 +1148,7 @@ const App = () => {
     const itemToDelete = availableProducts.get(itemIdToDelete); // Re-get item just in case
 
     if (!itemToDelete) { // Should not happen if modal opened correctly
-      setRemoveInventoryItemMessage({ type: 'error', text: 'Error: Ítem no encontrado en el inventario al confirmar.' });
+      setRemoveInventoryItemMessage({ type: 'error', text: 'Ítem no encontrado en el inventario al confirmar.' });
       return;
     }
 
@@ -1191,7 +1199,7 @@ const App = () => {
 
     // If there's a shareId, try to delete the document from Firestore
     if (shareId && userId) {
-      const docRef = doc(db, 'artifacts', canvasAppId, 'public', 'data', 'shared_sessions', shareId); // Corrected path
+      const docRef = doc(db, 'artifacts', String(canvasAppId), 'public', 'data', 'shared_sessions', String(shareId)); // Corrected path
       try {
         await deleteDoc(docRef);
         console.log("Documento de Firestore eliminado:", shareId);
@@ -1256,7 +1264,7 @@ const App = () => {
     };
 
     // Corrected Firestore path: artifacts/{appId}/public/data/shared_sessions/{docId}
-    const docRef = doc(db, 'artifacts', canvasAppId, 'public', 'data', 'shared_sessions', newShareId);
+    const docRef = doc(db, 'artifacts', String(canvasAppId), 'public', 'data', 'shared_sessions', String(newShareId));
     try {
       await setDoc(docRef, dataToSave);
       const currentBaseUrl = window.location.origin + window.location.pathname;
