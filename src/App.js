@@ -16,12 +16,12 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'fireba
 // Para Vercel, debes configurar estas como variables de entorno con prefijo REACT_APP_
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
   // Reemplaza con la configuración real de tu proyecto Firebase para pruebas locales
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "",
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "",
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "",
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: process.env.REACT_APP_FIREBASE_APP_ID || ""
+  apiKey: "AIzaSyBAgH0KuO-nxboxB6suNlQtzTqK3s0K5mc",
+  authDomain: "cuentas-claras-e759c.firebaseapp.com",
+  projectId: "cuentas-claras-e759c",
+  storageBucket: "cuentas-claras-e759c.firebasestorage.app",
+  messagingSenderId: "22302451025",
+  appId: "1:22302451025:web:415ee0649018f7b0bddf70"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -948,7 +948,7 @@ const App = () => {
             }
         };
 
-        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // Read from environment variable
+        const apiKey = process.env.AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U || "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // Read from environment variable
 
         if (apiKey === "TU_CLAVE_DE_API_DE_GEMINI_AQUI" || apiKey.trim() === "") {
           setImageProcessingError("Error: Falta la clave de API de Gemini. Por favor, edita el código e inserta tu clave.");
