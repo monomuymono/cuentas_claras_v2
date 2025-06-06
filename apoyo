@@ -53,48 +53,56 @@ function setupSheetHeaders() {
   }
 }
 
+// Handler para las solicitudes OPTIONS (pre-vuelo CORS)
+function doOptions(e) {
+  return ContentService.createTextOutput('')
+    .setMimeType(ContentService.MimeType.TEXT)
+    .setHeader('Access-Control-Allow-Origin', '*') // Permite cualquier origen
+    .setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE') // Métodos permitidos
+    .setHeader('Access-Control-Allow-Headers', 'Content-Type'); // Cabeceras permitidas
+}
+
 function doGet(e) {
   try {
-    // Registra el objeto de evento para depuración
     console.log("doGet event object (e):", JSON.stringify(e));
 
-    // Valida si e.parameter existe antes de acceder a sus propiedades
     const shareId = e && e.parameter ? e.parameter.id : undefined;
 
     const sheet = getSheet();
     const data = sheet.getDataRange().getValues();
 
     let sessionData = null;
-    // Salta la fila de encabezado (índice 0)
-    if (shareId) { // Solo intenta buscar datos si se proporciona un shareId
+    if (shareId) {
       for (let i = 1; i < data.length; i++) {
-        if (data[i][0] === shareId) { // shareId está en la primera columna (índice 0)
-          sessionData = data[i][1]; // JSON_DATA está en la segunda columna (índice 1)
+        if (data[i][0] === shareId) {
+          sessionData = data[i][1];
           break;
         }
       }
     }
 
-    if (sessionData) {
-      return ContentService.createTextOutput(sessionData).setMimeType(ContentService.MimeType.JSON);
-    } else {
-      return ContentService.createTextOutput(JSON.stringify({ message: "No data found" })).setMimeType(ContentService.MimeType.JSON);
-    }
+    const output = ContentService.createTextOutput(sessionData || JSON.stringify({ message: "No data found" }))
+      .setMimeType(ContentService.MimeType.JSON)
+      .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS!
+
+    return output;
   } catch (error) {
     console.error("Error in doGet:", error);
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doGet' })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doGet' }))
+      .setMimeType(ContentService.MimeType.JSON)
+      .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS!
   }
 }
 
 function doPost(e) {
   try {
-    // Registra el objeto de evento para depuración
-    console.log("doPost event object (e):", JSON.stringify(e)); 
+    console.log("doPost event object (e):", JSON.stringify(e)); // Log para depuración
     
-    // VALIDACIÓN CRÍTICA: Asegurarse de que e.postData y e.postData.contents existen
     if (!e || !e.postData || !e.postData.contents) {
       console.error("doPost received empty or malformed request body. Event object:", JSON.stringify(e));
-      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No request body or malformed request. Ensure it is a POST request with Content-Type: application/json.' })).setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No request body or malformed request. Ensure it is a POST request with Content-Type: application/json.' }))
+        .setMimeType(ContentService.MimeType.JSON)
+        .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS!
     }
 
     const requestData = JSON.parse(e.postData.contents);
@@ -105,40 +113,45 @@ function doPost(e) {
     const sheet = getSheet();
     const data = sheet.getDataRange().getValues();
 
+    let response = { status: 'error', message: 'Invalid action' };
+
     if (action === 'save') {
       let rowFound = false;
-      // Empieza el bucle desde 1 para saltar la fila de encabezados si existen
       for (let i = 1; i < data.length; i++) {
         if (data[i][0] === shareId) {
-          sheet.getRange(i + 1, 2).setValue(JSON.stringify(dataToSave)); // Actualiza la columna JSON_DATA
+          sheet.getRange(i + 1, 2).setValue(JSON.stringify(dataToSave));
           rowFound = true;
+          response = { status: 'success', message: 'Data saved' };
           break;
         }
       }
       if (!rowFound) {
-        // Si no se encontró la fila o la hoja está vacía, añade los encabezados primero si es necesario
         if (sheet.getLastRow() < 1 || sheet.getRange("A1").getValue() !== "shareId") {
             sheet.appendRow(["shareId", "JSON_DATA"]);
         }
-        sheet.appendRow([shareId, JSON.stringify(dataToSave)]); // Añade una nueva fila
+        sheet.appendRow([shareId, JSON.stringify(dataToSave)]);
+        response = { status: 'success', message: 'Data saved' };
       }
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Data saved' })).setMimeType(ContentService.MimeType.JSON);
     } else if (action === 'delete') {
       let rowDeleted = false;
-      // Empieza el bucle desde 1 para saltar la fila de encabezados
       for (let i = 1; i < data.length; i++) {
         if (data[i][0] === shareId) {
-          sheet.deleteRow(i + 1); // Elimina la fila (i+1 porque Apps Script es 1-indexed)
+          sheet.deleteRow(i + 1);
           rowDeleted = true;
+          response = { status: 'success', message: rowDeleted ? 'Data deleted' : 'Data not found' };
           break;
         }
       }
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: rowDeleted ? 'Data deleted' : 'Data not found' })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid action' })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify(response))
+      .setMimeType(ContentService.MimeType.JSON)
+      .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS!
+
   } catch (error) {
     console.error("Error in doPost:", error);
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doPost' })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message || 'An unknown error occurred in doPost' }))
+      .setMimeType(ContentService.MimeType.JSON)
+      .setHeader('Access-Control-Allow-Origin', '*'); // ¡Importante para CORS!
   }
 }
