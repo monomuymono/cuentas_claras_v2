@@ -1,21 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 // Firebase Imports (ensure these are installed: npm install firebase)
+// Corrected import paths for Firebase modules
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore'; // Added deleteDoc
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore'; 
 
 // Placeholder for Firebase Config (replace with your actual Firebase project config)
 // IMPORTANT: For Canvas environment, __firebase_config and __app_id are provided globally.
 // For Vercel, you'd set these as environment variables.
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
   // Your Firebase project configuration
-  apiKey: "AIzaSyBAgH0KuO-nxboxB6suNlQtzTqK3s0K5mc",
-  authDomain: "cuentas-claras-e759c.firebaseapp.com",
-  projectId: "cuentas-claras-e759c",
-  storageBucket: "cuentas-claras-e759c.firebasestorage.app",
-  messagingSenderId: "22302451025",
-  appId: "1:22302451025:web:415ee0649018f7b0bddf70"
+  apiKey: "YOUR_FIREBASE_API_KEY", // Replace with your Firebase API Key
+  authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
+  projectId: "YOUR_FIREBASE_PROJECT_ID",
+  storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_FIREBASE_MESSAGING_SENDER_ID",
+  appId: "YOUR_FIREBASE_APP_ID"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -937,7 +938,7 @@ const App = () => {
             }
         };
 
-        const apiKey = "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; // <<-- ¡IMPORTANTE! Inserta tu clave aquí.
+        const apiKey = "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // <<-- ¡IMPORTANTE! Inserta tu clave aquí.
                                                     // ADVERTENCIA: Exponer API keys directamente en el código del lado del cliente no es seguro para aplicaciones públicas.
                                                     // Para producción, usa un proxy seguro en el backend o Vercel Edge Functions.
 
