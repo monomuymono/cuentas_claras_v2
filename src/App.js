@@ -10,7 +10,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'fireba
 // For Vercel, you'd set these as environment variables.
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
   // Your Firebase project configuration
-  apiKey: "YOUR_FIREBASE_API_KEY", // Replace with your Firebase API Key
+  apiKey: "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U", // Replace with your Firebase API Key
   authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
   projectId: "YOUR_FIREBASE_PROJECT_ID",
   storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
