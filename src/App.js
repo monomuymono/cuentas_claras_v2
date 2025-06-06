@@ -1101,7 +1101,7 @@ const App = () => {
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-extrabold text-blue-700 mb-2 drop-shadow-md">
           <i className="lucide-salad text-5xl mr-2"></i>
-          Calculadora de Cuentas por Comensal
+          Cuentas Claras
         </h1>
         <p className="text-xl text-gray-600">
           Selecciona los ítems del recibo para cada comensal y calcula el total individual.
