@@ -1,19 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 // Polyfill para 'process' si no está definido (por ejemplo, en algunos entornos de cliente)
-// Esto es necesario porque algunos módulos de Firebase (o dependencias) pueden intentar acceder a 'process.env' directamente.
 if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
   window.process = { env: {} };
 }
 
-// NO Firebase Imports, cambiamos a Google Sheets
-
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Debes reemplazar esta URL con la URL de despliegue de tu Apps Script
 // Ejemplo: const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/exec";
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsisgt8O3Qm07tHj5iWGh9dCdg-leQ/exec"; // <<-- ¡REEMPLAZA ESTO CON TU URL REAL!
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE"; // <<-- ¡REEMPLAZA ESTO CON TU URL REAL!
 
-// Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas
+// Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
 
 
@@ -375,6 +372,7 @@ const App = () => {
 
       if (data && data.message !== "No data found") {
         setComensales(data.comensales || []);
+        // Convert plain object back to Map for availableProducts
         setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
         setTotalGeneralMesa(data.totalGeneralMesa || 0);
         setPropinaSugerida(data.propinaSugerida || 0);
@@ -460,9 +458,10 @@ const App = () => {
 
   // --- Polling for Updates (simulated real-time for Google Sheets) ---
   useEffect(() => {
-    if (!shareId || !userId || GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return; // Added check for placeholder URL
+    // Only poll if shareId exists AND the URL is properly configured.
+    // This prevents polling errors if GOOGLE_SHEET_WEB_APP_URL is still a placeholder.
+    if (!shareId || !userId || GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return; 
 
-    // Only poll if there's a shareId (meaning we are in a shared session)
     const pollingInterval = setInterval(() => {
       loadStateFromGoogleSheets(shareId);
     }, 3000); // Poll every 3 seconds for updates
@@ -472,7 +471,8 @@ const App = () => {
 
   // --- Save state whenever relevant states change (debounced) ---
   useEffect(() => {
-    if (shareId && GOOGLE_SHEET_WEB_APP_URL !== "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" && GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { // Added check for placeholder URL
+    // Only save if shareId exists AND the URL is properly configured.
+    if (shareId && GOOGLE_SHEET_WEB_APP_URL !== "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" && GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { 
         const dataToSave = {
             comensales: comensales,
             availableProducts: Object.fromEntries(availableProducts),
@@ -978,7 +978,7 @@ const App = () => {
             }
         };
 
-        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; // Read from environment variable
+        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "TU_CLAVE_DE_API_DE_GEMINI_AQUI"; // Read from environment variable
 
         if (apiKey === "TU_CLAVE_DE_API_DE_GEMINI_AQUI" || apiKey.trim() === "") {
           setImageProcessingError("Error: Falta la clave de API de Gemini. Por favor, edita el código e inserta tu clave.");
@@ -1056,11 +1056,11 @@ const App = () => {
 
     // 1. Resumen General
     csvContent += "# RESUMEN DE TOTALES\n";
-    csvContent += `Total General Mesa (sin propina),${totalGeneralMesa.toLocaleString('es-CL')}\n`; // Changed to 'es-CL'
-    csvContent += `Propina Sugerida Recibo (10%),${propinaSugerida.toLocaleString('es-CL')}\n`; // Changed to 'es-CL'
-    csvContent += `Total Asignado a Comensales (con 10% propina/ítem),${currentTotalComensales.toLocaleString('es-CL')}\n`; // Changed to 'es-CL'
-    csvContent += `Diferencia Total (Recibo con Propina - Asignado),${remainingAmount.toLocaleString('es-CL')}\n`; // Changed to 'es-CL'
-    csvContent += `Propina Pendiente (Recibo - Asignado),${remainingPropinaDisplay.toLocaleString('es-CL')}\n`; // Changed to 'es-CL'
+    csvContent += `Total General Mesa (sin propina),${totalGeneralMesa.toLocaleString('es-CL')}\n`; 
+    csvContent += `Propina Sugerida Recibo (10%),${propinaSugerida.toLocaleString('es-CL')}\n`; 
+    csvContent += `Total Asignado a Comensales (con 10% propina/ítem),${currentTotalComensales.toLocaleString('es-CL')}\n`; 
+    csvContent += `Diferencia Total (Recibo con Propina - Asignado),${remainingAmount.toLocaleString('es-CL')}\n`; 
+    csvContent += `Propina Pendiente (Recibo - Asignado),${remainingPropinaDisplay.toLocaleString('es-CL')}\n`; 
     csvContent += "\n";
 
     // 2. Detalle de Consumo por Comensal
@@ -1071,9 +1071,9 @@ const App = () => {
         csvContent += `${comensal.id},"${comensal.name}",,,,,\n`; // Empty row for comensals with no items
       } else {
         comensal.selectedItems.forEach(item => {
-          const itemPriceFormatted = Number(item.price).toLocaleString('es-CL'); // Changed to 'es-CL'
-          const itemSubtotalFormatted = (Number(item.price) * Number(item.quantity)).toLocaleString('es-CL'); // Changed to 'es-CL'
-          const sharedBy = item.type === 'shared' ? Number(item.sharedByCount) : ''; // Ensure sharedByCount is number
+          const itemPriceFormatted = Number(item.price).toLocaleString('es-CL'); 
+          const itemSubtotalFormatted = (Number(item.price) * Number(item.quantity)).toLocaleString('es-CL'); 
+          const sharedBy = item.type === 'shared' ? Number(item.sharedByCount) : ''; 
           csvContent += `${comensal.id},"${comensal.name}","${item.name}",${Number(item.quantity)},"${itemPriceFormatted}","${itemSubtotalFormatted}",${item.type},${sharedBy}\n`;
         });
       }
@@ -1084,21 +1084,21 @@ const App = () => {
     csvContent += "# TOTALES POR COMENSAL\n";
     csvContent += "Nombre Comensal,Total Comensal (con propina)\n";
     comensales.forEach(comensal => {
-      csvContent += `"${comensal.name}",${comensal.total.toLocaleString('es-CL')}\n`; // Changed to 'es-CL'
+      csvContent += `"${comensal.name}",${comensal.total.toLocaleString('es-CL')}\n`; 
     });
 
     // Create a Blob and download it
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    if (link.download !== undefined) { // Feature detection
+    if (link.download !== undefined) { 
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
       link.setAttribute('download', 'reporte_cuentas.csv');
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link); // Corrected to remove 'link' element
-      URL.revokeObjectURL(url); // Clean up
+      document.body.removeChild(link); 
+      URL.revokeObjectURL(url); 
     } else {
       // Fallback for older browsers
       alert("Su navegador no soporta la descarga automática de archivos. Por favor, copie el texto y péguelo en un archivo CSV.");
@@ -1126,7 +1126,7 @@ const App = () => {
 
     setAvailableProducts(prevMap => {
       const newMap = new Map(prevMap);
-      let currentMaxId = Array.from(prevMap.values()).reduce((max, p) => Math.max(max, Number(p.id)), 0); // Ensure p.id is number
+      let currentMaxId = Array.from(prevMap.values()).reduce((max, p) => Math.max(max, Number(p.id)), 0); 
 
       const existingProductEntry = Array.from(newMap.entries()).find(
         ([id, prod]) => prod.name === manualItemName.trim() && Number(prod.price) === price
@@ -1134,7 +1134,7 @@ const App = () => {
 
       if (existingProductEntry) {
         const [existingId, existingProduct] = existingProductEntry;
-        newMap.set(existingId, { ...existingProduct, quantity: Number(existingProduct.quantity) + quantity }); // Ensure quantity is number
+        newMap.set(existingId, { ...existingProduct, quantity: Number(existingProduct.quantity) + quantity }); 
       } else {
         newMap.set(++currentMaxId, {
           id: currentMaxId,
@@ -1269,6 +1269,13 @@ const App = () => {
   const handleGenerateShareLink = async () => {
     if (!userId) {
       alert("Por favor, espera a que la autenticación se complete o recarga la página.");
+      return;
+    }
+
+    // Validation for GOOGLE_SHEET_WEB_APP_URL
+    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+      alert("Error: Para generar un enlace compartible, debes configurar la URL de tu Google Apps Script en el código. Consulta las instrucciones.");
+      console.error("GOOGLE_SHEET_WEB_APP_URL no está configurada correctamente.");
       return;
     }
 
@@ -1437,7 +1444,7 @@ const App = () => {
       </div>
 
       {/* Manual Item Addition Section */}
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">
           <i className="lucide-plus-circle mr-2"></i>
           Agregar Ítem Manualmente
@@ -1479,7 +1486,7 @@ const App = () => {
       </div>
 
       {/* Inventory Management Section */}
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">
           <i className="lucide-archive mr-2"></i>
           Administrar Inventario
@@ -1513,7 +1520,7 @@ const App = () => {
 
 
       {/* Image Upload and Analysis Section */}
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">
           <i className="lucide-camera text-3xl mr-2"></i>
           Cargar y Analizar Recibo
@@ -1669,7 +1676,7 @@ const App = () => {
               </button>
               <button
                 onClick={() => openRemoveComensalModal(comensal.id)} // Call custom modal
-                className="w-full bg-red-500 text-white py-2 px-4 rounded-md shadow-md hover:bg-red-600 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                className="w-full bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
               >
                 Eliminar Comensal
               </button>
@@ -1679,7 +1686,7 @@ const App = () => {
       </div>
 
       {/* Footer / Global Totals */}
-      <footer className="mt-12 p-6 bg-white rounded-xl shadow-lg border border-gray-200 max-w-2xl mx-auto text-center">
+      <footer className="mt-12 p-6 bg-white rounded-xl shadow-lg border border-gray-200 max_w_2xl mx-auto text-center">
         <h2 className="text-2xl font-bold text-blue-600 mb-4">¡Cuentas Claras!</h2>
         <div className="flex justify-around items-center text-xl font-semibold">
           <div className="text-gray-700">
