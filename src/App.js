@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+// Firebase Imports (asegúrate de que estén instalados: npm install firebase)
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 
 // Polyfill para 'process' si no está definido (por ejemplo, en algunos entornos de cliente)
 // Esto es necesario porque algunos módulos de Firebase (o dependencias) pueden intentar acceder a 'process.env' directamente.
@@ -6,10 +10,6 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
   window.process = { env: {} };
 }
 
-// Firebase Imports (asegúrate de que estén instalados: npm install firebase)
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 
 // Firebase Config: Lee de variables de entorno para despliegues como Vercel.
 // Si estás en el entorno Canvas, usa __firebase_config y __app_id (globales).
