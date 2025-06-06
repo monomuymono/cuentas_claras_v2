@@ -2,6 +2,12 @@ AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U
 
 https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsisgt8O3Qm07tHj5iWGh9dCdg-leQ/exec
 
+{
+  "postData": {
+    "contents": "{\"action\":\"save\",\"shareId\":\"test_session_123\",\"data\":{\"comensales\":[{\"id\":1,\"name\":\"Juan\",\"selectedItems\":[],\"total\":0}],\"availableProducts\":{},\"totalGeneralMesa\":0,\"propinaSugerida\":0,\"activeSharedInstances\":{}}}"
+  }
+}
+
 const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO CON EL ID DE TU HOJA DE CÁLCULO!
 const SHEET_NAME = 'Sessions';
 
@@ -32,24 +38,23 @@ function setupSheetHeaders() {
   }
 }
 
-
 function doGet(e) {
   try {
-    // Log the entire event object to help with debugging
+    // Registra el objeto de evento para depuración
     console.log("doGet event object (e):", JSON.stringify(e));
 
-    // Check if e.parameter is defined before accessing .id
+    // Valida si e.parameter existe antes de acceder a sus propiedades
     const shareId = e && e.parameter ? e.parameter.id : undefined;
 
     const sheet = getSheet();
     const data = sheet.getDataRange().getValues();
 
     let sessionData = null;
-    // Skip header row (index 0)
-    if (shareId) { // Only attempt to find data if shareId is provided
-      for (let i = 1; i < data.length; i++) { // Start loop from 1 to skip headers
-        if (data[i][0] === shareId) { // shareId is in the first column
-          sessionData = data[i][1]; // JSON_DATA is in the second column
+    // Salta la fila de encabezado (índice 0)
+    if (shareId) { // Solo intenta buscar datos si se proporciona un shareId
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === shareId) { // shareId está en la primera columna (índice 0)
+          sessionData = data[i][1]; // JSON_DATA está en la segunda columna (índice 1)
           break;
         }
       }
@@ -68,7 +73,15 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    console.log("doPost event object (e):", JSON.stringify(e)); // Log for debugging
+    // Registra el objeto de evento para depuración
+    console.log("doPost event object (e):", JSON.stringify(e)); 
+    
+    // VALIDACIÓN CRÍTICA: Asegurarse de que e.postData y e.postData.contents existen
+    if (!e || !e.postData || !e.postData.contents) {
+      console.error("doPost received empty or malformed request body. Event object:", JSON.stringify(e));
+      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No request body or malformed request. Ensure it is a POST request with Content-Type: application/json.' })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     const requestData = JSON.parse(e.postData.contents);
     const action = requestData.action; // 'save' or 'delete'
     const shareId = requestData.shareId;
@@ -79,28 +92,28 @@ function doPost(e) {
 
     if (action === 'save') {
       let rowFound = false;
-      // Start loop from 1 to skip headers if they exist
+      // Empieza el bucle desde 1 para saltar la fila de encabezados si existen
       for (let i = 1; i < data.length; i++) {
         if (data[i][0] === shareId) {
-          sheet.getRange(i + 1, 2).setValue(JSON.stringify(dataToSave)); // Update JSON_DATA column
+          sheet.getRange(i + 1, 2).setValue(JSON.stringify(dataToSave)); // Actualiza la columna JSON_DATA
           rowFound = true;
           break;
         }
       }
       if (!rowFound) {
-        // Ensure headers are present before appending new row if sheet was empty or headers were manually deleted
+        // Si no se encontró la fila o la hoja está vacía, añade los encabezados primero si es necesario
         if (sheet.getLastRow() < 1 || sheet.getRange("A1").getValue() !== "shareId") {
             sheet.appendRow(["shareId", "JSON_DATA"]);
         }
-        sheet.appendRow([shareId, JSON.stringify(dataToSave)]); // Add new row
+        sheet.appendRow([shareId, JSON.stringify(dataToSave)]); // Añade una nueva fila
       }
       return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Data saved' })).setMimeType(ContentService.MimeType.JSON);
     } else if (action === 'delete') {
       let rowDeleted = false;
-      // Start loop from 1 to skip headers
+      // Empieza el bucle desde 1 para saltar la fila de encabezados
       for (let i = 1; i < data.length; i++) {
         if (data[i][0] === shareId) {
-          sheet.deleteRow(i + 1); // Delete the row (i+1 because Apps Script is 1-indexed)
+          sheet.deleteRow(i + 1); // Elimina la fila (i+1 porque Apps Script es 1-indexed)
           rowDeleted = true;
           break;
         }
