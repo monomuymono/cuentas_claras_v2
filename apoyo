@@ -23,7 +23,7 @@ https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsi
   }
 }
 
-error: TypeError: errorOutput.addHeader is not a function (línea 118, archivo "Código")
+error: {"status":"error","message":"output.addHeader is not a function"}
 
 /**
  * @fileoverview
