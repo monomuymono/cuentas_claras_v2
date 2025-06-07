@@ -1722,4 +1722,3 @@ const App = () => {
 };
 
 export default App;
-" I want to delete this part of the code in Canvas and not the entire code. Can you do it for 
