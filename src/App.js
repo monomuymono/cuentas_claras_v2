@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -494,51 +494,48 @@ const App = () => {
 
   // Function to add a full item to a comensal's bill (now includes 10% tip)
   const handleAddItem = (comensalId, productId) => {
-    const productInStock = availableProducts.get(productId);
-
-    if (!productInStock || Number(productInStock.quantity) <= 0) {
-      return;
-    }
-
-    setAvailableProducts(prevProductsMap => {
-      const newMap = new Map(prevProductsMap);
-      const product = newMap.get(productId);
-      newMap.set(productId, { ...product, quantity: Number(product.quantity) - 1 });
-      return newMap;
-    });
-
-    setComensales(prevComensales => {
-      return prevComensales.map(comensal => {
-        if (comensal.id === comensalId) {
-          // CORRECCIÓN: Usa la variable `productInStock` que ya capturamos,
-          // que contiene el estado del producto ANTES de la actualización del inventario.
-          const productTemplate = productInStock; 
-          
-          if (productTemplate) {
+    // CORRECCIÓN: Usar la forma funcional de `setState` para garantizar el acceso al estado más reciente.
+    setAvailableProducts(currentProducts => {
+      const productInStock = currentProducts.get(productId);
+  
+      if (!productInStock || Number(productInStock.quantity) <= 0) {
+        // Si el ítem no está disponible, no se hace nada. Se retorna el estado sin cambios.
+        return currentProducts;
+      }
+  
+      // Si el ítem está disponible, se procede a actualizar los estados.
+      const newProductsMap = new Map(currentProducts);
+      const updatedProduct = { ...productInStock, quantity: Number(productInStock.quantity) - 1 };
+      newProductsMap.set(productId, updatedProduct);
+  
+      setComensales(currentComensales => 
+        currentComensales.map(comensal => {
+          if (comensal.id === comensalId) {
+            const productTemplate = productInStock; // Usamos el ítem que ya verificamos.
             const priceWithTip = Number(productTemplate.price) * 1.10;
             let updatedItems = [...comensal.selectedItems];
             const existingItemIndex = updatedItems.findIndex(item => item.id === productId && item.type === 'full');
-
+  
             if (existingItemIndex !== -1) {
-              updatedItems = updatedItems.map((item, index) =>
-                index === existingItemIndex ? { ...item, quantity: Number(item.quantity) + 1 } : item
-              );
+              updatedItems[existingItemIndex] = { ...updatedItems[existingItemIndex], quantity: updatedItems[existingItemIndex].quantity + 1 };
             } else {
-              updatedItems = [...updatedItems, {
+              updatedItems.push({
                 ...productTemplate,
                 price: priceWithTip,
                 originalBasePrice: Number(productTemplate.price),
                 quantity: 1,
                 type: 'full'
-              }];
+              });
             }
-
+  
             const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
             return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
           }
-        }
-        return comensal;
-      });
+          return comensal;
+        })
+      );
+  
+      return newProductsMap; // Retorna el mapa de productos actualizado.
     });
   };
 
