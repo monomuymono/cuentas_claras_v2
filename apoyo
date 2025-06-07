@@ -23,6 +23,8 @@ https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsi
   }
 }
 
+error: TypeError: ContentService.createTextOutput(...).setMimeType(...).addHeader is not a function (línea 58, archivo "Código")
+
 /**
  * @fileoverview
  * Google Apps Script (VERSIÓN DE PRUEBA MINIMALISTA)
