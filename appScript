@@ -1,0 +1,131 @@
+/**
+ * @fileoverview
+ * Google Apps Script usando JSONP para evitar problemas de CORS.
+ * Esta versión centraliza toda la lógica en doGet para manejar carga, guardado y eliminación.
+ *
+ * Funcionalidad:
+ * - Responde a las solicitudes GET envolviendo los datos en una función de callback.
+ * - Diferencia la acción a realizar (load, save, delete) basado en un parámetro 'action' en la URL.
+ */
+
+// --- CONFIGURACIÓN ---
+const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO!
+const SHEET_NAME = 'Sessions'; // Asegúrate de que este nombre coincida.
+
+function getSheet() {
+  try {
+    const spreadSheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = spreadSheet.getSheetByName(SHEET_NAME);
+    if (!sheet) {
+      throw new Error('Hoja no encontrada: "' + SHEET_NAME + '"');
+    }
+    return sheet;
+  } catch (e) {
+    console.error("Error al abrir la Hoja de Cálculo. Verifica el ID y los permisos. Error: " + e.toString());
+    throw new Error("No se pudo acceder a la Hoja de Cálculo.");
+  }
+}
+
+/**
+ * Maneja todas las solicitudes (GET) usando el método JSONP.
+ * @param {object} e El objeto del evento. Espera parámetros 'id', 'callback' y 'action'.
+ * @returns {GoogleAppsScript.Content.TextOutput} La respuesta como código JavaScript.
+ */
+function doGet(e) {
+  let responseData;
+  const callbackFunction = e.parameter.callback;
+  const action = e.parameter.action || 'load'; // La acción por defecto es 'load'
+
+  // Si no se proporciona una función de callback, no se puede usar JSONP.
+  if (!callbackFunction) {
+    return ContentService.createTextOutput("Error: Se requiere un parámetro 'callback' para usar esta API con JSONP.");
+  }
+
+  try {
+    const shareId = e.parameter.id;
+    if (!shareId) {
+      throw new Error("Se requiere un parámetro 'id' para todas las acciones.");
+    }
+    
+    const sheet = getSheet();
+
+    if (action === 'load') {
+      // --- LÓGICA DE CARGA ---
+      const data = sheet.getDataRange().getValues();
+      let sessionDataString = null;
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] == shareId) {
+          sessionDataString = data[i][1];
+          break;
+        }
+      }
+      if (sessionDataString) {
+        responseData = JSON.parse(sessionDataString);
+      } else {
+        responseData = { status: "not_found", message: "No se encontraron datos para el ID proporcionado." };
+      }
+
+    } else if (action === 'save') {
+      // --- LÓGICA DE GUARDADO ---
+      const dataToSaveString = e.parameter.data;
+      if (!dataToSaveString) {
+        throw new Error("La acción 'save' requiere un parámetro 'data'.");
+      }
+
+      const dataRange = sheet.getDataRange();
+      const values = dataRange.getValues();
+      let rowFound = -1;
+      for (let i = 1; i < values.length; i++) {
+        if (values[i][0] == shareId) {
+          rowFound = i + 1;
+          break;
+        }
+      }
+      if (rowFound > -1) {
+        sheet.getRange(rowFound, 2).setValue(dataToSaveString);
+        responseData = { status: 'success', message: 'Datos actualizados correctamente.' };
+      } else {
+        sheet.appendRow([shareId, dataToSaveString]);
+        responseData = { status: 'success', message: 'Datos guardados correctamente.' };
+      }
+
+    } else if (action === 'delete') {
+      // --- LÓGICA DE ELIMINACIÓN ---
+      const dataRange = sheet.getDataRange();
+      const values = dataRange.getValues();
+      let rowFound = -1;
+      for (let i = 1; i < values.length; i++) {
+          if (values[i][0] == shareId) {
+              rowFound = i + 1;
+              break;
+          }
+      }
+      if (rowFound > -1) {
+          sheet.deleteRow(rowFound);
+          responseData = { status: 'success', message: 'Datos eliminados correctamente.' };
+      } else {
+          responseData = { status: 'not_found', message: 'No se encontraron datos para eliminar.' };
+      }
+
+    } else {
+      throw new Error("Acción no válida: " + action);
+    }
+  } catch (error) {
+    console.error("Error en doGet (JSONP): " + error.toString());
+    responseData = { status: 'error', message: error.message };
+  }
+  
+  // Envuelve la respuesta JSON en la función de callback.
+  const jsonpResponse = `${callbackFunction}(${JSON.stringify(responseData)})`;
+  
+  // Devuelve la respuesta como JavaScript.
+  return ContentService.createTextOutput(jsonpResponse).setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
+
+// Las funciones doPost y doOptions ya no son necesarias para el frontend, pero se pueden dejar como stubs.
+function doPost(e) {
+  return ContentService.createTextOutput("Este endpoint ahora usa GET para todas las acciones para soportar JSONP.");
+}
+function doOptions(e) {
+  return ContentService.createTextOutput();
+}
