@@ -166,12 +166,12 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
     </div>
 
     <ConfirmationModal
-        isOpen={isShareWarningModalOpen}
-        onClose={() => setIsShareWarningModalOpen(false)}
-        onConfirm={confirmShareWarning}
-        message="Estás compartiendo un ítem con un solo comensal. ¿No sería mejor agregarlo directamente? Continuar para dividirlo."
-        confirmText="Dividir de todos modos"
-        cancelText="Cancelar"
+      isOpen={isShareWarningModalOpen}
+      onClose={() => setIsShareWarningModalOpen(false)}
+      onConfirm={confirmShareWarning}
+      message="Estás compartiendo un ítem con un solo comensal. ¿No sería mejor agregarlo directamente? Continuar para dividirlo."
+      confirmText="Dividir de todos modos"
+      cancelText="Cancelar"
       />
     </>
   );
@@ -362,54 +362,85 @@ const App = () => {
     }
   }, [userId]); // Removed comensales, availableProducts etc. to prevent endless loop, dataToSave is passed directly
 
+  // =================================================================================
+  // === MODIFICACIÓN A JSONP ===
+  // =================================================================================
   const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
     // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
     if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
-      console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida. Por favor, reemplaza el placeholder con tu URL de Apps Script.");
-      alert("Error de configuración: la URL de Google Apps Script no es válida."); // Alert the user
+      console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida.");
+      alert("Error de configuración: la URL de Google Apps Script no es válida.");
       return;
     }
     if (!idToLoad) return;
 
-    try {
-      // console.log("Intentando cargar de Google Sheets. URL:", `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}`); // Added console log
-      const response = await fetch(`${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}`);
-      const data = await response.json();
+    // 1. Define un nombre único para la función de callback.
+    const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
 
-      if (data && data.message !== "No data found") {
-        setComensales(data.comensales || []);
-        // Convert plain object back to Map for availableProducts
-        setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
-        setTotalGeneralMesa(data.totalGeneralMesa || 0);
-        setPropinaSugerida(data.propinaSugerida || 0);
-        setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
-        // console.log("Carga exitosa de Google Sheets:", data); // Added console log
-      } else {
-        // console.log("No se encontraron datos para el ID:", idToLoad); // Added console log
-        // No data found for this ID, reset to default empty state
+    // 2. Crea una promesa que se resolverá cuando el callback se ejecute.
+    const promise = new Promise((resolve, reject) => {
+        // 3. Adjunta la función de callback al objeto `window` para que sea global.
+        window[callbackName] = (data) => {
+            // Limpia la función de window una vez que se ha llamado.
+            delete window[callbackName];
+            // Elimina el tag de script del DOM.
+            document.body.removeChild(script);
+            // Resuelve la promesa con los datos recibidos.
+            resolve(data);
+        };
+
+        // Maneja los errores de red o si el script no se carga.
+        const script = document.createElement('script');
+        script.onerror = () => {
+            delete window[callbackName];
+            document.body.removeChild(script);
+            reject(new Error('Error al cargar los datos desde Google Sheets.'));
+        };
+
+        // 4. Construye la URL del script con los parámetros `id` y `callback`.
+        // El parámetro `action=load` es opcional ya que nuestro script solo tiene un `doGet`.
+        script.src = `${GOOGLE_SHEET_WEB_APP_URL}?id=${idToLoad}&callback=${callbackName}`;
+        
+        // 5. Añade el script al DOM para que el navegador lo cargue y ejecute.
+        document.body.appendChild(script);
+    });
+
+    try {
+        // 6. Espera a que la promesa se resuelva.
+        const data = await promise;
+
+        // 7. Procesa los datos como lo hacías antes.
+        if (data && data.status !== "not_found") {
+            console.log("Datos cargados con JSONP:", data);
+            setComensales(data.comensales || []);
+            setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
+            setTotalGeneralMesa(data.totalGeneralMesa || 0);
+            setPropinaSugerida(data.propinaSugerida || 0);
+            setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
+        } else {
+            console.log("No se encontraron datos para el ID con JSONP:", idToLoad);
+            setComensales([]);
+            setAvailableProducts(new Map());
+            setTotalGeneralMesa(0);
+            setPropinaSugerida(0);
+            setActiveSharedInstances(new Map());
+            const url = new URL(window.location.href);
+            url.searchParams.delete('id');
+            window.history.replaceState({}, document.title, url.toString());
+            setShareId(null);
+        }
+    } catch (error) {
+        console.error("Error al cargar con JSONP:", error);
+        alert("Error de red al cargar los datos. Revisa la consola.");
         setComensales([]);
         setAvailableProducts(new Map());
         setTotalGeneralMesa(0);
         setPropinaSugerida(0);
         setActiveSharedInstances(new Map());
-        // If loaded from URL, and no data, clear the ID from URL to signify fresh start
-        const url = new URL(window.location.href);
-        url.searchParams.delete('id');
-        window.history.replaceState({}, document.title, url.toString());
-        setShareId(null);
-      }
-    } catch (error) {
-      console.error("Error al cargar desde Google Sheets:", error);
-      alert("Error al cargar desde Google Sheets. Consulta la consola para más detalles. Posiblemente un problema de CORS o URL incorrecta."); // Alert the user
-      // Fallback to empty state on error
-      setComensales([]);
-      setAvailableProducts(new Map());
-      setTotalGeneralMesa(0);
-      setPropinaSugerida(0);
-      setActiveSharedInstances(new Map());
     }
-  }, []);
-
+  }, [setComensales, setAvailableProducts, setTotalGeneralMesa, setPropinaSugerida, setActiveSharedInstances, setShareId]); // Add all setters to dependency array
+  // =================================================================================
+  
   const deleteStateFromGoogleSheets = useCallback(async (idToDelete) => {
     // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
     if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
@@ -486,18 +517,18 @@ const App = () => {
   useEffect(() => {
     // Only save if shareId exists AND the URL is properly configured.
     if (shareId && GOOGLE_SHEET_WEB_APP_URL !== "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" && GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { 
-        const dataToSave = {
-            comensales: comensales,
-            availableProducts: Object.fromEntries(availableProducts),
-            totalGeneralMesa: totalGeneralMesa,
-            propinaSugerida: propinaSugerida,
-            activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: new Date().toISOString()
-        };
-        const handler = setTimeout(() => {
-            saveStateToGoogleSheets(shareId, dataToSave);
-        }, 500); // Debounce saving
-        return () => clearTimeout(handler);
+      const dataToSave = {
+          comensales: comensales,
+          availableProducts: Object.fromEntries(availableProducts),
+          totalGeneralMesa: totalGeneralMesa,
+          propinaSugerida: propinaSugerida,
+          activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+          lastUpdated: new Date().toISOString()
+      };
+      const handler = setTimeout(() => {
+          saveStateToGoogleSheets(shareId, dataToSave);
+      }, 500); // Debounce saving
+      return () => clearTimeout(handler);
     }
   }, [comensales, availableProducts, totalGeneralMesa, propinaSugerida, activeSharedInstances, shareId, saveStateToGoogleSheets]);
 
@@ -1358,7 +1389,7 @@ const App = () => {
       </header>
 
       {/* Summary Totals */}
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w_2xl mx-auto border border-blue-200">
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_2xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Resumen de Totales</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
           <div className="flex justify-between items-center bg-blue-50 p-3 rounded-md shadow-sm">
@@ -1386,7 +1417,7 @@ const App = () => {
         <div className="flex justify-between items-center bg-yellow-50 p-3 rounded-md shadow-sm mt-4">
             <span className="font-semibold text-yellow-800">Propina Pendiente (Inventario - Asignado):</span> {/* Changed text */}
             <span className="text-yellow-900 font-bold">${Math.max(0, remainingPropinaDisplay).toLocaleString('es-CL')}</span>
-          </div>
+        </div>
       </div>
 
       {/* User Session Info */}
@@ -1756,12 +1787,12 @@ const App = () => {
 
     {/* Confirmation for removing item from inventory */}
     <ConfirmationModal
-        isOpen={isRemoveInventoryItemModalOpen}
-        onClose={() => setIsRemoveInventoryItemModalOpen(false)}
-        onConfirm={confirmRemoveInventoryItem}
-        message={`¿Estás seguro de que quieres eliminar "${availableProducts.get(Number(itemToRemoveFromInventoryId))?.name || 'este ítem'}" del inventario? Esto también lo eliminará de todas las cuentas de los comensales.`}
-        confirmText="Sí, Eliminar"
-        cancelText="No, Mantener"
+      isOpen={isRemoveInventoryItemModalOpen}
+      onClose={() => setIsRemoveInventoryItemModalOpen(false)}
+      onConfirm={confirmRemoveInventoryItem}
+      message={`¿Estás seguro de que quieres eliminar "${availableProducts.get(Number(itemToRemoveFromInventoryId))?.name || 'este ítem'}" del inventario? Esto también lo eliminará de todas las cuentas de los comensales.`}
+      confirmText="Sí, Eliminar"
+      cancelText="No, Mantener"
     />
     </div>
   );
