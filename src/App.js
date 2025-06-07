@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -430,6 +430,9 @@ const App = () => {
 
   // --- Save state whenever relevant states change (debounced) ---
   useEffect(() => {
+    // CORRECCIÓN: No guardar automáticamente mientras se procesa una imagen para evitar condiciones de carrera.
+    if (isImageProcessing) return;
+
     // Only save if shareId exists AND the URL is properly configured.
     if (shareId && GOOGLE_SHEET_WEB_APP_URL !== "YOUR_NEW_JSONP_WEB_APP_URL_HERE" && GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { 
       const dataToSave = {
@@ -445,7 +448,7 @@ const App = () => {
       }, 500); // Debounce saving
       return () => clearTimeout(handler);
     }
-  }, [comensales, availableProducts, totalGeneralMesa, propinaSugerida, activeSharedInstances, shareId, saveStateToGoogleSheets]);
+  }, [comensales, availableProducts, totalGeneralMesa, propinaSugerida, activeSharedInstances, shareId, saveStateToGoogleSheets, isImageProcessing]); // Se añade isImageProcessing a las dependencias
 
 
   // Recalculate main totals whenever availableProducts changes
@@ -1061,6 +1064,13 @@ const App = () => {
 
   // Define handleManualAddItem function
   const handleManualAddItem = () => {
+    // CORRECCIÓN: Se añade una guarda para asegurar que la sesión esté lista.
+    if (!shareId) {
+        setManualItemMessage({ type: 'error', text: 'La sesión no está lista. Por favor, inténtalo de nuevo en un segundo.' });
+        setTimeout(() => setManualItemMessage({ type: '', text: '' }), 3000);
+        return;
+    }
+
     if (manualItemName.trim() === '') {
       setManualItemMessage({ type: 'error', text: 'El nombre del ítem no puede estar vacío.' });
       return;
