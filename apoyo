@@ -27,154 +27,55 @@ error: TypeError: errorOutput.addHeader is not a function (línea 65, archivo "C
 
 /**
  * @fileoverview
- * Google Apps Script (VERSIÓN DE PRUEBA ANTI-ERROR)
+ * Google Apps Script (VERSIÓN DE DIAGNÓSTICO FINAL)
  *
  * =======================================================================================
  * === PROPÓSITO DE ESTA VERSIÓN ===
  * =======================================================================================
- * Este script ha sido modificado para evitar el "encadenamiento de funciones"
- * (ej: .setMimeType().addHeader()). Este es un último intento para eludir un
- * error muy inusual en el entorno de ejecución de Google Apps Script donde la
- * función `addHeader` no se reconoce correctamente.
+ * Este es el script más simple posible. No usa la Hoja de Cálculo, ni try/catch, ni addHeader.
+ * Su único objetivo es probar si la comunicación básica entre un navegador y el
+ * servicio de Google Apps Script funciona en su cuenta.
  *
- * Cada función se llama en una línea separada.
+ * Instrucciones:
+ * 1. Despliegue esto como una "Nueva implementación" (New deployment).
+ * 2. Asegúrese de que el acceso sea "Anyone" (Cualquier persona).
+ * 3. Pegue la URL de la aplicación web directamente en su navegador.
+ *
+ * Si esto funciona, el problema está en la interacción con la Hoja de Cálculo.
+ * Si esto falla, el problema está en la plataforma de Google.
  * =======================================================================================
  */
 
-// --- CONFIGURACIÓN (Ignorada en esta versión de prueba) ---
-const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE';
-const SHEET_NAME = 'Sessions';
-
 /**
- * Maneja las solicitudes pre-vuelo OPTIONS para CORS.
- * @param {object} e El objeto del evento de la solicitud.
- * @returns {GoogleAppsScript.Content.TextOutput} La respuesta con las cabeceras CORS.
- */
-function doOptions(e) {
-  console.log("Recibida solicitud OPTIONS. Construyendo respuesta CORS paso a paso.");
-  const output = ContentService.createTextOutput();
-  output.addHeader('Access-Control-Allow-Origin', '*');
-  output.addHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  output.addHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  return output;
-}
-
-/**
- * VERSIÓN DE PRUEBA de doGet. Solo confirma que la llamada se recibió.
+ * Maneja las solicitudes GET. Devuelve un texto simple.
  * @param {object} e El objeto del evento.
- * @returns {GoogleAppsScript.Content.TextOutput} Una respuesta JSON de éxito.
+ * @returns {GoogleAppsScript.Content.TextOutput} Un texto de confirmación.
  */
 function doGet(e) {
-  try {
-    console.log("doGet de prueba (paso a paso) iniciado.");
-    const shareId = e && e.parameter ? e.parameter.id : 'ninguno';
-    const response = {
-      status: 'success',
-      message: '[VERSIÓN DE PRUEBA ANTI-ERROR] doGet se ejecutó correctamente.',
-      id_recibido: shareId
-    };
-    
-    // Creación de la respuesta paso a paso
-    const output = ContentService.createTextOutput(JSON.stringify(response));
-    output.setMimeType(ContentService.MimeType.JSON);
-    output.addHeader('Access-Control-Allow-Origin', '*');
-    
-    console.log("doGet de prueba (paso a paso) completado con éxito.");
-    return output;
-
-  } catch (error) {
-    const errorMessage = '[VERSIÓN DE PRUEBA] Error inesperado en doGet: ' + error.toString();
-    console.error(errorMessage);
-    
-    // Creación de la respuesta de error paso a paso
-    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: errorMessage }));
-    errorOutput.setMimeType(ContentService.MimeType.JSON);
-    errorOutput.addHeader('Access-Control-Allow-Origin', '*');
-    return errorOutput;
-  }
+  console.log("Ejecutando la prueba de diagnóstico final (doGet).");
+  return ContentService.createTextOutput("Hello from Google. The basic connection works.");
 }
 
 /**
- * VERSIÓN DE PRUEBA de doPost. Solo confirma que la llamada se recibió.
+ * Maneja las solicitudes POST. Devuelve un texto simple.
  * @param {object} e El objeto del evento.
- * @returns {GoogleAppsScript.Content.TextOutput} Una respuesta JSON de éxito.
+ * @returns {GoogleAppsScript.Content.TextOutput} Un texto de confirmación.
  */
 function doPost(e) {
-  try {
-    console.log("doPost de prueba (paso a paso) iniciado.");
-    const requestBody = e && e.postData && e.postData.contents ? e.postData.contents : 'cuerpo vacío';
-    const response = {
-      status: 'success',
-      message: '[VERSIÓN DE PRUEBA ANTI-ERROR] doPost se ejecutó correctamente.',
-      cuerpo_recibido: requestBody
-    };
-    
-    // Creación de la respuesta paso a paso
-    const output = ContentService.createTextOutput(JSON.stringify(response));
-    output.setMimeType(ContentService.MimeType.JSON);
-    output.addHeader('Access-Control-Allow-Origin', '*');
-
-    console.log("doPost de prueba (paso a paso) completado con éxito.");
-    return output;
-
-  } catch (error) {
-    const errorMessage = '[VERSIÓN DE PRUEBA] Error inesperado en doPost: ' + error.toString();
-    console.error(errorMessage);
-
-    // Creación de la respuesta de error paso a paso
-    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: errorMessage }));
-    errorOutput.setMimeType(ContentService.MimeType.JSON);
-    errorOutput.addHeader('Access-Control-Allow-Origin', '*');
-    return errorOutput;
-  }
+  console.log("Ejecutando la prueba de diagnóstico final (doPost).");
+  return ContentService.createTextOutput("POST request received successfully.");
 }
 
-// ----------------------------------------------------------------------------------
-// --- Las funciones de abajo no se usan en la prueba, pero se guardan para referencia ---
-// ----------------------------------------------------------------------------------
-
-function testEnvironment() {
-  try {
-    console.log("Iniciando prueba de entorno...");
-    const output = ContentService.createTextOutput("Prueba");
-    
-    if (typeof output.addHeader === 'function') {
-      output.addHeader("X-Test-Header", "Success");
-      const message = "¡Prueba exitosa! El método 'addHeader' funciona.";
-      console.log(message);
-      SpreadsheetApp.getUi().alert(message);
-    } else {
-      throw new Error("¡ERROR CRÍTICO! El método 'addHeader' NO se encontró o no es una función.");
-    }
-  } catch (e) {
-    const errorMessage = "Error en la prueba de entorno: " + e.toString();
-    console.error(errorMessage);
-    SpreadsheetApp.getUi().alert(errorMessage);
-  }
+/**
+ * Maneja las solicitudes OPTIONS. Devuelve una respuesta simple sin headers.
+ * Esto es para que las solicitudes POST de prueba no fallen por CORS.
+ * @param {object} e El objeto del evento.
+ * @returns {GoogleAppsScript.Content.TextOutput} Una respuesta vacía.
+ */
+function doOptions(e) {
+    // Para simplificar al máximo, esta versión no añade cabeceras CORS.
+    // Una prueba con 'fetch' desde la consola del navegador podría fallar por CORS,
+    // pero la prueba de doGet pegando la URL en el navegador debería funcionar.
+    return ContentService.createTextOutput();
 }
-
-function getSheet() {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-  if (!sheet) { throw new Error('Hoja no encontrada: ' + SHEET_NAME); }
-  return sheet;
-}
-
-function setupSheetHeaders() {
-  try {
-    const sheet = getSheet();
-    const headers = sheet.getRange("A1:B1").getValues()[0];
-    if (sheet.getLastRow() < 1 || headers[0] !== "shareId" || headers[1] !== "JSON_DATA") {
-      sheet.clear();
-      sheet.getRange("A1:B1").setValues([["shareId", "JSON_DATA"]]);
-      console.log("Encabezados de la hoja configurados correctamente.");
-    } else {
-      console.log("Los encabezados de la hoja ya son correctos.");
-    }
-  } catch (e) {
-    console.error("Error al configurar los encabezados de la hoja: " + e.toString());
-    throw e;
-  }
-}
-
-
 
