@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -493,51 +493,60 @@ const App = () => {
 
 
   // Function to add a full item to a comensal's bill (now includes 10% tip)
-  const handleAddItem = (comensalId, productId) => {
-    // CORRECCIÓN: Usar la forma funcional de `setState` para garantizar el acceso al estado más reciente.
+  const handleAddItem = useCallback((comensalId, productId) => {
+    let productTemplate = null;
+  
     setAvailableProducts(currentProducts => {
       const productInStock = currentProducts.get(productId);
   
       if (!productInStock || Number(productInStock.quantity) <= 0) {
-        // Si el ítem no está disponible, no se hace nada. Se retorna el estado sin cambios.
         return currentProducts;
       }
   
-      // Si el ítem está disponible, se procede a actualizar los estados.
+      productTemplate = { ...productInStock };
+  
       const newProductsMap = new Map(currentProducts);
       const updatedProduct = { ...productInStock, quantity: Number(productInStock.quantity) - 1 };
       newProductsMap.set(productId, updatedProduct);
-  
-      setComensales(currentComensales => 
-        currentComensales.map(comensal => {
-          if (comensal.id === comensalId) {
-            const productTemplate = productInStock; // Usamos el ítem que ya verificamos.
-            const priceWithTip = Number(productTemplate.price) * 1.10;
-            let updatedItems = [...comensal.selectedItems];
-            const existingItemIndex = updatedItems.findIndex(item => item.id === productId && item.type === 'full');
-  
-            if (existingItemIndex !== -1) {
-              updatedItems[existingItemIndex] = { ...updatedItems[existingItemIndex], quantity: updatedItems[existingItemIndex].quantity + 1 };
-            } else {
-              updatedItems.push({
-                ...productTemplate,
-                price: priceWithTip,
-                originalBasePrice: Number(productTemplate.price),
-                quantity: 1,
-                type: 'full'
-              });
-            }
-  
-            const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
-            return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
-          }
-          return comensal;
-        })
-      );
-  
-      return newProductsMap; // Retorna el mapa de productos actualizado.
+      return newProductsMap;
     });
-  };
+  
+    // This part runs after the product map update is queued
+    setComensales(currentComensales => {
+      // Find the product details again from the most recent state if the first attempt failed
+      if (!productTemplate) {
+          // This is a fallback, but the outer logic should prevent this
+          const latestProducts = availableProducts;
+          productTemplate = latestProducts.get(productId);
+          if (!productTemplate) return currentComensales; // Still no product, abort
+      }
+
+      return currentComensales.map(comensal => {
+        if (comensal.id === comensalId) {
+          const priceWithTip = Number(productTemplate.price) * 1.10;
+          const updatedItems = [...comensal.selectedItems];
+          const existingItemIndex = updatedItems.findIndex(item => item.id === productId && item.type === 'full');
+  
+          if (existingItemIndex !== -1) {
+            updatedItems[existingItemIndex].quantity += 1;
+          } else {
+            updatedItems.push({
+              ...productTemplate,
+              price: priceWithTip,
+              originalBasePrice: Number(productTemplate.price),
+              quantity: 1,
+              type: 'full'
+            });
+          }
+  
+          const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+          return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
+        }
+        return comensal;
+      });
+    });
+  }, []); // Empty dependency array as we use functional updates
+
 
   // Function to remove an item or decrease its quantity from a comensal's bill
   const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
