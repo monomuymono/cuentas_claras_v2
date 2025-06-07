@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -496,53 +496,45 @@ const App = () => {
   const handleAddItem = (comensalId, productId) => {
     const productInStock = availableProducts.get(productId);
 
-    if (!productInStock || Number(productInStock.quantity) <= 0) { // Ensure quantity is number
-      //console.log("Item out of stock or not found.");
+    if (!productInStock || Number(productInStock.quantity) <= 0) {
       return;
     }
 
-    // Decrement quantity from available products
     setAvailableProducts(prevProductsMap => {
       const newMap = new Map(prevProductsMap);
       const product = newMap.get(productId);
-      newMap.set(productId, { ...product, quantity: Number(product.quantity) - 1 }); // Ensure quantity is number
+      newMap.set(productId, { ...product, quantity: Number(product.quantity) - 1 });
       return newMap;
     });
 
     setComensales(prevComensales => {
       return prevComensales.map(comensal => {
         if (comensal.id === comensalId) {
-          const productTemplate = availableProducts.get(productId); // Get product from the map
+          // CORRECCIÓN: Usa la variable `productInStock` que ya capturamos,
+          // que contiene el estado del producto ANTES de la actualización del inventario.
+          const productTemplate = productInStock; 
+          
           if (productTemplate) {
-            // Calculate price with 10% tip
-            const priceWithTip = Number(productTemplate.price) * 1.10; // Ensure price is number
-
-            // Initialize updatedItems here, before any conditional assignments
+            const priceWithTip = Number(productTemplate.price) * 1.10;
             let updatedItems = [...comensal.selectedItems];
-
-            // Check if item already exists in comensal's bill as a 'full' item
             const existingItemIndex = updatedItems.findIndex(item => item.id === productId && item.type === 'full');
 
-
             if (existingItemIndex !== -1) {
-              // If item already exists, increment its quantity
               updatedItems = updatedItems.map((item, index) =>
-                index === existingItemIndex ? { ...item, quantity: Number(item.quantity) + 1 } : item // Ensure quantity is number
+                index === existingItemIndex ? { ...item, quantity: Number(item.quantity) + 1 } : item
               );
             } else {
-              // If item is new for this comensal, add it with quantity 1
               updatedItems = [...updatedItems, {
                 ...productTemplate,
-                price: priceWithTip, // Store the price with tip
-                originalBasePrice: Number(productTemplate.price), // Keep original base price for reference
+                price: priceWithTip,
+                originalBasePrice: Number(productTemplate.price),
                 quantity: 1,
                 type: 'full'
               }];
             }
 
-            // Calculate new total for the comensal based on prices *con propina*
-            const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0); // Ensure numbers
-            return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" }; // Reset dropdown
+            const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+            return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
           }
         }
         return comensal;
@@ -1752,4 +1744,4 @@ const App = () => {
   );
 };
 
-export default App;
+export default A
