@@ -25,57 +25,115 @@ https://script.google.com/macros/s/AKfycbzcp2CFlrnDnIzmRadn553OYMNYXo5AldaGdnmsi
 
 /**
  * @fileoverview
- * Google Apps Script para actuar como un backend simple usando una Hoja de Cálculo de Google.
+ * Google Apps Script (VERSIÓN DE PRUEBA MINIMALISTA)
  *
  * =======================================================================================
- * === ¡ACCIÓN CRÍTICA REQUERIDA! ===
+ * === PROPÓSITO DE ESTA VERSIÓN ===
  * =======================================================================================
- * Si el script falla con "addHeader no es una función", el entorno de ejecución puede estar corrupto.
- * Para solucionarlo:
- * 1. Haz clic en 'Configuración del Proyecto' (icono de engranaje ⚙️) a la izquierda.
- * 2. Marca la casilla 'Mostrar el archivo de manifiesto "appsscript.json" en el editor'.
- * 3. Vuelve al Editor (<>) y abre el nuevo archivo `appsscript.json`.
- * 4. Pega el siguiente contenido en él:
+ * Este script ha sido simplificado al máximo para diagnosticar problemas de despliegue y CORS.
+ * Las funciones doGet y doPost NO interactúan con la Hoja de Cálculo. Solo confirman
+ * que la comunicación entre tu aplicación (ej. Vercel) y Google Apps Script funciona.
  *
- * {
- * "timeZone": "America/New_York",
- * "dependencies": {},
- * "exceptionLogging": "STACKDRIVER",
- * "runtimeVersion": "V8"
- * }
- *
- * 5. Guarda ambos archivos y vuelve a ejecutar la función 'testEnvironment'.
+ * Si esta versión funciona: El problema está en la configuración de tu Hoja de Cálculo (ID o permisos).
+ * Si esta versión falla: El problema está en el proceso de despliegue o en cómo tu app llama a la URL.
  * =======================================================================================
- *
- * Funcionalidad:
- * - Guarda (POST), carga (GET) y elimina (POST con acción 'delete') sesiones de datos JSON.
- * - Maneja solicitudes CORS (OPTIONS) para permitir el acceso desde aplicaciones web externas.
- * - Se requiere una configuración única ejecutando `setupSheetHeaders` manualmente.
  */
 
-// --- CONFIGURACIÓN ---
+// --- CONFIGURACIÓN (Ignorada en esta versión de prueba, pero déjala para el futuro) ---
 const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO!
 const SHEET_NAME = 'Sessions'; // Asegúrate de que este nombre coincida con el de tu hoja.
 
+/**
+ * Maneja las solicitudes pre-vuelo OPTIONS para CORS. NO EJECUTAR MANUALMENTE.
+ * @param {object} e El objeto del evento de la solicitud.
+ * @returns {GoogleAppsScript.Content.TextOutput} La respuesta con las cabeceras CORS.
+ */
+function doOptions(e) {
+  console.log("Recibida solicitud OPTIONS. Construyendo respuesta CORS.");
+  return ContentService.createTextOutput()
+    .addHeader('Access-Control-Allow-Origin', '*')
+    .addHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+    .addHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+}
+
+/**
+ * VERSIÓN DE PRUEBA de doGet. Solo confirma que la llamada se recibió.
+ * @param {object} e El objeto del evento.
+ * @returns {GoogleAppsScript.Content.TextOutput} Una respuesta JSON de éxito.
+ */
+function doGet(e) {
+  try {
+    const shareId = e && e.parameter ? e.parameter.id : 'ninguno';
+    const response = {
+      status: 'success',
+      message: '[VERSIÓN DE PRUEBA] doGet se ejecutó correctamente.',
+      id_recibido: shareId
+    };
+    
+    console.log("doGet de prueba ejecutado con éxito.");
+
+    return ContentService.createTextOutput(JSON.stringify(response))
+      .setMimeType(ContentService.MimeType.JSON)
+      .addHeader('Access-Control-Allow-Origin', '*');
+  } catch (error) {
+    const errorMessage = '[VERSIÓN DE PRUEBA] Error inesperado en doGet: ' + error.toString();
+    console.error(errorMessage);
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: errorMessage }))
+      .setMimeType(ContentService.MimeType.JSON)
+      .addHeader('Access-Control-Allow-Origin', '*');
+  }
+}
+
+/**
+ * VERSIÓN DE PRUEBA de doPost. Solo confirma que la llamada se recibió.
+ * @param {object} e El objeto del evento.
+ * @returns {GoogleAppsScript.Content.TextOutput} Una respuesta JSON de éxito.
+ */
+function doPost(e) {
+  try {
+    const requestBody = e && e.postData && e.postData.contents ? e.postData.contents : 'cuerpo vacío';
+    const response = {
+      status: 'success',
+      message: '[VERSIÓN DE PRUEBA] doPost se ejecutó correctamente.',
+      cuerpo_recibido: requestBody
+    };
+    
+    console.log("doPost de prueba ejecutado con éxito.");
+
+    return ContentService.createTextOutput(JSON.stringify(response))
+      .setMimeType(ContentService.MimeType.JSON)
+      .addHeader('Access-Control-Allow-Origin', '*');
+  } catch (error) {
+    const errorMessage = '[VERSIÓN DE PRUEBA] Error inesperado en doPost: ' + error.toString();
+    console.error(errorMessage);
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: errorMessage }))
+      .setMimeType(ContentService.MimeType.JSON)
+      .addHeader('Access-Control-Allow-Origin', '*');
+  }
+}
+
+// ----------------------------------------------------------------------------------
+// --- Las funciones de abajo no se usan en la prueba, pero se guardan para referencia ---
+// ----------------------------------------------------------------------------------
 
 /**
  * FUNCIÓN DE DIAGNÓSTICO: Ejecuta esta función manualmente desde el editor.
  */
 function testEnvironment() {
   try {
-    console.log("Iniciando prueba de entorno con runtime V8 forzado...");
+    console.log("Iniciando prueba de entorno...");
     const output = ContentService.createTextOutput("Prueba");
     
     if (typeof output.addHeader === 'function') {
       output.addHeader("X-Test-Header", "Success");
-      const message = "¡Prueba V8 exitosa! El método 'addHeader' funciona. Ahora puedes desplegar la aplicación web.";
+      const message = "¡Prueba V8 exitosa! El método 'addHeader' funciona.";
       console.log(message);
       SpreadsheetApp.getUi().alert(message);
     } else {
-      throw new Error("¡ERROR CRÍTICO! El método 'addHeader' NO se encontró o no es una función, incluso con el runtime V8.");
+      throw new Error("¡ERROR CRÍTICO! El método 'addHeader' NO se encontró o no es una función.");
     }
   } catch (e) {
-    const errorMessage = "Error en la prueba de entorno V8: " + e.toString();
+    const errorMessage = "Error en la prueba de entorno: " + e.toString();
     console.error(errorMessage);
     SpreadsheetApp.getUi().alert(errorMessage);
   }
@@ -114,118 +172,3 @@ function setupSheetHeaders() {
   }
 }
 
-/**
- * Maneja las solicitudes pre-vuelo OPTIONS para CORS. NO EJECUTAR MANUALMENTE.
- * @param {object} e El objeto del evento de la solicitud.
- * @returns {GoogleAppsScript.Content.TextOutput} La respuesta con las cabeceras CORS.
- */
-function doOptions(e) {
-  console.log("Recibida solicitud OPTIONS. Construyendo respuesta CORS.");
-  return ContentService.createTextOutput()
-    .addHeader('Access-Control-Allow-Origin', '*')
-    .addHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
-    .addHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-}
-
-/**
- * Maneja las solicitudes GET. NO EJECUTAR MANUALMENTE.
- * @param {object} e El objeto del evento.
- * @returns {GoogleAppsScript.Content.TextOutput} La respuesta JSON.
- */
-function doGet(e) {
-  try {
-    // CORRECCIÓN: Se maneja de forma segura el caso en que no se proporciona un ID.
-    // Esto evita que la ejecución falle si se llama a la URL base.
-    const shareId = e && e.parameter ? e.parameter.id : null;
-
-    if (!shareId) {
-      // Si no hay ID, devuelve una respuesta informativa en lugar de fallar.
-      return ContentService.createTextOutput(JSON.stringify({ status: 'info', message: 'API activa. Proporciona un ID para obtener datos, ej: ?id=123' }))
-        .setMimeType(ContentService.MimeType.JSON)
-        .addHeader('Access-Control-Allow-Origin', '*');
-    }
-
-    const sheet = getSheet();
-    const data = sheet.getDataRange().getValues();
-    let sessionData = null;
-
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] == shareId) {
-        sessionData = data[i][1];
-        break;
-      }
-    }
-    
-    const responseJson = sessionData ? sessionData : JSON.stringify({ status: "not_found", message: "No se encontraron datos para el ID proporcionado." });
-
-    return ContentService.createTextOutput(responseJson)
-      .setMimeType(ContentService.MimeType.JSON)
-      .addHeader('Access-Control-Allow-Origin', '*');
-
-  } catch (error) {
-    console.error("Error en doGet:", error.toString());
-    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .addHeader('Access-Control-Allow-Origin', '*');
-    return errorOutput;
-  }
-}
-
-/**
- * Maneja las solicitudes POST. NO EJECUTAR MANUALMENTE.
- * @param {object} e El objeto del evento.
- * @returns {GoogleAppsScript.Content.TextOutput} La respuesta JSON con el estado de la operación.
- */
-function doPost(e) {
-  try {
-    const requestData = JSON.parse(e.postData.contents);
-    const { action, shareId, data: dataToSave } = requestData;
-
-    if (!action || !shareId) {
-        throw new Error("La solicitud debe incluir 'action' y 'shareId'.");
-    }
-
-    const sheet = getSheet();
-    const data = sheet.getDataRange().getValues();
-    let response = { status: 'error', message: 'Acción no válida o ID no encontrado.' };
-    let rowFound = -1;
-
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] == shareId) {
-        rowFound = i + 1;
-        break;
-      }
-    }
-
-    if (action === 'save') {
-      if (typeof dataToSave === 'undefined') throw new Error("La acción 'save' requiere un campo 'data'.");
-      
-      const jsonDataString = JSON.stringify(dataToSave);
-      if (rowFound > -1) {
-        sheet.getRange(rowFound, 2).setValue(jsonDataString);
-        response = { status: 'success', message: 'Datos actualizados correctamente.' };
-      } else {
-        sheet.appendRow([shareId, jsonDataString]);
-        response = { status: 'success', message: 'Datos guardados correctamente.' };
-      }
-    } else if (action === 'delete') {
-      if (rowFound > -1) {
-        sheet.deleteRow(rowFound);
-        response = { status: 'success', message: 'Datos eliminados correctamente.' };
-      } else {
-        response = { status: 'not_found', message: 'No se encontraron datos para eliminar.' };
-      }
-    }
-
-    return ContentService.createTextOutput(JSON.stringify(response))
-      .setMimeType(ContentService.MimeType.JSON)
-      .addHeader('Access-Control-Allow-Origin', '*');
-
-  } catch (error) {
-    console.error("Error en doPost:", error.toString());
-    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .addHeader('Access-Control-Allow-Origin', '*');
-    return errorOutput;
-  }
-}
