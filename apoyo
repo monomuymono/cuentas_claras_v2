@@ -140,9 +140,9 @@ function doGet(e) {
 
   } catch (error) {
     console.error("Error en doGet: " + error.toString());
+    // CORRECCIÓN FINAL: Se elimina la llamada a .addHeader() del bloque catch para evitar el error de plataforma.
     const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }));
     errorOutput.setMimeType(ContentService.MimeType.JSON);
-    errorOutput.addHeader('Access-Control-Allow-Origin', '*');
     return errorOutput;
   }
 }
@@ -206,12 +206,13 @@ function doPost(e) {
 
   } catch (error) {
     console.error("Error en doPost: " + error.toString());
+    // CORRECCIÓN FINAL: Se elimina la llamada a .addHeader() del bloque catch para evitar el error de plataforma.
     const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: error.message }));
     errorOutput.setMimeType(ContentService.MimeType.JSON);
-    errorOutput.addHeader('Access-Control-Allow-Origin', '*');
     return errorOutput;
   }
 }
+
 
 
 
