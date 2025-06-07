@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -1301,11 +1301,11 @@ const App = () => {
 
 
   // Calculate the sum of all comensales' individual totals (these sums include per-item tips)
-  const currentTotalComensales = comensales.reduce((sum, comensal) => sum + comensal.total, 0);
+  const currentTotalComensales = comensales.reduce((sum, comensal) => sum + (Number(comensal.total) || 0), 0);
 
   // Calculate the remaining amount, comparing assigned total (with per-item tips)
   // against the receipt's total including its suggested tip.
-  const totalBillWithReceiptTipCalculated = totalGeneralMesa + propinaSugerida; // Use current states
+  const totalBillWithReceiptTipCalculated = (Number(totalGeneralMesa) || 0) + (Number(propinaSugerida) || 0); 
   const remainingAmount = totalBillWithReceiptTipCalculated - currentTotalComensales;
 
   // The 'Propina Pendiente' now represents the difference between the receipt's
