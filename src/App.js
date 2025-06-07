@@ -8,7 +8,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! He insertado la URL que proporcionaste en tu último mensaje.
 // Si esta URL no es la correcta para tu Apps Script desplegado, DEBES CAMBIARLA.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyLZHU9A4qgORIF60z-lvm8vRsWmwW9LGjIe97wQgJnCx20v1SEvqPCw_3Gg5itUrPB/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwDJRKBdQ9wRYzG5E_1gDulxoTXMGekQ4wHLRwpQ1io9iKgKDJofC1cPSG7OJRQraw9/exec"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
