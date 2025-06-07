@@ -65,21 +65,25 @@ function getSheet() {
 /**
  * CONFIGURACIÓN INICIAL: Ejecutar esta función manualmente UNA VEZ desde el editor.
  * Prepara la hoja con los encabezados necesarios ('shareId', 'JSON_DATA').
+ * No requiere interacción en la UI de la Hoja de Cálculo.
  */
 function setupSheetHeaders() {
   try {
     const sheet = getSheet();
-    const headers = sheet.getRange("A1:B1").getValues()[0];
+    // Revisa solo la primera fila para los encabezados.
+    const headers = sheet.getRange(1, 1, 1, 2).getValues()[0];
     if (sheet.getLastRow() < 1 || headers[0] !== "shareId" || headers[1] !== "JSON_DATA") {
       sheet.clear();
       sheet.getRange("A1:B1").setValues([["shareId", "JSON_DATA"]]);
-      SpreadsheetApp.getUi().alert("Encabezados de la hoja configurados correctamente: 'shareId' y 'JSON_DATA'.");
+      // Cambiado de alert a console.log para no requerir interacción en la hoja.
+      console.log("Encabezados de la hoja configurados correctamente: 'shareId' y 'JSON_DATA'.");
     } else {
-      SpreadsheetApp.getUi().alert("Los encabezados de la hoja ya son correctos.");
+      // Cambiado de alert a console.log.
+      console.log("Los encabezados de la hoja ya son correctos.");
     }
   } catch (e) {
+    // El error ya se registra en la consola.
     console.error("Error en setupSheetHeaders: " + e.toString());
-    SpreadsheetApp.getUi().alert("Error al configurar los encabezados: " + e.message);
   }
 }
 
@@ -208,5 +212,6 @@ function doPost(e) {
     return errorOutput;
   }
 }
+
 
 
