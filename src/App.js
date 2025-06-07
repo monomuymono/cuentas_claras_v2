@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -840,13 +840,8 @@ const App = () => {
       setIsImageProcessing(true);
       setImageProcessingError(null);
 
-      // Reset application state when a new image is loaded
-      setAvailableProducts(new Map()); // Clear existing products
-      setComensales([]); // Clear all comensales
-      setTotalGeneralMesa(0); // Reset totals (these will be updated by AI or remain 0 if AI fails)
-      setPropinaSugerida(0); // Reset propina (this will be updated by AI or remain 0 if AI fails)
-      setActiveSharedInstances(new Map()); // Reset shared instances tracker
-
+      // CORRECCIÓN: NO se resetea el estado aquí. Se hará después de la respuesta de la IA.
+      
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64Image = reader.result.split(',')[1]; // Get base64 data
@@ -959,11 +954,16 @@ const App = () => {
             result.candidates[0].content && result.candidates[0].content.parts &&
             result.candidates[0].content.parts.length > 0) {
             const json = result.candidates[0].content.parts[0].text;
-            const parsedData = JSON.parse(json); // This is now an object with items and totals
+            const parsedData = JSON.parse(json); 
 
-            // Update availableProducts Map with ONLY the new items from the image
+            // CORRECCIÓN: El estado se resetea aquí, justo antes de poblarlo con los nuevos datos.
+            setComensales([]); 
+            setTotalGeneralMesa(0);
+            setPropinaSugerida(0); 
+            setActiveSharedInstances(new Map());
+
             const newProductsMap = new Map();
-            let currentMaxId = 0; // Reset ID counter for new image products
+            let currentMaxId = 0;
 
             (parsedData.items || []).forEach(item => {
                 const name = item.name.trim();
@@ -977,7 +977,7 @@ const App = () => {
 
                     if (existingProductEntry) {
                         const [existingId, existingProduct] = existingProductEntry;
-                        newProductsMap.set(existingId, { ...existingProduct, quantity: Number(existingProduct.quantity) + Number(quantity) }); // Ensure quantity is number
+                        newProductsMap.set(existingId, { ...existingProduct, quantity: Number(existingProduct.quantity) + Number(quantity) });
                     } else {
                         newProductsMap.set(++currentMaxId, {
                             id: currentMaxId,
@@ -988,12 +988,7 @@ const App = () => {
                     }
                 }
             });
-            setAvailableProducts(newProductsMap); // Overwrite with new products
-
-            // For the main summary totals, we will calculate them from availableProducts using useEffect
-            // But if the AI specifically found them, we can display them as "Original Receipt Totals"
-            // For now, these are not directly tied to the primary `totalGeneralMesa` state that fuels `totalBillWithReceiptTip`.
-            // Instead, the main summary totals are based on the derived `availableProducts` sum.
+            setAvailableProducts(newProductsMap); 
 
         } else {
             setImageProcessingError("No se pudo extraer información de la imagen. Intenta con otra imagen o revisa el formato.");
@@ -1003,7 +998,7 @@ const App = () => {
         setImageProcessingError("Error al analizar la imagen. Asegúrate de que es un recibo legible y tiene buena calidad.");
     } finally {
         setIsImageProcessing(false);
-        setUploadedImageUrl(null); // Hide the image after processing
+        setUploadedImageUrl(null);
     }
   };
 
@@ -1250,10 +1245,13 @@ const App = () => {
     };
 
     try {
-      await saveStateToGoogleSheets(newShareId, dataToSave); // Call save function
+      // CORRECCIÓN: Espera (await) a que el guardado termine ANTES de continuar.
+      await saveStateToGoogleSheets(newShareId, dataToSave); 
+      
       const currentBaseUrl = window.location.origin + window.location.pathname;
       const generatedLink = `${currentBaseUrl}?id=${newShareId}`;
       setShareLink(generatedLink);
+      
       // Automatically copy to clipboard (using document.execCommand for broader iframe compatibility)
       const el = document.createElement('textarea');
       el.value = generatedLink;
