@@ -6,9 +6,8 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 }
 
 // URL de tu Google Apps Script Web App
-// ¡IMPORTANTE! He insertado la URL que proporcionaste en tu último mensaje.
-// Si esta URL no es la correcta para tu Apps Script desplegado, DEBES CAMBIARLA.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycby3524YaL3TUyO1q95lJqVs7EsXTr-7srePa-APN3SlxKEiPz6uAivUsfjsPaMmZJuOxA/exec"; 
+// ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -177,100 +176,6 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
   );
 };
 
-
-// Data from the receipt (parsed from the provided immersive artifact)
-// Changed to an array of strings to avoid "Unterminated string constant" error
-const receiptDataLines = [
-  `Cantidad,Producto,Total`,
-  `1,Heineken 500cc,4.990`,
-  `1,Heineken 500cc,4.990`,
-  `1,Heineken 500cc,4.990`,
-  `1,Heineken 500cc,4.990`,
-  `1,Schop Heineken,4.990`,
-  `1,Kunstmann Valdivia,5.590`,
-  `1,Schop Stella Artois,5.990`,
-  `1,Bebidas (lata de 330,2.590`,
-  `1,Coca Cola Zero,0`,
-  `1,Kunstmann Valdivia,5.590`,
-  `1,Pale Lager 500cc,6.590`,
-  `1,Piña colada sin alcohol,5.590`,
-  `1,Kunstmann Valdivia,5.590`,
-  `1,Pale Lager 500cc,5.590`,
-  `1,Austral Torres del Paine 500cc,5.590`,
-  `1,Mechada Italiana,1.590`,
-  `1,Mechada Italiana,11.990`,
-  `1,Mechada Italiana,11.990`,
-  `1,Mechada Italiana,11.990`,
-  `1,Mechada Italiana,11.990`,
-  `1,Schop Heineken H.H,5.990`,
-  `1,Michelada,3.590`,
-  `1,Carne Humo Saltado,13.990`,
-  `1,Rossetta,13.990`,
-  `1,Schop Heineken H.H,5.990`,
-  `1,Michelada,3.590`,
-  `1,Crudo TPH (250grs),11.990`,
-  `1,Kunstmann Valdivia,5.590`,
-  `1,Pale Lager 500cc,5.590`,
-  `1,Schop Heineken H.H,5.990`,
-  `1,Schop de Sangria H.H,3.390`,
-  `1,Margarita H.H,5.990`,
-  `1,Schop Heineken H.H,3.990`,
-  `1,2 Cortos Jack Daniel's Old No7 + 1 bebida,13.390`,
-  `1,+Ginger Ale,0`,
-  `1,Tiki Fresh,4.590`,
-  `1,2 Cortos Fernet Banca + 1 bebida,10.990`,
-  `1,+Coca Cola Zero,0`,
-  `1,Bebidas (lata de 330,2.590`,
-  `1,Cc,0`,
-  `1,Vvital con gas,0`,
-  `1,Espresso Martini,6.990`,
-  `1,2 Cortos Pisco Mistral,8.990`,
-  `1,35+ + 1 bebida,0`,
-  `1,+Coca Cola Zero,0`,
-  `1,Espresso Martini,6.990`,
-  `,,,,`,
-  `Total General Mesa,,234.440`,
-  `Consumo Cliente,,234.440`,
-  `Propina Sugerida,,23.444`,
-  `Total c/propina,,257.884`,
-];
-
-
-// Function to parse the receipt data into a structured Map
-const parseReceiptData = (rawData) => {
-  const lines = rawData.split('\n'); // rawData is now a single string from .join('\n')
-  const productLines = lines.slice(1, lines.indexOf(',,,,'));
-
-  const productsMap = new Map(); // Map to store unique products by name_price key and their counts
-  let productIdCounter = 1; // Unique ID for each *type* of product
-
-  productLines.forEach(line => {
-    const parts = line.split(',');
-    if (parts.length === 3) {
-      const name = parts[1].trim();
-      // Price is the base price from the receipt
-      const price = parseFloat(parts[2].replace(/\./g, '').replace(',', '.')); // Ensure dot for decimal for parseFloat
-
-      const key = `${name}_${price}`;
-
-      if (name && !isNaN(price)) {
-        if (productsMap.has(key)) {
-          const existingProduct = productsMap.get(key);
-          productsMap.set(key, { ...existingProduct, quantity: existingProduct.quantity + 1 });
-        } else {
-          productsMap.set(key, {
-            id: productIdCounter++,
-            name,
-            price, // This is the base price (sin propina)
-            quantity: 1, // Initial quantity based on one occurrence in the receipt
-          });
-        }
-      }
-    }
-  });
-  return productsMap; // Return the Map directly
-};
-
 const App = () => {
   // Authentication states (simplified for Google Sheets)
   const [userId, setUserId] = useState(null);
@@ -331,85 +236,81 @@ const App = () => {
   // Maximum number of comensales to prevent UI from becoming too crowded
   const MAX_COMENSALES = 20;
 
-  // --- Google Sheets Data Loading and Saving Functions ---
-  // Using useCallback for save function to prevent re-creation and issues in useEffect dependencies
+  // =================================================================================
+  // === INICIO DE FUNCIONES JSONP ===
+  // =================================================================================
   const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
-    // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
-    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
-      console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida. Por favor, reemplaza el placeholder con tu URL de Apps Script.");
-      alert("Error de configuración: la URL de Google Apps Script no es válida."); // Alert the user
+    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+      console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida.");
+      alert("Error de configuración: la URL de Google Apps Script no es válida.");
       return;
     }
     if (!currentShareId || !userId) return;
 
+    const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
+    const promise = new Promise((resolve, reject) => {
+      window[callbackName] = (data) => {
+        delete window[callbackName];
+        document.body.removeChild(script);
+        resolve(data);
+      };
+      const script = document.createElement('script');
+      script.onerror = () => {
+        delete window[callbackName];
+        document.body.removeChild(script);
+        reject(new Error('Error al guardar los datos en Google Sheets.'));
+      };
+
+      const dataString = JSON.stringify(dataToSave);
+      const encodedData = encodeURIComponent(dataString);
+      script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
+      
+      document.body.appendChild(script);
+    });
+
     try {
-      // console.log("Intentando guardar en Google Sheets. URL:", GOOGLE_SHEET_WEB_APP_URL, "ShareId:", currentShareId, "Data:", dataToSave); // Added console log
-      const response = await fetch(GOOGLE_SHEET_WEB_APP_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save', shareId: currentShareId, data: dataToSave })
-      });
-      const result = await response.json();
+      const result = await promise;
       if (result.status === 'error') {
-        console.error("Error al guardar en Google Sheets:", result.message);
-        alert("Error al guardar en Google Sheets: " + result.message); // Alert the user
+        console.error("Error al guardar en Google Sheets (JSONP):", result.message);
+        alert("Error al guardar en Google Sheets: " + result.message);
       } else {
-        // console.log("Guardado exitoso en Google Sheets:", result.message); // Added console log
+        console.log("Guardado exitoso en Google Sheets (JSONP):", result.message);
       }
     } catch (error) {
-      console.error("Network error saving to Google Sheets:", error);
-      alert("Error de red al guardar en Google Sheets. Consulta la consola para más detalles. Posiblemente un problema de CORS o URL incorrecta."); // Alert the user
+      console.error("Error de red al guardar en Google Sheets (JSONP):", error);
+      alert("Error de red al guardar en Google Sheets. Consulta la consola para más detalles.");
     }
-  }, [userId]); // Removed comensales, availableProducts etc. to prevent endless loop, dataToSave is passed directly
+  }, [userId]);
 
-  // =================================================================================
-  // === MODIFICACIÓN A JSONP ===
-  // =================================================================================
   const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
-    // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
-    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida.");
       alert("Error de configuración: la URL de Google Apps Script no es válida.");
       return;
     }
     if (!idToLoad) return;
 
-    // 1. Define un nombre único para la función de callback.
-    const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
-
-    // 2. Crea una promesa que se resolverá cuando el callback se ejecute.
+    const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
     const promise = new Promise((resolve, reject) => {
-        // 3. Adjunta la función de callback al objeto `window` para que sea global.
         window[callbackName] = (data) => {
-            // Limpia la función de window una vez que se ha llamado.
             delete window[callbackName];
-            // Elimina el tag de script del DOM.
             document.body.removeChild(script);
-            // Resuelve la promesa con los datos recibidos.
             resolve(data);
         };
 
-        // Maneja los errores de red o si el script no se carga.
         const script = document.createElement('script');
         script.onerror = () => {
             delete window[callbackName];
             document.body.removeChild(script);
             reject(new Error('Error al cargar los datos desde Google Sheets.'));
         };
-
-        // 4. Construye la URL del script con los parámetros `id` y `callback`.
-        // El parámetro `action=load` es opcional ya que nuestro script solo tiene un `doGet`.
-        script.src = `${GOOGLE_SHEET_WEB_APP_URL}?id=${idToLoad}&callback=${callbackName}`;
         
-        // 5. Añade el script al DOM para que el navegador lo cargue y ejecute.
+        script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`;
         document.body.appendChild(script);
     });
 
     try {
-        // 6. Espera a que la promesa se resuelva.
         const data = await promise;
-
-        // 7. Procesa los datos como lo hacías antes.
         if (data && data.status !== "not_found") {
             console.log("Datos cargados con JSONP:", data);
             setComensales(data.comensales || []);
@@ -438,36 +339,50 @@ const App = () => {
         setPropinaSugerida(0);
         setActiveSharedInstances(new Map());
     }
-  }, [setComensales, setAvailableProducts, setTotalGeneralMesa, setPropinaSugerida, setActiveSharedInstances, setShareId]); // Add all setters to dependency array
-  // =================================================================================
-  
+  }, [setComensales, setAvailableProducts, setTotalGeneralMesa, setPropinaSugerida, setActiveSharedInstances, setShareId]);
+
   const deleteStateFromGoogleSheets = useCallback(async (idToDelete) => {
-    // Validate GOOGLE_SHEET_WEB_APP_URL before making fetch requests
-    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
-      console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida. Por favor, reemplaza el placeholder con tu URL de Apps Script.");
-      alert("Error de configuración: la URL de Google Apps Script no es válida."); // Alert the user
+    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+      console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida.");
+      alert("Error de configuración: la URL de Google Apps Script no es válida.");
       return;
     }
     if (!idToDelete) return;
+
+    const callbackName = 'jsonp_callback_delete_' + Math.round(100000 * Math.random());
+    const promise = new Promise((resolve, reject) => {
+        window[callbackName] = (data) => {
+            delete window[callbackName];
+            document.body.removeChild(script);
+            resolve(data);
+        };
+        const script = document.createElement('script');
+        script.onerror = () => {
+            delete window[callbackName];
+            document.body.removeChild(script);
+            reject(new Error('Error al eliminar los datos de Google Sheets.'));
+        };
+
+        script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=delete&id=${idToDelete}&callback=${callbackName}`;
+        document.body.appendChild(script);
+    });
+
     try {
-      // console.log("Intentando eliminar de Google Sheets. URL:", GOOGLE_SHEET_WEB_APP_URL, "ShareId:", idToDelete); // Added console log
-      const response = await fetch(GOOGLE_SHEET_WEB_APP_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', shareId: idToDelete })
-      });
-      const result = await response.json();
-      if (result.status === 'error') {
-        console.error("Error al eliminar de Google Sheets:", result.message);
-        alert("Error al eliminar de Google Sheets: " + result.message); // Alert the user
-      } else {
-        // console.log("Eliminación exitosa en Google Sheets:", result.message); // Added console log
-      }
+        const result = await promise;
+        if (result.status === 'error') {
+            console.error("Error al eliminar de Google Sheets (JSONP):", result.message);
+            alert("Error al eliminar de Google Sheets: " + result.message);
+        } else {
+            console.log("Eliminación exitosa en Google Sheets (JSONP):", result.message);
+        }
     } catch (error) {
-      console.error("Network error deleting from Google Sheets:", error);
-      alert("Error de red al eliminar de Google Sheets. Consulta la consola para más detalles. Posiblemente un problema de CORS o URL incorrecta."); // Alert the user
+        console.error("Error de red al eliminar de Google Sheets (JSONP):", error);
+        alert("Error de red al eliminar los datos. Revisa la consola.");
     }
   }, []);
+  // =================================================================================
+  // === FIN DE FUNCIONES JSONP ===
+  // =================================================================================
 
 
   // --- Authentication (simplified for Google Sheets) ---
@@ -504,7 +419,7 @@ const App = () => {
   // --- Polling for Updates (simulated real-time for Google Sheets) ---
   useEffect(() => {
     // Only poll if shareId exists AND the URL is properly configured.
-    if (!shareId || !userId || GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return; 
+    if (!shareId || !userId || GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return; 
 
     const pollingInterval = setInterval(() => {
       loadStateFromGoogleSheets(shareId);
@@ -516,7 +431,7 @@ const App = () => {
   // --- Save state whenever relevant states change (debounced) ---
   useEffect(() => {
     // Only save if shareId exists AND the URL is properly configured.
-    if (shareId && GOOGLE_SHEET_WEB_APP_URL !== "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" && GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { 
+    if (shareId && GOOGLE_SHEET_WEB_APP_URL !== "YOUR_NEW_JSONP_WEB_APP_URL_HERE" && GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { 
       const dataToSave = {
           comensales: comensales,
           availableProducts: Object.fromEntries(availableProducts),
@@ -1314,7 +1229,7 @@ const App = () => {
     }
 
     // Validation for GOOGLE_SHEET_WEB_APP_URL
-    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_GOOGLE_SHEET_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       alert("Error: Para generar un enlace compartible, debes configurar la URL de tu Google Apps Script en el código. Consulta las instrucciones.");
       console.error("GOOGLE_SHEET_WEB_APP_URL no está configurada correctamente.");
       return;
@@ -1389,7 +1304,7 @@ const App = () => {
       </header>
 
       {/* Summary Totals */}
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_2xl mx-auto border border-blue-200">
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w_2xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Resumen de Totales</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
           <div className="flex justify-between items-center bg-blue-50 p-3 rounded-md shadow-sm">
