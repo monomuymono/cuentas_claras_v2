@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -672,59 +672,53 @@ const App = () => {
 
 
   // Function to handle sharing an item among multiple comensales
-  const handleShareItem = (productId, sharingComensalIds) => {
-    const productToShare = availableProducts.get(productId);
+  const handleShareItem = useCallback((productId, sharingComensalIds) => {
+    setAvailableProducts(currentProducts => {
+      const productToShare = currentProducts.get(productId);
+      if (!productToShare || Number(productToShare.quantity) <= 0) {
+        alert('Producto no disponible para compartir.');
+        return currentProducts;
+      }
 
-    if (!productToShare || Number(productToShare.quantity) <= 0) { // Ensure quantity is number
-      alert('Producto no disponible para compartir.');
-      return;
-    }
+      const newProductsMap = new Map(currentProducts);
+      newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 });
 
-    // Decrement the quantity of the shared item from availableProducts (one physical item is consumed)
-    setAvailableProducts(prevProductsMap => {
-      const newMap = new Map(prevProductsMap);
-      const product = newMap.get(productId);
-      newMap.set(productId, { ...product, quantity: Number(product.quantity) - 1 }); // Ensure quantity is number
-      return newMap;
-    });
+      const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
+      const priceWithTipPerShare = basePricePerShare * 1.10;
+      const shareInstanceId = Date.now() + Math.random();
 
-    // Calculate base price per share, then apply 10% tip to that portion
-    const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length); // Ensure price is number
-    const priceWithTipPerShare = basePricePerShare * 1.10; // Price with 10% tip
-
-    const shareInstanceId = Date.now() + Math.random(); // Unique ID for this specific shared instance
-
-    // Track which comensales are sharing this new instance
-    setActiveSharedInstances(prevActiveSharedInstances => {
-        const newActiveSharedInstances = new Map(prevActiveSharedInstances);
-        newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds));
-        return newActiveSharedInstances;
-    });
-
-    setComensales(prevComensales => {
-      return prevComensales.map(comensal => {
-        if (sharingComensalIds.includes(comensal.id)) {
-          const updatedItems = [
-            ...comensal.selectedItems,
-            {
-              id: productToShare.id, // Original product ID
-              name: productToShare.name,
-              price: priceWithTipPerShare, // Store the price with tip for this portion
-              originalBasePrice: basePricePerShare, // Keep original base price for reference
-              quantity: 1, // Represents one share instance
-              type: 'shared',
-              sharedByCount: Number(sharingComensalIds.length), // Ensure sharedByCount is number
-              shareInstanceId: shareInstanceId // Unique ID for tracking this specific shared item instance
-            }
-          ];
-          // Calculate new total for the comensal based on prices *con propina*
-          const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0); // Ensure numbers
-          return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" }; // Reset dropdown
-        }
-        return comensal;
+      setActiveSharedInstances(prevActive => {
+        const newActive = new Map(prevActive);
+        newActive.set(shareInstanceId, new Set(sharingComensalIds));
+        return newActive;
       });
+
+      setComensales(prevComensales => {
+        return prevComensales.map(comensal => {
+          if (sharingComensalIds.includes(comensal.id)) {
+            const updatedItems = [
+              ...comensal.selectedItems,
+              {
+                id: productToShare.id,
+                name: productToShare.name,
+                price: priceWithTipPerShare,
+                originalBasePrice: basePricePerShare,
+                quantity: 1,
+                type: 'shared',
+                sharedByCount: Number(sharingComensalIds.length),
+                shareInstanceId: shareInstanceId
+              }
+            ];
+            const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+            return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
+          }
+          return comensal;
+        });
+      });
+
+      return newProductsMap;
     });
-  };
+  }, []);
 
   // Function to add a new comensal
   const handleAddComensal = () => {
