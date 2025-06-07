@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -541,68 +541,67 @@ const App = () => {
 
   // Function to remove an item or decrease its quantity from a comensal's bill
   const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
+    let productToRestore = null;
+  
     setComensales(prevComensales => {
-      return prevComensales.map(comensal => {
-        if (comensal.id === comensalId) {
-          const itemIndex = comensal.selectedItems.findIndex(item => {
-            // Check for shared items by shareInstanceId, full items by original ID
-            return item.type === 'shared' ? String(item.shareInstanceId) === String(itemToRemoveIdentifier) : item.id === Number(itemToRemoveIdentifier) && item.type === 'full';
-          });
-
-          // Initialize updatedItems as a copy of current items
-          let updatedItems = [...comensal.selectedItems]; // Initialize here
-
-          if (itemIndex !== -1) {
-            const itemBeingRemoved = updatedItems[itemIndex];
-
-            if (itemBeingRemoved.type === 'full') {
-              if (Number(itemBeingRemoved.quantity) > 1) { // Ensure quantity is number
-                updatedItems[itemIndex] = { ...itemBeingRemoved, quantity: Number(itemBeingRemoved.quantity) - 1 };
-              } else {
-                updatedItems.splice(itemIndex, 1); // Remove if quantity is 1
-              }
-              // Increment the quantity in availableProducts for full items (uses original product ID)
-              setAvailableProducts(prevProductsMap => {
-                const newMap = new Map(prevProductsMap);
-                const product = newMap.get(itemBeingRemoved.id);
-                if (product) {
-                  newMap.set(product.id, { ...product, quantity: Number(product.quantity) + 1 }); // Ensure quantity is number
-                }
-                return newMap;
-              });
-            } else if (itemBeingRemoved.type === 'shared') {
-                updatedItems.splice(itemIndex, 1);
-
-                setActiveSharedInstances(prevActiveSharedInstances => {
-                    const newActiveSharedInstances = new Map(prevActiveSharedInstances);
-                    const comensalSet = newActiveSharedInstances.get(itemBeingRemoved.shareInstanceId);
-
-                    if (comensalSet) {
-                        comensalSet.delete(comensalId); // Remove this comensal from the set
-                        if (comensalSet.size === 0) {
-                            // If no one else is sharing this instance, return the original item to available products
-                            setAvailableProducts(prevProductsMap => {
-                                const productsMapCopy = new Map(prevProductsMap);
-                                const product = productsMapCopy.get(itemBeingRemoved.id); // itemBeingRemoved.id is the original product ID
-                                if (product) {
-                                    productsMapCopy.set(product.id, { ...product, quantity: Number(product.quantity) + 1 }); // Restore 1 unit
-                                }
-                                return productsMapCopy;
-                            });
-                            newActiveSharedInstances.delete(itemBeingRemoved.shareInstanceId); // Clean up the shared instance tracker
-                        }
-                    }
-                    return newActiveSharedInstances;
-                });
-            }
-          }
-
-          // Calculate new total for the comensal based on prices *con propina*
-          const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0); // Ensure numbers
-          return { ...comensal, selectedItems: updatedItems, total: newTotal };
+      const newComensales = [...prevComensales];
+      const comensalIndex = newComensales.findIndex(c => c.id === comensalId);
+      if (comensalIndex === -1) return prevComensales;
+  
+      const comensal = { ...newComensales[comensalIndex] };
+      const itemIndex = comensal.selectedItems.findIndex(item => 
+        item.type === 'shared' 
+          ? String(item.shareInstanceId) === String(itemToRemoveIdentifier) 
+          : item.id === Number(itemToRemoveIdentifier) && item.type === 'full'
+      );
+  
+      if (itemIndex === -1) return prevComensales;
+  
+      const itemBeingRemoved = { ...comensal.selectedItems[itemIndex] };
+      const updatedItems = [...comensal.selectedItems];
+  
+      if (itemBeingRemoved.type === 'full') {
+        productToRestore = { id: itemBeingRemoved.id, quantity: 1 };
+        if (itemBeingRemoved.quantity > 1) {
+          updatedItems[itemIndex].quantity -= 1;
+        } else {
+          updatedItems.splice(itemIndex, 1);
         }
-        return comensal;
-      });
+      } else if (itemBeingRemoved.type === 'shared') {
+        updatedItems.splice(itemIndex, 1);
+        // La lógica para restaurar ítems compartidos se maneja en un useEffect separado
+        // para evitar condiciones de carrera complejas aquí.
+        setActiveSharedInstances(prev => {
+            const newInstances = new Map(prev);
+            const comensalSet = newInstances.get(itemBeingRemoved.shareInstanceId);
+            if(comensalSet){
+                comensalSet.delete(comensalId);
+                if(comensalSet.size === 0){
+                    newInstances.delete(itemBeingRemoved.shareInstanceId);
+                    // Marcar para restaurar en el siguiente paso
+                     productToRestore = { id: itemBeingRemoved.id, quantity: 1 };
+                }
+            }
+            return newInstances;
+        });
+      }
+      
+      comensal.selectedItems = updatedItems;
+      comensal.total = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+      newComensales[comensalIndex] = comensal;
+      
+      if (productToRestore) {
+        setAvailableProducts(prevProducts => {
+          const newProducts = new Map(prevProducts);
+          const product = newProducts.get(productToRestore.id);
+          if (product) {
+            newProducts.set(productToRestore.id, { ...product, quantity: product.quantity + productToRestore.quantity });
+          }
+          return newProducts;
+        });
+      }
+  
+      return newComensales;
     });
   };
 
@@ -616,46 +615,42 @@ const App = () => {
 
     if (comensalToClear) {
       const productsToReturn = new Map();
+      const updatedActiveSharedInstances = new Map(activeSharedInstances);
+
       comensalToClear.selectedItems.forEach(item => {
         if (item.type === 'full') {
-          productsToReturn.set(item.id, (productsToReturn.get(item.id) || 0) + Number(item.quantity)); // Ensure quantity is number
+          productsToReturn.set(item.id, (productsToReturn.get(item.id) || 0) + item.quantity);
         } else if (item.type === 'shared') {
-            setActiveSharedInstances(prevActiveSharedInstances => {
-                const newActiveSharedInstances = new Map(prevActiveSharedInstances);
-                const comensalSet = newActiveSharedInstances.get(item.shareInstanceId);
-                if (comensalSet) {
-                    comensalSet.delete(comensalToClearId);
-                    if (comensalSet.size === 0) {
-                        productsToReturn.set(item.id, (productsToReturn.get(item.id) || 0) + 1); // Add back one physical unit
-                        newActiveSharedInstances.delete(item.shareInstanceId);
-                    }
+            const comensalSet = updatedActiveSharedInstances.get(item.shareInstanceId);
+            if (comensalSet) {
+                comensalSet.delete(comensalToClearId);
+                if (comensalSet.size === 0) {
+                    productsToReturn.set(item.id, (productsToReturn.get(item.id) || 0) + 1);
+                    updatedActiveSharedInstances.delete(item.shareInstanceId);
                 }
-                return newActiveSharedInstances;
-            });
+            }
         }
       });
-
-      // Update availableProductsMap in a single call
-      setAvailableProducts(prevProductsMap => {
-        const newMap = new Map(prevProductsMap);
-        productsToReturn.forEach((qty, productId) => {
-          const product = newMap.get(productId);
-          if (product && newMap.has(productId)) {
-            newMap.set(productId, { ...product, quantity: Number(product.quantity) + Number(qty) }); // Ensure quantity is number
-          }
+      
+      // Now call setState functions sequentially
+      if (productsToReturn.size > 0) {
+        setAvailableProducts(prevProducts => {
+            const newMap = new Map(prevProducts);
+            productsToReturn.forEach((qty, productId) => {
+                const product = newMap.get(productId);
+                if (product) {
+                    newMap.set(productId, { ...product, quantity: product.quantity + qty });
+                }
+            });
+            return newMap;
         });
-        return newMap;
-      });
+      }
 
-      // Then update comensales
-      setComensales(prevComensales => {
-        return prevComensales.map(comensal => {
-          if (comensal.id === comensalToClearId) {
-            return { ...comensal, selectedItems: [], total: 0, selectedProductId: "" }; // Reset dropdown
-          }
-          return comensal;
-        });
-      });
+      setActiveSharedInstances(updatedActiveSharedInstances);
+      
+      setComensales(prevComensales => prevComensales.map(c => 
+          c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0, selectedProductId: "" } : c
+      ));
     }
     setComensalToClearId(null); // Reset comensal ID after action
   };
@@ -756,41 +751,41 @@ const App = () => {
 
     if (comensalToRemove) {
       const productsToReturn = new Map();
+      const updatedActiveSharedInstances = new Map(activeSharedInstances);
+
       comensalToRemove.selectedItems.forEach(item => {
         if (item.type === 'full') {
-          productsToReturn.set(item.id, (productsToReturn.get(item.id) || 0) + Number(item.quantity)); // Ensure quantity is number
+          productsToReturn.set(item.id, (productsToReturn.get(item.id) || 0) + item.quantity);
         } else if (item.type === 'shared') {
-            setActiveSharedInstances(prevActiveSharedInstances => {
-                const newActiveSharedInstances = new Map(prevActiveSharedInstances);
-                const comensalSet = newActiveSharedInstances.get(item.shareInstanceId);
-                if (comensalSet) {
-                    comensalSet.delete(comensalToRemoveId);
-                    if (comensalSet.size === 0) {
-                        productsToReturn.set(item.id, (productsToReturn.get(item.id) || 0) + 1); // Add back one physical unit
-                        newActiveSharedInstances.delete(item.shareInstanceId);
-                    }
+            const comensalSet = updatedActiveSharedInstances.get(item.shareInstanceId);
+            if (comensalSet) {
+                comensalSet.delete(comensalToRemoveId);
+                if (comensalSet.size === 0) {
+                    productsToReturn.set(item.id, (productsToReturn.get(item.id) || 0) + 1);
+                    updatedActiveSharedInstances.delete(item.shareInstanceId);
                 }
-                return newActiveSharedInstances;
-            });
+            }
         }
       });
 
-      setAvailableProducts(prevProductsMap => {
-        const newMap = new Map(prevProductsMap);
-        productsToReturn.forEach((qty, productId) => {
-          const product = newMap.get(productId);
-          if (product && newMap.has(productId)) {
-            newMap.set(productId, { ...product, quantity: Number(product.quantity) + Number(qty) }); // Ensure quantity is number
-          }
+      if (productsToReturn.size > 0) {
+        setAvailableProducts(prevProducts => {
+            const newMap = new Map(prevProducts);
+            productsToReturn.forEach((qty, productId) => {
+                const product = newMap.get(productId);
+                if (product) {
+                    newMap.set(productId, { ...product, quantity: product.quantity + qty });
+                }
+            });
+            return newMap;
         });
-        return newMap;
-      });
+      }
+      
+      setActiveSharedInstances(updatedActiveSharedInstances);
 
-      setComensales(prevComensales => {
-        return prevComensales.filter(c => c.id !== comensalToRemoveId);
-      });
+      setComensales(prevComensales => prevComensales.filter(c => c.id !== comensalToRemoveId));
     }
-    setComensalToRemoveId(null); // Reset comensal ID after action
+    setComensalToRemoveId(null);
   };
 
   // Function to open confirmation modal for removing a comensal
@@ -1742,3 +1737,4 @@ const App = () => {
 };
 
 export default App;
+" I want to delete this part of the code in Canvas and not the entire code. Can you do it for m
