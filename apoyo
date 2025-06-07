@@ -27,35 +27,36 @@ error: TypeError: ContentService.createTextOutput(...).setMimeType(...).addHeade
 
 /**
  * @fileoverview
- * Google Apps Script (VERSIÓN DE PRUEBA MINIMALISTA)
+ * Google Apps Script (VERSIÓN DE PRUEBA ANTI-ERROR)
  *
  * =======================================================================================
  * === PROPÓSITO DE ESTA VERSIÓN ===
  * =======================================================================================
- * Este script ha sido simplificado al máximo para diagnosticar problemas de despliegue y CORS.
- * Las funciones doGet y doPost NO interactúan con la Hoja de Cálculo. Solo confirman
- * que la comunicación entre tu aplicación (ej. Vercel) y Google Apps Script funciona.
+ * Este script ha sido modificado para evitar el "encadenamiento de funciones"
+ * (ej: .setMimeType().addHeader()). Este es un último intento para eludir un
+ * error muy inusual en el entorno de ejecución de Google Apps Script donde la
+ * función `addHeader` no se reconoce correctamente.
  *
- * Si esta versión funciona: El problema está en la configuración de tu Hoja de Cálculo (ID o permisos).
- * Si esta versión falla: El problema está en el proceso de despliegue o en cómo tu app llama a la URL.
+ * Cada función se llama en una línea separada.
  * =======================================================================================
  */
 
-// --- CONFIGURACIÓN (Ignorada en esta versión de prueba, pero déjala para el futuro) ---
-const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'; // <<-- ¡REEMPLAZA ESTO!
-const SHEET_NAME = 'Sessions'; // Asegúrate de que este nombre coincida con el de tu hoja.
+// --- CONFIGURACIÓN (Ignorada en esta versión de prueba) ---
+const SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE';
+const SHEET_NAME = 'Sessions';
 
 /**
- * Maneja las solicitudes pre-vuelo OPTIONS para CORS. NO EJECUTAR MANUALMENTE.
+ * Maneja las solicitudes pre-vuelo OPTIONS para CORS.
  * @param {object} e El objeto del evento de la solicitud.
  * @returns {GoogleAppsScript.Content.TextOutput} La respuesta con las cabeceras CORS.
  */
 function doOptions(e) {
-  console.log("Recibida solicitud OPTIONS. Construyendo respuesta CORS.");
-  return ContentService.createTextOutput()
-    .addHeader('Access-Control-Allow-Origin', '*')
-    .addHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
-    .addHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  console.log("Recibida solicitud OPTIONS. Construyendo respuesta CORS paso a paso.");
+  const output = ContentService.createTextOutput();
+  output.addHeader('Access-Control-Allow-Origin', '*');
+  output.addHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  output.addHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  return output;
 }
 
 /**
@@ -65,24 +66,31 @@ function doOptions(e) {
  */
 function doGet(e) {
   try {
+    console.log("doGet de prueba (paso a paso) iniciado.");
     const shareId = e && e.parameter ? e.parameter.id : 'ninguno';
     const response = {
       status: 'success',
-      message: '[VERSIÓN DE PRUEBA] doGet se ejecutó correctamente.',
+      message: '[VERSIÓN DE PRUEBA ANTI-ERROR] doGet se ejecutó correctamente.',
       id_recibido: shareId
     };
     
-    console.log("doGet de prueba ejecutado con éxito.");
+    // Creación de la respuesta paso a paso
+    const output = ContentService.createTextOutput(JSON.stringify(response));
+    output.setMimeType(ContentService.MimeType.JSON);
+    output.addHeader('Access-Control-Allow-Origin', '*');
+    
+    console.log("doGet de prueba (paso a paso) completado con éxito.");
+    return output;
 
-    return ContentService.createTextOutput(JSON.stringify(response))
-      .setMimeType(ContentService.MimeType.JSON)
-      .addHeader('Access-Control-Allow-Origin', '*');
   } catch (error) {
     const errorMessage = '[VERSIÓN DE PRUEBA] Error inesperado en doGet: ' + error.toString();
     console.error(errorMessage);
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: errorMessage }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .addHeader('Access-Control-Allow-Origin', '*');
+    
+    // Creación de la respuesta de error paso a paso
+    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: errorMessage }));
+    errorOutput.setMimeType(ContentService.MimeType.JSON);
+    errorOutput.addHeader('Access-Control-Allow-Origin', '*');
+    return errorOutput;
   }
 }
 
@@ -93,24 +101,31 @@ function doGet(e) {
  */
 function doPost(e) {
   try {
+    console.log("doPost de prueba (paso a paso) iniciado.");
     const requestBody = e && e.postData && e.postData.contents ? e.postData.contents : 'cuerpo vacío';
     const response = {
       status: 'success',
-      message: '[VERSIÓN DE PRUEBA] doPost se ejecutó correctamente.',
+      message: '[VERSIÓN DE PRUEBA ANTI-ERROR] doPost se ejecutó correctamente.',
       cuerpo_recibido: requestBody
     };
     
-    console.log("doPost de prueba ejecutado con éxito.");
+    // Creación de la respuesta paso a paso
+    const output = ContentService.createTextOutput(JSON.stringify(response));
+    output.setMimeType(ContentService.MimeType.JSON);
+    output.addHeader('Access-Control-Allow-Origin', '*');
 
-    return ContentService.createTextOutput(JSON.stringify(response))
-      .setMimeType(ContentService.MimeType.JSON)
-      .addHeader('Access-Control-Allow-Origin', '*');
+    console.log("doPost de prueba (paso a paso) completado con éxito.");
+    return output;
+
   } catch (error) {
     const errorMessage = '[VERSIÓN DE PRUEBA] Error inesperado en doPost: ' + error.toString();
     console.error(errorMessage);
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: errorMessage }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .addHeader('Access-Control-Allow-Origin', '*');
+
+    // Creación de la respuesta de error paso a paso
+    const errorOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: errorMessage }));
+    errorOutput.setMimeType(ContentService.MimeType.JSON);
+    errorOutput.addHeader('Access-Control-Allow-Origin', '*');
+    return errorOutput;
   }
 }
 
@@ -118,9 +133,6 @@ function doPost(e) {
 // --- Las funciones de abajo no se usan en la prueba, pero se guardan para referencia ---
 // ----------------------------------------------------------------------------------
 
-/**
- * FUNCIÓN DE DIAGNÓSTICO: Ejecuta esta función manualmente desde el editor.
- */
 function testEnvironment() {
   try {
     console.log("Iniciando prueba de entorno...");
@@ -128,7 +140,7 @@ function testEnvironment() {
     
     if (typeof output.addHeader === 'function') {
       output.addHeader("X-Test-Header", "Success");
-      const message = "¡Prueba V8 exitosa! El método 'addHeader' funciona.";
+      const message = "¡Prueba exitosa! El método 'addHeader' funciona.";
       console.log(message);
       SpreadsheetApp.getUi().alert(message);
     } else {
@@ -141,22 +153,12 @@ function testEnvironment() {
   }
 }
 
-
-/**
- * Función auxiliar para obtener el objeto de la hoja de cálculo.
- * @returns {GoogleAppsScript.Spreadsheet.Sheet} La hoja de trabajo.
- */
 function getSheet() {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    throw new Error('Hoja no encontrada: ' + SHEET_NAME + '. Asegúrate de que el nombre sea correcto.');
-  }
+  if (!sheet) { throw new Error('Hoja no encontrada: ' + SHEET_NAME); }
   return sheet;
 }
 
-/**
- * CONFIGURACIÓN INICIAL: Ejecutar esta función manualmente UNA VEZ desde el editor.
- */
 function setupSheetHeaders() {
   try {
     const sheet = getSheet();
@@ -173,5 +175,6 @@ function setupSheetHeaders() {
     throw e;
   }
 }
+
 
 
