@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 // Polyfill para 'process' si no está definido (por ejemplo, en algunos entornos de cliente)
 if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // URL de tu Google Apps Script Web App
 // ¡IMPORTANTE! Reemplaza esto con la URL de tu nueva implementación de Apps Script.
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "YOUR_NEW_JSONP_WEB_APP_URL_HERE"; 
 
 // Este appId ya no es de Firebase, es solo un identificador para tus datos si lo necesitas.
 const canvasAppId = 'default-bill-splitter-app'; 
@@ -226,7 +226,9 @@ const App = () => {
   // Map to track active shared instances and which comensales have them
   // Key: shareInstanceId, Value: Set<comensalId>
   const [activeSharedInstances, setActiveSharedInstances] = useState(new Map());
-
+  
+  // CORRECCIÓN: Ref para controlar las condiciones de carrera entre el guardado y el sondeo.
+  const hasPendingChanges = useRef(false);
 
   // The target total for the whole bill, including the original receipt's suggested tip
   // This will now dynamically update based on totalGeneralMesa and propinaSugerida states
@@ -243,9 +245,9 @@ const App = () => {
     if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       console.error("Error: GOOGLE_SHEET_WEB_APP_URL no está configurada o es inválida.");
       alert("Error de configuración: la URL de Google Apps Script no es válida.");
-      return;
+      return Promise.reject(new Error("URL inválida"));
     }
-    if (!currentShareId || !userId) return;
+    if (!currentShareId || !userId) return Promise.resolve();
 
     const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
     const promise = new Promise((resolve, reject) => {
@@ -273,12 +275,15 @@ const App = () => {
       if (result.status === 'error') {
         console.error("Error al guardar en Google Sheets (JSONP):", result.message);
         alert("Error al guardar en Google Sheets: " + result.message);
+        return Promise.reject(new Error(result.message));
       } else {
         console.log("Guardado exitoso en Google Sheets (JSONP):", result.message);
+        return Promise.resolve();
       }
     } catch (error) {
       console.error("Error de red al guardar en Google Sheets (JSONP):", error);
       alert("Error de red al guardar en Google Sheets. Consulta la consola para más detalles.");
+      return Promise.reject(error);
     }
   }, [userId]);
 
@@ -289,6 +294,12 @@ const App = () => {
       return;
     }
     if (!idToLoad) return;
+
+    // CORRECCIÓN: El sondeo no debe ocurrir si hay cambios locales pendientes.
+    if (hasPendingChanges.current) {
+        console.log("Sondeo pausado: hay cambios locales pendientes de guardar.");
+        return;
+    }
 
     const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
     const promise = new Promise((resolve, reject) => {
@@ -312,6 +323,11 @@ const App = () => {
     try {
         const data = await promise;
         if (data && data.status !== "not_found") {
+            // No actualizaremos el estado si hay cambios pendientes, para evitar sobrescribirlos.
+            if (hasPendingChanges.current) {
+                console.log("Datos recibidos del sondeo, pero ignorados debido a cambios locales pendientes.");
+                return;
+            }
             console.log("Datos cargados con JSONP:", data);
             setComensales(data.comensales || []);
             setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
@@ -339,7 +355,7 @@ const App = () => {
         setPropinaSugerida(0);
         setActiveSharedInstances(new Map());
     }
-  }, [setComensales, setAvailableProducts, setTotalGeneralMesa, setPropinaSugerida, setActiveSharedInstances, setShareId]);
+  }, [hasPendingChanges]); // La dependencia ahora es el ref para re-evaluar si es necesario.
 
   const deleteStateFromGoogleSheets = useCallback(async (idToDelete) => {
     if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
@@ -422,19 +438,23 @@ const App = () => {
     if (!shareId || !userId || GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return; 
 
     const pollingInterval = setInterval(() => {
+      // Llamada a la función de carga que ahora tiene la lógica de comprobación.
       loadStateFromGoogleSheets(shareId);
-    }, 3000); // Poll every 3 seconds for updates
+    }, 5000); // Aumentado el intervalo para reducir la probabilidad de conflictos.
 
     return () => clearInterval(pollingInterval); // Cleanup interval
   }, [shareId, userId, loadStateFromGoogleSheets]);
 
   // --- Save state whenever relevant states change (debounced) ---
   useEffect(() => {
-    // CORRECCIÓN: No guardar automáticamente mientras se procesa una imagen para evitar condiciones de carrera.
-    if (isImageProcessing) return;
+    // No guardar si la sesión no está lista o si se está procesando una imagen.
+    if (!shareId || !authReady || isImageProcessing) return;
 
-    // Only save if shareId exists AND the URL is properly configured.
-    if (shareId && GOOGLE_SHEET_WEB_APP_URL !== "YOUR_NEW_JSONP_WEB_APP_URL_HERE" && GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { 
+    // Marcar que hay cambios pendientes.
+    hasPendingChanges.current = true;
+
+    const handler = setTimeout(() => {
+      console.log("Guardando cambios pendientes...");
       const dataToSave = {
           comensales: comensales,
           availableProducts: Object.fromEntries(availableProducts),
@@ -443,12 +463,23 @@ const App = () => {
           activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
           lastUpdated: new Date().toISOString()
       };
-      const handler = setTimeout(() => {
-          saveStateToGoogleSheets(shareId, dataToSave);
-      }, 500); // Debounce saving
-      return () => clearTimeout(handler);
-    }
-  }, [comensales, availableProducts, totalGeneralMesa, propinaSugerida, activeSharedInstances, shareId, saveStateToGoogleSheets, isImageProcessing]); // Se añade isImageProcessing a las dependencias
+      
+      saveStateToGoogleSheets(shareId, dataToSave)
+        .then(() => {
+          // Si el guardado es exitoso, marcar que ya no hay cambios pendientes.
+          hasPendingChanges.current = false;
+          console.log("Cambios guardados. El sondeo puede reanudarse.");
+        })
+        .catch(() => {
+          // Si el guardado falla, los cambios siguen pendientes.
+          console.log("El guardado falló. Los cambios siguen marcados como pendientes.");
+        });
+
+    }, 1000); // Debounce saving
+
+    return () => clearTimeout(handler);
+
+  }, [comensales, availableProducts, totalGeneralMesa, propinaSugerida, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
 
   // Recalculate main totals whenever availableProducts changes
