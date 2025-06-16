@@ -536,11 +536,12 @@ const App = () => {
   };
 
   // Function to remove an item or decrease its quantity from a comensal's bill
-  const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
+  const handleRemoveItem = useCallback((comensalId, itemToRemoveIdentifier) => {
     let itemToRemove = null;
-  
-    setComensales(prevComensales => {
-      const comensal = prevComensales.find(c => c.id === comensalId);
+    
+    // We need to use the functional form of setComensales to get the latest state
+    setComensales(currentComensales => {
+      const comensal = currentComensales.find(c => c.id === comensalId);
       if (comensal) {
         itemToRemove = comensal.selectedItems.find(item => 
           (item.type === 'shared' && String(item.shareInstanceId) === String(itemToRemoveIdentifier)) || 
@@ -549,45 +550,41 @@ const App = () => {
       }
       
       if (!itemToRemove) {
-        return prevComensales;
+        return currentComensales;
       }
+
+      // Restore to inventory
+      setAvailableProducts(currentProducts => {
+        const newProducts = new Map(currentProducts);
+        const product = newProducts.get(itemToRemove.id);
+        if (product) {
+          const quantityToRestore = itemToRemove.type === 'full' ? 1 : (1 / itemToRemove.sharedByCount);
+          newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
+        }
+        return newProducts;
+      });
       
-      if (itemToRemove.type === 'full') {
-        setAvailableProducts(prevProducts => {
-          const newMap = new Map(prevProducts);
-          const product = newMap.get(itemToRemove.id);
-          if (product) {
-            newMap.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-          }
-          return newMap;
-        });
-      } else if (itemToRemove.type === 'shared') {
-        setActiveSharedInstances(prevActive => {
-          const newActive = new Map(prevActive);
-          const shareGroup = newActive.get(itemToRemove.shareInstanceId);
+      // Update shared instances if needed
+      if (itemToRemove.type === 'shared') {
+        setActiveSharedInstances(currentInstances => {
+          const newInstances = new Map(currentInstances);
+          const shareGroup = newInstances.get(itemToRemove.shareInstanceId);
           if (shareGroup) {
             shareGroup.delete(comensalId);
             if (shareGroup.size === 0) {
-              newActive.delete(itemToRemove.shareInstanceId);
-              setAvailableProducts(prevProducts => {
-                const newProducts = new Map(prevProducts);
-                const product = newProducts.get(itemToRemove.id);
-                if (product) {
-                  newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-                }
-                return newProducts;
-              });
+              newInstances.delete(itemToRemove.shareInstanceId);
             }
           }
-          return newActive;
+          return newInstances;
         });
       }
 
-      return prevComensales.map(c => {
+      // Return updated comensales list
+      return currentComensales.map(c => {
         if (c.id === comensalId) {
           const updatedItems = c.selectedItems.filter(item => {
-            if(item.type === 'shared') return String(item.shareInstanceId) !== String(itemToRemoveIdentifier);
-            return item.id !== Number(itemToRemoveIdentifier);
+            const currentIdentifier = item.type === 'shared' ? String(item.shareInstanceId) : item.id;
+            return String(currentIdentifier) !== String(itemToRemoveIdentifier);
           });
           const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
           return { ...c, selectedItems: updatedItems, total: newTotal };
@@ -595,7 +592,7 @@ const App = () => {
         return c;
       });
     });
-  };
+  }, []);
 
 
   // Function to clear all items for a comensal (but keep the comensal) - Refactored for single update
