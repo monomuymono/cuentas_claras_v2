@@ -493,60 +493,45 @@ const App = () => {
 
 
   // Function to add a full item to a comensal's bill (now includes 10% tip)
-  const handleAddItem = useCallback((comensalId, productId) => {
-    let productTemplate = null;
-  
+  const handleAddItem = (comensalId, productId) => {
     setAvailableProducts(currentProducts => {
-      const productInStock = currentProducts.get(productId);
-  
-      if (!productInStock || Number(productInStock.quantity) <= 0) {
-        return currentProducts;
-      }
-  
-      productTemplate = { ...productInStock };
-  
-      const newProductsMap = new Map(currentProducts);
-      const updatedProduct = { ...productInStock, quantity: Number(productInStock.quantity) - 1 };
-      newProductsMap.set(productId, updatedProduct);
-      return newProductsMap;
-    });
-  
-    // This part runs after the product map update is queued
-    setComensales(currentComensales => {
-      // Find the product details again from the most recent state if the first attempt failed
-      if (!productTemplate) {
-          // This is a fallback, but the outer logic should prevent this
-          const latestProducts = availableProducts;
-          productTemplate = latestProducts.get(productId);
-          if (!productTemplate) return currentComensales; // Still no product, abort
-      }
+        const productInStock = currentProducts.get(productId);
 
-      return currentComensales.map(comensal => {
-        if (comensal.id === comensalId) {
-          const priceWithTip = Number(productTemplate.price) * 1.10;
-          const updatedItems = [...comensal.selectedItems];
-          const existingItemIndex = updatedItems.findIndex(item => item.id === productId && item.type === 'full');
-  
-          if (existingItemIndex !== -1) {
-            updatedItems[existingItemIndex].quantity += 1;
-          } else {
-            updatedItems.push({
-              ...productTemplate,
-              price: priceWithTip,
-              originalBasePrice: Number(productTemplate.price),
-              quantity: 1,
-              type: 'full'
-            });
-          }
-  
-          const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
-          return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
+        if (!productInStock || Number(productInStock.quantity) <= 0) {
+            return currentProducts;
         }
-        return comensal;
-      });
-    });
-  }, []); // Empty dependency array as we use functional updates
 
+        const newProductsMap = new Map(currentProducts);
+        const updatedProduct = { ...productInStock, quantity: Number(productInStock.quantity) - 1 };
+        newProductsMap.set(productId, updatedProduct);
+
+        setComensales(currentComensales =>
+            currentComensales.map(comensal => {
+                if (comensal.id === comensalId) {
+                    const priceWithTip = Number(productInStock.price) * 1.10;
+                    const updatedItems = [...comensal.selectedItems];
+                    const existingItemIndex = updatedItems.findIndex(item => item.id === productId && item.type === 'full');
+
+                    if (existingItemIndex !== -1) {
+                        updatedItems[existingItemIndex].quantity += 1;
+                    } else {
+                        updatedItems.push({
+                            ...productInStock,
+                            price: priceWithTip,
+                            originalBasePrice: Number(productInStock.price),
+                            quantity: 1,
+                            type: 'full',
+                        });
+                    }
+                    const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+                    return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
+                }
+                return comensal;
+            })
+        );
+        return newProductsMap;
+    });
+  };
 
   // Function to remove an item or decrease its quantity from a comensal's bill
   const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
@@ -578,8 +563,6 @@ const App = () => {
         }
       } else if (itemBeingRemoved.type === 'shared') {
         updatedItems.splice(itemIndex, 1);
-        // La lógica para restaurar ítems compartidos se maneja en un useEffect separado
-        // para evitar condiciones de carrera complejas aquí.
         setActiveSharedInstances(prev => {
             const newInstances = new Map(prev);
             const comensalSet = newInstances.get(itemBeingRemoved.shareInstanceId);
@@ -587,7 +570,6 @@ const App = () => {
                 comensalSet.delete(comensalId);
                 if(comensalSet.size === 0){
                     newInstances.delete(itemBeingRemoved.shareInstanceId);
-                    // Marcar para restaurar en el siguiente paso
                      productToRestore = { id: itemBeingRemoved.id, quantity: 1 };
                 }
             }
@@ -618,8 +600,6 @@ const App = () => {
   // Function to clear all items for a comensal (but keep the comensal) - Refactored for single update
   const confirmClearComensal = () => {
     setIsClearComensalModalOpen(false); // Close modal
-
-    // Find the comensal before updating state
     const comensalToClear = comensales.find(c => c.id === comensalToClearId);
 
     if (comensalToClear) {
@@ -641,7 +621,6 @@ const App = () => {
         }
       });
       
-      // Now call setState functions sequentially
       if (productsToReturn.size > 0) {
         setAvailableProducts(prevProducts => {
             const newMap = new Map(prevProducts);
@@ -661,7 +640,7 @@ const App = () => {
           c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0, selectedProductId: "" } : c
       ));
     }
-    setComensalToClearId(null); // Reset comensal ID after action
+    setComensalToClearId(null);
   };
 
   // Function to open confirmation modal for clearing a comensal
@@ -1313,7 +1292,7 @@ const App = () => {
     }, 0);
   }, 0);
 
-  const remainingPropinaDisplay = propinaSugerida - totalPerItemTipsCollected;
+  const remainingPropinaDisplay = (Number(propinaSugerida) || 0) - totalPerItemTipsCollected;
 
 
   return (
