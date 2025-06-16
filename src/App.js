@@ -537,60 +537,69 @@ const App = () => {
 
   // Function to remove an item or decrease its quantity from a comensal's bill
   const handleRemoveItem = useCallback((comensalId, itemToRemoveIdentifier) => {
-    let itemToRemove = null;
-    
-    // We need to use the functional form of setComensales to get the latest state
+    let itemDataToRestore = null;
+  
     setComensales(currentComensales => {
-      const comensal = currentComensales.find(c => c.id === comensalId);
-      if (comensal) {
-        itemToRemove = comensal.selectedItems.find(item => 
-          (item.type === 'shared' && String(item.shareInstanceId) === String(itemToRemoveIdentifier)) || 
-          (item.type === 'full' && item.id === Number(itemToRemoveIdentifier))
-        );
-      }
-      
-      if (!itemToRemove) {
-        return currentComensales;
-      }
-
-      // Restore to inventory
-      setAvailableProducts(currentProducts => {
-        const newProducts = new Map(currentProducts);
-        const product = newProducts.get(itemToRemove.id);
-        if (product) {
-          const quantityToRestore = itemToRemove.type === 'full' ? 1 : (1 / itemToRemove.sharedByCount);
-          newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-        }
-        return newProducts;
-      });
-      
-      // Update shared instances if needed
-      if (itemToRemove.type === 'shared') {
-        setActiveSharedInstances(currentInstances => {
-          const newInstances = new Map(currentInstances);
-          const shareGroup = newInstances.get(itemToRemove.shareInstanceId);
-          if (shareGroup) {
-            shareGroup.delete(comensalId);
-            if (shareGroup.size === 0) {
-              newInstances.delete(itemToRemove.shareInstanceId);
+      let comensalFound = false;
+      const updatedComensales = currentComensales.map(comensal => {
+        if (comensal.id === comensalId) {
+          const itemIndex = comensal.selectedItems.findIndex(item =>
+            (item.type === 'shared' && String(item.shareInstanceId) === String(itemToRemoveIdentifier)) ||
+            (item.type === 'full' && item.id === Number(itemToRemoveIdentifier))
+          );
+  
+          if (itemIndex > -1) {
+            comensalFound = true;
+            itemDataToRestore = { ...comensal.selectedItems[itemIndex] };
+            const updatedItems = [...comensal.selectedItems];
+            
+            if (itemDataToRestore.type === 'full' && itemDataToRestore.quantity > 1) {
+              updatedItems[itemIndex].quantity -= 1;
+              itemDataToRestore.quantity = 1; // We only restore 1 unit
+            } else {
+              updatedItems.splice(itemIndex, 1);
             }
+            
+            const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            return { ...comensal, selectedItems: updatedItems, total: newTotal };
           }
-          return newInstances;
-        });
-      }
-
-      // Return updated comensales list
-      return currentComensales.map(c => {
-        if (c.id === comensalId) {
-          const updatedItems = c.selectedItems.filter(item => {
-            const currentIdentifier = item.type === 'shared' ? String(item.shareInstanceId) : item.id;
-            return String(currentIdentifier) !== String(itemToRemoveIdentifier);
-          });
-          const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-          return { ...c, selectedItems: updatedItems, total: newTotal };
         }
-        return c;
+        return comensal;
       });
+  
+      if (comensalFound && itemDataToRestore) {
+        if (itemDataToRestore.type === 'full') {
+          setAvailableProducts(currentProducts => {
+            const newProducts = new Map(currentProducts);
+            const product = newProducts.get(itemDataToRestore.id);
+            if (product) {
+              newProducts.set(itemDataToRestore.id, { ...product, quantity: product.quantity + 1 });
+            }
+            return newProducts;
+          });
+        } else if (itemDataToRestore.type === 'shared') {
+          setActiveSharedInstances(currentInstances => {
+            const newInstances = new Map(currentInstances);
+            const shareGroup = newInstances.get(itemDataToRestore.shareInstanceId);
+            if (shareGroup) {
+              shareGroup.delete(comensalId);
+              if (shareGroup.size === 0) {
+                newInstances.delete(itemDataToRestore.shareInstanceId);
+                setAvailableProducts(currentProducts => {
+                  const newProducts = new Map(currentProducts);
+                  const product = newProducts.get(itemDataToRestore.id);
+                  if (product) {
+                    newProducts.set(itemDataToRestore.id, { ...product, quantity: product.quantity + 1 });
+                  }
+                  return newProducts;
+                });
+              }
+            }
+            return newInstances;
+          });
+        }
+      }
+      return updatedComensales;
     });
   }, []);
 
