@@ -1717,4 +1717,3 @@ const App = () => {
 };
 
 export default App;
-" and I want to delete the whole code from the Canvas. Can you do it for 
