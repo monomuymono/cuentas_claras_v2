@@ -493,7 +493,7 @@ const App = () => {
 
 
   // Function to add a full item to a comensal's bill (now includes 10% tip)
-  const handleAddItem = (comensalId, productId) => {
+  const handleAddItem = useCallback((comensalId, productId) => {
     setAvailableProducts(currentProducts => {
       const productInStock = currentProducts.get(productId);
   
@@ -533,7 +533,7 @@ const App = () => {
   
       return newProductsMap;
     });
-  };
+  }, []);
 
   // Function to remove an item or decrease its quantity from a comensal's bill
   const handleRemoveItem = useCallback((comensalId, itemToRemoveIdentifier) => {
@@ -1717,3 +1717,4 @@ const App = () => {
 };
 
 export default App;
+" and I want to delete the whole code from the Canvas. Can you do it for 
