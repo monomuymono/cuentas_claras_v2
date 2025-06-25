@@ -568,16 +568,17 @@ const App = () => {
       });
   
       if (comensalFound && itemDataToRestore) {
-        if (itemDataToRestore.type === 'full') {
-          setAvailableProducts(currentProducts => {
+        setAvailableProducts(currentProducts => {
             const newProducts = new Map(currentProducts);
             const product = newProducts.get(itemDataToRestore.id);
             if (product) {
-              newProducts.set(itemDataToRestore.id, { ...product, quantity: product.quantity + 1 });
+                const quantityToRestore = itemDataToRestore.type === 'shared' ? 1 : itemDataToRestore.quantity;
+                newProducts.set(itemDataToRestore.id, { ...product, quantity: product.quantity + quantityToRestore });
             }
             return newProducts;
-          });
-        } else if (itemDataToRestore.type === 'shared') {
+        });
+
+        if (itemDataToRestore.type === 'shared') {
           setActiveSharedInstances(currentInstances => {
             const newInstances = new Map(currentInstances);
             const shareGroup = newInstances.get(itemDataToRestore.shareInstanceId);
@@ -585,14 +586,6 @@ const App = () => {
               shareGroup.delete(comensalId);
               if (shareGroup.size === 0) {
                 newInstances.delete(itemDataToRestore.shareInstanceId);
-                setAvailableProducts(currentProducts => {
-                  const newProducts = new Map(currentProducts);
-                  const product = newProducts.get(itemDataToRestore.id);
-                  if (product) {
-                    newProducts.set(itemDataToRestore.id, { ...product, quantity: product.quantity + 1 });
-                  }
-                  return newProducts;
-                });
               }
             }
             return newInstances;
@@ -1585,7 +1578,7 @@ const App = () => {
               </label>
               <select
                 id={`product-select-${comensal.id}`}
-                value={comensal.selectedProductId || ""} // Controlled component
+                value={""} // Se resetea después de cada selección
                 onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value))}
                 className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm"
               >
@@ -1603,7 +1596,7 @@ const App = () => {
               {comensal.selectedItems.length > 0 ? (
                 <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
                   {comensal.selectedItems.map(item => (
-                    <li key={String(item.type === 'shared' ? item.shareInstanceId : item.id)} className="flex justify-between items-center text-sm">
+                    <li key={String(item.type === 'shared' ? item.shareInstanceId : item.id) + '-' + item.id} className="flex justify-between items-center text-sm">
                       <span className="font-medium text-gray-700">
                         {item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}
                         {item.type === 'full' && ` (+10% Propina)`}
