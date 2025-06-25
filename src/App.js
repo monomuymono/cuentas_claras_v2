@@ -493,7 +493,7 @@ const App = () => {
 
 
   // Function to add a full item to a comensal's bill (now includes 10% tip)
-  const handleAddItem = useCallback((comensalId, productId) => {
+  const handleAddItem = (comensalId, productId) => {
     setAvailableProducts(currentProducts => {
       const productInStock = currentProducts.get(productId);
   
@@ -533,10 +533,10 @@ const App = () => {
   
       return newProductsMap;
     });
-  }, []);
+  };
 
   // Function to remove an item or decrease its quantity from a comensal's bill
-  const handleRemoveItem = useCallback((comensalId, itemToRemoveIdentifier) => {
+  const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
     let itemDataToRestore = null;
   
     setComensales(currentComensales => {
@@ -594,7 +594,7 @@ const App = () => {
       }
       return updatedComensales;
     });
-  }, []);
+  };
 
 
   // Function to clear all items for a comensal (but keep the comensal) - Refactored for single update
@@ -651,7 +651,7 @@ const App = () => {
 
 
   // Function to handle sharing an item among multiple comensales
-  const handleShareItem = useCallback((productId, sharingComensalIds) => {
+  const handleShareItem = (productId, sharingComensalIds) => {
     setAvailableProducts(currentProducts => {
       const productToShare = currentProducts.get(productId);
       if (!productToShare || Number(productToShare.quantity) <= 0) {
@@ -697,7 +697,7 @@ const App = () => {
 
       return newProductsMap;
     });
-  }, []);
+  };
 
   // Function to add a new comensal
   const handleAddComensal = () => {
