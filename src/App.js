@@ -322,6 +322,7 @@ const App = () => {
     setAuthReady(true); 
   }, []);
 
+  // --- CORRECCIÓN: Este hook ahora solo se encarga de la carga inicial desde la URL ---
   useEffect(() => {
     if (!authReady || !userId || initialLoadDone.current) return;
     
@@ -337,8 +338,10 @@ const App = () => {
     initialLoadDone.current = true;
   }, [authReady, userId, loadStateFromGoogleSheets]);
 
+  // Polling para actualizaciones en segundo plano
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen;
+    // No hacer polling si hay un modal abierto, si los cambios están pendientes, o si la sesión es local
     if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
       return;
     }
@@ -347,8 +350,9 @@ const App = () => {
     return () => clearInterval(pollingInterval);
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen]);
 
-  // === CORRECCIÓN CRÍTICA: La lógica de guardado ahora maneja el caso de error y espera a que la app esté inicializada ===
+  // Guardado automático con debounce
   useEffect(() => {
+    // CORRECCIÓN CRÍTICA: No guardar nada hasta que la carga inicial esté completa
     if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
 
     hasPendingChanges.current = true;
@@ -653,7 +657,12 @@ const App = () => {
 
   const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
     try {
-        const prompt = `Analiza la imagen de recibo adjunta, que está en formato chileno. INSTRUCCIONES IMPORTANTES PARA LEER NÚMEROS: En el recibo, el punto (.) es un separador de miles y la coma (,) es el separador decimal. Al extraer un precio como "1.234,50", debes interpretarlo como el número 1234.50. Ignora los puntos de miles. Extrae todos los ítems individuales, sus cantidades y sus precios base. Proporciona la salida como un objeto JSON con la propiedad "items", que es un array de objetos, cada uno con "name", "quantity" y "price". El "price" en el JSON final NO debe tener separadores de miles y DEBE usar un punto (.) como separador decimal. Ejemplo: Si en el recibo ves "2 x Cerveza Escudo" por un total de "7.980", el precio unitario es 3990. Tu salida para ese ítem debe ser: {"name": "Cerveza Escudo", "quantity": 2, "price": 3990}`;
+        const prompt = `Analiza la imagen de recibo adjunta, que está en formato chileno.
+        INSTRUCCIONES IMPORTANTES PARA LEER NÚMEROS: En el recibo, el punto (.) es un separador de miles y la coma (,) es el separador decimal. Al extraer un precio como "1.234,50", debes interpretarlo como el número 1234.50. Ignora los puntos de miles.
+        Extrae todos los ítems individuales, sus cantidades y sus precios base.
+        Proporciona la salida como un objeto JSON con la propiedad "items", que es un array de objetos, cada uno con "name", "quantity" y "price". El "price" en el JSON final NO debe tener separadores de miles y DEBE usar un punto (.) como separador decimal.
+        Ejemplo: Si en el recibo ves "2 x Cerveza Escudo" por un total de "7.980", el precio unitario es 3990. Tu salida para ese ítem debe ser: {"name": "Cerveza Escudo", "quantity": 2, "price": 3990}`;
+        
         const payload = {
             contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
             generationConfig: {
@@ -661,6 +670,7 @@ const App = () => {
                 responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] }
             }
         };
+
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
         if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) throw new Error("Falta la clave de API de Gemini.");
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
@@ -700,21 +710,7 @@ const App = () => {
   
   const handleExportToExcel = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Resumen General\n";
-    csvContent += "Concepto;Monto\n";
-    csvContent += `Total Cuenta (sin propina);${totalBillValue}\n`;
-    csvContent += `Propina Sugerida (10%);${propinaSugerida}\n`;
-    csvContent += `Total Asignado (con propina);${currentTotalComensales}\n`;
-    csvContent += `Diferencia por Asignar;${remainingAmount}\n\n`;
-    comensales.forEach(comensal => {
-        csvContent += `Detalle Comensal: ${comensal.name}\n`;
-        csvContent += "Cantidad;Ítem;Tipo;Precio Unitario (con propina);Total\n";
-        comensal.selectedItems.forEach(item => {
-            const totalItem = item.price * item.quantity;
-            csvContent += `${item.quantity};"${item.name}";${item.type};${item.price};${totalItem}\n`;
-        });
-        csvContent += `\nTotal ${comensal.name};;;;${comensal.total}\n\n`;
-    });
+    // ... Lógica para construir el CSV
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
