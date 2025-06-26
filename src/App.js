@@ -189,7 +189,7 @@ const App = () => {
   const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
   const [activeSharedInstances, setActiveSharedInstances] = useState(new Map());
   const hasPendingChanges = useRef(false);
-  const initialLoadComplete = useRef(false);
+  const initialLoadDone = useRef(false);
   const MAX_COMENSALES = 20;
 
   // =================================================================================
@@ -237,7 +237,7 @@ const App = () => {
       setAvailableProducts(new Map());
       setComensales([]);
       setActiveSharedInstances(new Map());
-      setShareId(`local-session-${Date.now()}`); // Inicia una nueva sesión local
+      setShareId(`local-session-${Date.now()}`); 
       setShareLink('');
     }
   }, []);
@@ -324,7 +324,7 @@ const App = () => {
 
   // --- CORRECCIÓN: Este hook ahora solo se encarga de la carga inicial desde la URL ---
   useEffect(() => {
-    if (!authReady || !userId || initialLoadComplete.current) return;
+    if (!authReady || !userId || initialLoadDone.current) return;
     
     const urlParams = new URLSearchParams(window.location.search);
     const idFromUrl = urlParams.get('id');
@@ -333,15 +333,17 @@ const App = () => {
       setShareId(idFromUrl);
       loadStateFromGoogleSheets(idFromUrl);
     } else {
+      // Inicia una nueva sesión local, no persistente hasta que se comparta.
       setShareId(`local-session-${Date.now()}`);
     }
-    initialLoadComplete.current = true;
+    initialLoadDone.current = true;
   }, [authReady, userId, loadStateFromGoogleSheets]);
 
-  // --- CORRECCIÓN: Polling se detiene si hay un modal abierto ---
+  // Polling para actualizaciones en segundo plano
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen;
-    if (!shareId || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
+    // No hacer polling si hay un modal abierto, si los cambios están pendientes, o si la sesión es local
+    if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
       return;
     }
 
@@ -349,8 +351,9 @@ const App = () => {
     return () => clearInterval(pollingInterval);
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen]);
 
+  // Guardado automático con debounce
   useEffect(() => {
-    if (!shareId || !authReady || isImageProcessing || shareId.startsWith('local-')) return;
+    if (!shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
 
     hasPendingChanges.current = true;
     const handler = setTimeout(() => {
@@ -551,7 +554,6 @@ const App = () => {
         handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
     });
     
-    // Forzamos una actualización final para asegurar que la UI refleje el estado vacío.
     setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
     setComensalToClearId(null);
   };
@@ -589,18 +591,24 @@ const App = () => {
       setIsClearAllComensalesModalOpen(false);
       return;
     }
-    const newProducts = new Map();
-    // Reconstruir un inventario desde cero para evitar errores
-    const allProductDefinitions = new Map();
-    [...availableProducts.values(), ...comensales.flatMap(c => c.selectedItems)].forEach(item => {
-        if (!allProductDefinitions.has(item.id)) {
-            allProductDefinitions.set(item.id, { id: item.id, name: item.name, price: item.originalBasePrice || item.price });
+    
+    let newProducts = new Map(availableProducts);
+    let newInstances = new Map(activeSharedInstances);
+    
+    comensales.forEach(comensal => {
+      comensal.selectedItems.forEach(item => {
+        const product = newProducts.get(item.id);
+        if (product) {
+          if (item.type === 'full') {
+            newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
+          } else if (item.type === 'shared') {
+            if (newInstances.has(item.shareInstanceId)) {
+              newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
+              newInstances.delete(item.shareInstanceId);
+            }
+          }
         }
-    });
-
-    allProductDefinitions.forEach(prodDef => {
-        const originalQty = [...availableProducts.values(), ...comensales.flatMap(c => c.selectedItems)].filter(item => item.id === prodDef.id).reduce((sum, item) => sum + item.quantity, 0);
-        newProducts.set(prodDef.id, { ...prodDef, quantity: originalQty });
+      });
     });
 
     setAvailableProducts(newProducts);
@@ -609,12 +617,11 @@ const App = () => {
     setIsClearAllComensalesModalOpen(false);
   };
 
-
   const openClearAllComensalesModal = () => setIsClearAllComensalesModalOpen(true);
   
   const confirmResetAll = async () => { 
     setIsResetAllModalOpen(false);
-    if (shareId && !shareId.startsWith('local-') && userId) {
+    if (shareId && userId && !shareId.startsWith('local-')) {
       await deleteStateFromGoogleSheets(shareId);
     }
     handleResetAll(true);
@@ -797,14 +804,16 @@ const App = () => {
     setItemToRemoveFromInventoryId('');
   };
   
+  // === CORRECCIÓN CRÍTICA: Lógica de generar enlace autónoma ===
   const handleGenerateShareLink = async () => {
     if (!userId) {
       alert("La sesión no está lista. Intenta de nuevo en un momento.");
       return;
     }
     
-    const currentShareId = shareId && !shareId.startsWith('local-') ? shareId : `session_${Date.now()}`;
-    
+    // Siempre genera un nuevo ID persistente para un nuevo enlace
+    const newShareId = `session_${Date.now()}`;
+
     const dataToSave = {
       comensales,
       availableProducts: Object.fromEntries(availableProducts),
@@ -813,11 +822,11 @@ const App = () => {
     };
 
     try {
-      await saveStateToGoogleSheets(currentShareId, dataToSave);
-      const fullLink = `${window.location.origin}${window.location.pathname}?id=${currentShareId}`;
+      await saveStateToGoogleSheets(newShareId, dataToSave);
+      const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`;
       
-      // Actualizar el estado y la URL solo después de guardar con éxito
-      setShareId(currentShareId);
+      // Actualiza el estado y la URL después de guardar con éxito
+      setShareId(newShareId);
       setShareLink(fullLink);
       window.history.pushState({ path: fullLink }, '', fullLink);
       
@@ -895,7 +904,6 @@ const App = () => {
         </div>
       )}
 
-      {/* Secciones de la UI restauradas */}
       <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Agregar Nuevo Comensal</h2>
         <div className="flex flex-col sm:flex-row gap-4 items-center">
