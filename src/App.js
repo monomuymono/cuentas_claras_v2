@@ -532,20 +532,25 @@ const App = () => {
   };
   
   const confirmClearComensal = () => {
-    setIsClearComensalModalOpen(false);
-    const idToClear = comensalToClearId;
-    if (idToClear === null) return;
-  
-    const comensalToClear = comensales.find(c => c.id === idToClear);
-    if (!comensalToClear) return;
-  
+    const comensalToClear = comensales.find(c => c.id === comensalToClearId);
+    if (!comensalToClear) {
+        setIsClearComensalModalOpen(false);
+        return;
+    }
+
     const itemsToProcess = [...comensalToClear.selectedItems];
     itemsToProcess.forEach(item => {
-      handleRemoveItem(idToClear, item.type === 'shared' ? item.shareInstanceId : item.id);
+        handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
     });
-  
+
+    // Como handleRemoveItem es asíncrono, el estado no se actualiza inmediatamente.
+    // Hacemos una limpieza final local para la UI.
+    setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
+    
+    setIsClearComensalModalOpen(false);
     setComensalToClearId(null);
   };
+
 
   const openClearComensalModal = (comensalId) => {
     setComensalToClearId(comensalId);
@@ -555,14 +560,17 @@ const App = () => {
   const confirmRemoveComensal = () => {
     const idToRemove = comensalToRemoveId;
     if (idToRemove === null) return;
-
-    // Llama a la lógica de limpiar, asegurándose de que tiene el ID correcto
-    setComensalToClearId(idToRemove);
-    confirmClearComensal();
     
-    // Filtra al comensal en una actualización de estado separada
+    const comensalToRemove = comensales.find(c => c.id === idToRemove);
+    if (comensalToRemove) {
+      const itemsToRemove = [...comensalToRemove.selectedItems];
+      itemsToRemove.forEach(item => {
+        const identifier = item.type === 'shared' ? item.shareInstanceId : item.id;
+        handleRemoveItem(idToRemove, identifier);
+      });
+    }
+    
     setComensales(prev => prev.filter(c => c.id !== idToRemove)); 
-    
     setIsRemoveComensalModalOpen(false);
     setComensalToRemoveId(null);
   };
@@ -577,34 +585,23 @@ const App = () => {
       setIsClearAllComensalesModalOpen(false);
       return;
     }
+  
+    let tempProducts = new Map(availableProducts);
     
-    // Esta es la forma más simple y segura: simplemente restaurar todo el inventario
-    const newProducts = new Map();
-    const originalInventory = new Map();
-    // Construir un inventario "original" sumando lo disponible y lo asignado
-    availableProducts.forEach((prod, id) => {
-        originalInventory.set(id, { ...prod, quantity: prod.quantity});
+    comensales.forEach(comensal => {
+      comensal.selectedItems.forEach(item => {
+        const product = tempProducts.get(item.id);
+        if (product) {
+          if (item.type === 'full') {
+            tempProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
+          } else if (item.type === 'shared') {
+            tempProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
+          }
+        }
+      });
     });
-    comensales.forEach(c => {
-        c.selectedItems.forEach(item => {
-            const product = originalInventory.get(item.id);
-            if(product) {
-                if (item.type === 'full') {
-                    product.quantity += item.quantity;
-                } else if (item.type === 'shared') {
-                    // Evitar doble conteo
-                    if(activeSharedInstances.has(item.shareInstanceId)){
-                        product.quantity += 1;
-                        activeSharedInstances.delete(item.shareInstanceId);
-                    }
-                }
-            } else { // Si el producto no estaba en available, lo era todo
-                originalInventory.set(item.id, {...item, quantity: item.quantity});
-            }
-        });
-    });
-
-    setAvailableProducts(originalInventory);
+  
+    setAvailableProducts(tempProducts);
     setComensales([]);
     setActiveSharedInstances(new Map());
     setIsClearAllComensalesModalOpen(false);
@@ -625,25 +622,19 @@ const App = () => {
   
   const openResetAllModal = () => setIsResetAllModalOpen(true);
   
-  // El resto de funciones (API, exportar, etc.) no necesitan cambios
   const handleImageUpload = (event) => { /* ... */ };
   const analyzeImageWithGemini = async (base64ImageData, mimeType) => { /* ... */ };
   const handleExportToExcel = () => { /* ... */ };
   const handleManualAddItem = () => { /* ... */ };
-  const handleRemoveInventoryItem = () => setIsRemoveInventoryItemModalOpen(true);
+  const handleRemoveInventoryItem = () => { /* ... */ };
   const confirmRemoveInventoryItem = () => { /* ... */ };
   const handleGenerateShareLink = async () => { /* ... */ };
 
   // ==================================================================
-  // === CÁLCULOS DERIVADOS PARA LA UI (Corregidos) ===
+  // === CÁLCULOS DERIVADOS PARA LA UI ===
   // ==================================================================
   const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + (p.price * p.quantity), 0) + 
-                       [...comensales].reduce((sum, c) => sum + c.selectedItems.reduce((iSum, i) => {
-                         // Para ítems compartidos, el originalBasePrice ya está dividido. Hay que reconstruirlo.
-                         if (i.type === 'shared') return iSum + (i.originalBasePrice * i.sharedByCount);
-                         return iSum + (i.originalBasePrice * i.quantity);
-                       }, 0), 0);
-  
+                       [...comensales].reduce((sum, c) => sum + c.selectedItems.reduce((iSum, i) => iSum + (i.originalBasePrice * i.quantity), 0), 0);
   const propinaSugerida = totalBillValue * 0.10;
   const currentTotalComensales = comensales.reduce((sum, comensal) => sum + comensal.total, 0);
   const totalBillWithReceiptTip = totalBillValue + propinaSugerida;
@@ -707,21 +698,75 @@ const App = () => {
         </div>
       )}
 
-      {/* El resto del JSX se mantiene igual que antes */}
+      <div className="text-center mb-8 flex flex-wrap justify-center gap-4">
+          <button onClick={handleGenerateShareLink} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Generar Enlace</button>
+          <button onClick={() => setIsShareModalOpen(true)} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir Ítem</button>
+          {comensales.length > 0 && (<button onClick={openClearAllComensalesModal} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Comensales</button>)}
+          <button onClick={handleExportToExcel} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Exportar a Excel</button>
+          <button onClick={openResetAllModal} className="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Resetear Todo</button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {comensales.map(comensal => (
           <div key={String(comensal.id)} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 flex flex-col h-full">
-            {/* ... Contenido de la tarjeta del comensal ... */}
+            <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
+            <div className="mb-4">
+              <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-2">Agregar Ítem:</label>
+              <select id={`product-select-${comensal.id}`} value="" onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                <option value="" disabled>Selecciona un producto</option>
+                {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
+              </select>
+            </div>
+            <div className="flex-grow">
+              {comensal.selectedItems.length > 0 ? (
+                <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
+                  {comensal.selectedItems.map((item, index) => (
+                    <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
+                      <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`} (+10% Prop.)</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('es-CL')}</span>
+                        <button onClick={() => handleRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
+            </div>
+            <div className="mt-auto pt-4 border-t border-gray-200 flex justify-between items-center">
+              <span className="text-lg font-semibold text-gray-800">Total:</span>
+              <span className="text-2xl font-extrabold text-blue-700">${comensal.total.toLocaleString('es-CL')}</span>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => openClearComensalModal(comensal.id)} className="w-full bg-orange-500 text-white py-2 px-4 rounded-md shadow-md hover:bg-orange-600">Limpiar</button>
+              <button onClick={() => openRemoveComensalModal(comensal.id)} className="w-full bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar</button>
+            </div>
           </div>
         ))}
       </div>
 
       <footer className="mt-12 p-6 bg-white rounded-xl shadow-lg border border-gray-200 max-w-2xl mx-auto text-center">
-        {/* ... */}
+        <h2 className="text-2xl font-bold text-blue-600 mb-4">¡Cuentas Claras!</h2>
+        <div className="flex justify-around items-center text-xl font-semibold">
+          <div className="text-gray-700">
+            Total Asignado (con propina): <span className="text-green-700 font-extrabold">${currentTotalComensales.toLocaleString('es-CL')}</span>
+          </div>
+          <div className="text-gray-700">
+            Propina Pendiente: <span className="text-orange-700 font-extrabold">${Math.round(remainingPropinaDisplay).toLocaleString('es-CL')}</span>
+          </div>
+        </div>
+        <p className="mt-4 text-gray-500 text-sm">
+          Puedes ajustar los montos seleccionando y deseleccionando ítems para cada comensal.
+        </p>
       </footer>
       
-      {/* ... (Todos los modales) ... */}
-
+      <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
+      <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
+      <ConfirmationModal isOpen={isClearAllComensalesModalOpen} onClose={() => setIsClearAllComensalesModalOpen(false)} onConfirm={confirmClearAllComensales} message="¿Estás seguro de que deseas eliminar a TODOS los comensales?" confirmText="Eliminar Todos" />
+      <ConfirmationModal isOpen={isResetAllModalOpen} onClose={() => setIsResetAllModalOpen(false)} onConfirm={confirmResetAll} message="¿Estás seguro de que deseas resetear toda la aplicación?" confirmText="Sí, Resetear Todo" cancelText="Cancelar" />
+      <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
+      <ConfirmationModal isOpen={isRemoveInventoryItemModalOpen} onClose={() => setIsRemoveInventoryItemModalOpen(false)} onConfirm={confirmRemoveInventoryItem} message={`¿Estás seguro de que quieres eliminar "${availableProducts.get(Number(itemToRemoveFromInventoryId))?.name || 'este ítem'}" del inventario?`} confirmText="Sí, Eliminar" cancelText="No, Mantener" />
     </div>
   );
 };
