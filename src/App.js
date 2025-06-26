@@ -159,13 +159,13 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
   );
 };
 
-// === NUEVO COMPONENTE: MODAL DE RESUMEN CON ESTILOS DE IMPRESIÓN ===
+// Componente para el modal de resumen
 const SummaryModal = ({ isOpen, onClose, summaryData }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50 print:bg-white print:block">
-      <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg mx-4 print:shadow-none print:border-none print:m-0 print:max-w-none print:rounded-none" id="summary-to-print">
+      <div id="summary-to-print" className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg mx-4 print:shadow-none print:border-none print:m-0 print:max-w-none print:rounded-none">
         <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
         <div className="space-y-6">
           {summaryData.map(diner => (
@@ -187,18 +187,18 @@ const SummaryModal = ({ isOpen, onClose, summaryData }) => {
           ))}
         </div>
         <div className="flex justify-end space-x-4 mt-8 print:hidden">
-          <button
-              onClick={() => window.print()}
-              className="px-5 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-              Imprimir
-          </button>
-          <button
-              onClick={onClose}
-              className="px-5 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-          >
-              Cerrar
-          </button>
+            <button
+                onClick={() => window.print()}
+                className="px-5 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                Imprimir
+            </button>
+            <button
+                onClick={onClose}
+                className="px-5 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+            >
+                Cerrar
+            </button>
         </div>
       </div>
     </div>
@@ -213,15 +213,17 @@ const PrintStyles = () => (
         body > *:not(#printable-area) {
           display: none;
         }
-        #printable-area {
-          display: block;
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
+        #printable-area, #printable-area > * {
+          visibility: hidden;
         }
-        #printable-area > *:not(#summary-to-print) {
-          display: none;
+        #summary-to-print, #summary-to-print * {
+          visibility: visible;
+        }
+        #summary-to-print {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
         }
       }
     `}
@@ -854,8 +856,8 @@ const App = () => {
 
   const handleOpenSummaryModal = () => {
     const data = comensales.map(comensal => {
-      const totalConPropina = comensal.total;
-      const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + (item.originalBasePrice * item.quantity), 0);
+      const totalConPropina = comensal.total || 0;
+      const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
       const propina = totalConPropina - totalSinPropina;
       return {
         id: comensal.id,
@@ -869,15 +871,15 @@ const App = () => {
     setIsSummaryModalOpen(true);
   };
   // ==================================================================
-  // === CÁLCULOS DERIVADOS PARA LA UI (Corregidos) ===
+  // === CÁLCULOS DERIVADOS PARA LA UI (Corregidos y Robustos) ===
   // ==================================================================
-  const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + (p.price * p.quantity), 0) + 
-                       [...comensales].reduce((sum, c) => sum + c.selectedItems.reduce((iSum, i) => iSum + (i.originalBasePrice * i.quantity), 0), 0);
+  const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + ((p.price || 0) * (p.quantity || 0)), 0) + 
+                       [...comensales].reduce((sum, c) => sum + (c.selectedItems || []).reduce((iSum, i) => iSum + ((i.originalBasePrice || 0) * (i.quantity || 0)), 0), 0);
   const propinaSugerida = totalBillValue * 0.10;
-  const currentTotalComensales = comensales.reduce((sum, comensal) => sum + comensal.total, 0);
+  const currentTotalComensales = comensales.reduce((sum, comensal) => sum + (comensal.total || 0), 0);
   const totalBillWithReceiptTip = totalBillValue + propinaSugerida;
   const remainingAmount = totalBillWithReceiptTip - currentTotalComensales;
-  const totalPerItemTipsCollected = comensales.reduce((sum, comensal) => sum + comensal.selectedItems.reduce((itemSum, item) => itemSum + ((item.price * item.quantity) - (item.originalBasePrice * item.quantity)), 0), 0);
+  const totalPerItemTipsCollected = comensales.reduce((sum, comensal) => sum + (comensal.selectedItems || []).reduce((itemSum, item) => itemSum + (((item.price || 0) * (item.quantity || 0)) - ((item.originalBasePrice || 0) * (item.quantity || 0))), 0), 0);
   const remainingPropinaDisplay = propinaSugerida - totalPerItemTipsCollected;
 
   return (
@@ -918,7 +920,7 @@ const App = () => {
         {userId && (
           <div className="bg-white p-4 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200 text-center text-sm text-gray-600">
             <p>Tu ID de sesión: <span className="font-semibold text-gray-800">{userId}</span></p>
-            {shareId && <p>ID de sesión compartida: <span className="font-semibold text-gray-800">{shareId}</span></p>}
+            {shareId && !shareId.startsWith('local-') && <p>ID de sesión compartida: <span className="font-semibold text-gray-800">{shareId}</span></p>}
             {shareLink && (
               <div className="mt-2 flex flex-col items-center">
                 <p>Enlace compartible:</p>
