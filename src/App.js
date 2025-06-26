@@ -333,12 +333,11 @@ const App = () => {
   }, [authReady, userId]);
 
   useEffect(() => {
-    if (shareId) {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('id') !== shareId) {
+    if (shareId && !window.location.search.includes(shareId)) {
         window.history.replaceState({}, '', `?id=${shareId}`);
-      }
-      loadStateFromGoogleSheets(shareId);
+    }
+    if (shareId) {
+        loadStateFromGoogleSheets(shareId);
     }
   }, [shareId, loadStateFromGoogleSheets]);
 
@@ -542,39 +541,22 @@ const App = () => {
   };
   
   const confirmClearComensal = () => {
-    setIsClearComensalModalOpen(false);
     const comensalToClear = comensales.find(c => c.id === comensalToClearId);
     if (!comensalToClear) {
-      setComensalToClearId(null);
-      return;
+        setIsClearComensalModalOpen(false);
+        setComensalToClearId(null);
+        return;
     }
 
-    const newProducts = new Map(availableProducts);
-    const newInstances = new Map(activeSharedInstances);
-    
-    comensalToClear.selectedItems.forEach(item => {
-      const product = newProducts.get(item.id);
-      if (product) {
-        if (item.type === 'full') {
-          newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
-        } else if (item.type === 'shared') {
-          const shareGroup = newInstances.get(item.shareInstanceId);
-          if (shareGroup) {
-            shareGroup.delete(comensalToClear.id);
-            if (shareGroup.size === 0) {
-              newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
-              newInstances.delete(item.shareInstanceId);
-            }
-          }
-        }
-      }
+    const itemsToRemove = [...comensalToClear.selectedItems];
+    itemsToRemove.forEach(item => {
+        handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
     });
-
-    const newComensales = comensales.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c);
-
-    setAvailableProducts(newProducts);
-    setActiveSharedInstances(newInstances);
-    setComensales(newComensales);
+    
+    // El estado se actualiza dentro de handleRemoveItem, pero para asegurar la UI
+    // se puede forzar una actualización final aquí
+    setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
+    setIsClearComensalModalOpen(false);
     setComensalToClearId(null);
   };
 
@@ -589,26 +571,11 @@ const App = () => {
     
     const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
     if (comensalToRemoveData) {
-      const newProducts = new Map(availableProducts);
-      const newInstances = new Map(activeSharedInstances);
-      comensalToRemoveData.selectedItems.forEach(item => {
-        const product = newProducts.get(item.id);
-        if (product) {
-          if (item.type === 'full') newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
-          else if (item.type === 'shared') {
-            const shareGroup = newInstances.get(item.shareInstanceId);
-            if (shareGroup) {
-              shareGroup.delete(idToRemove);
-              if (shareGroup.size === 0) {
-                newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
-                newInstances.delete(item.shareInstanceId);
-              }
-            }
-          }
-        }
+      const itemsToRemove = [...comensalToRemoveData.selectedItems];
+      itemsToRemove.forEach(item => {
+        const identifier = item.type === 'shared' ? item.shareInstanceId : item.id;
+        handleRemoveItem(idToRemove, identifier);
       });
-      setAvailableProducts(newProducts);
-      setActiveSharedInstances(newInstances);
     }
     
     setComensales(prev => prev.filter(c => c.id !== idToRemove)); 
@@ -622,26 +589,23 @@ const App = () => {
   };
 
   const confirmClearAllComensales = () => {
-    if (comensales.length === 0) {
-      setIsClearAllComensalesModalOpen(false);
-      return;
-    }
+    // Restaurar inventario a su estado original
+    const newProducts = new Map();
+    availableProducts.forEach((prod, id) => newProducts.set(id, {...prod}));
     
-    const newProducts = new Map(availableProducts);
     const processedInstances = new Set();
-    
-    comensales.forEach(c => {
-        c.selectedItems.forEach(item => {
-            const product = newProducts.get(item.id);
-            if (product) {
-                if (item.type === 'full') {
-                    newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
-                } else if (item.type === 'shared' && !processedInstances.has(item.shareInstanceId)) {
-                    newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
-                    processedInstances.add(item.shareInstanceId);
-                }
-            }
-        });
+    comensales.forEach(comensal => {
+      comensal.selectedItems.forEach(item => {
+        const product = newProducts.get(item.id);
+        if (product) {
+          if (item.type === 'full') {
+            product.quantity += item.quantity;
+          } else if (item.type === 'shared' && !processedInstances.has(item.shareInstanceId)) {
+            product.quantity += 1;
+            processedInstances.add(item.shareInstanceId);
+          }
+        }
+      });
     });
 
     setAvailableProducts(newProducts);
@@ -842,7 +806,7 @@ const App = () => {
     if (!shareId) setShareId(currentShareId);
 
     const dataToSave = {
-      comensales: comensales,
+      comensales,
       availableProducts: Object.fromEntries(availableProducts),
       activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
       lastUpdated: new Date()
@@ -951,8 +915,8 @@ const App = () => {
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Administrar Inventario</h2>
         <div className="flex flex-col sm:flex-row gap-4 items-center">
           <select value={itemToRemoveFromInventoryId} onChange={(e) => setItemToRemoveFromInventoryId(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-            <option value="">Selecciona ítem a eliminar del inventario</option>
-            {Array.from(availableProducts.values()).map(product => (<option key={String(product.id)} value={product.id}>{product.name}</option>))}
+            <option value="">Selecciona ítem a eliminar</option>
+            {Array.from(availableProducts.values()).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${product.price.toLocaleString('de-DE')}) (Disp: {product.quantity})</option>))}
           </select>
           <button onClick={handleRemoveInventoryItem} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 w-full sm:w-auto">Eliminar del Inventario</button>
         </div>
