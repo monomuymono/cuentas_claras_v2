@@ -333,11 +333,12 @@ const App = () => {
   }, [authReady, userId]);
 
   useEffect(() => {
-    if (shareId && !window.location.search.includes(shareId)) {
-        window.history.replaceState({}, '', `?id=${shareId}`);
-    }
     if (shareId) {
-        loadStateFromGoogleSheets(shareId);
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('id') !== shareId) {
+        window.history.replaceState({}, '', `?id=${shareId}`);
+      }
+      loadStateFromGoogleSheets(shareId);
     }
   }, [shareId, loadStateFromGoogleSheets]);
 
@@ -553,8 +554,6 @@ const App = () => {
         handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
     });
     
-    // El estado se actualiza dentro de handleRemoveItem, pero para asegurar la UI
-    // se puede forzar una actualización final aquí
     setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
     setIsClearComensalModalOpen(false);
     setComensalToClearId(null);
@@ -589,23 +588,26 @@ const App = () => {
   };
 
   const confirmClearAllComensales = () => {
-    // Restaurar inventario a su estado original
-    const newProducts = new Map();
-    availableProducts.forEach((prod, id) => newProducts.set(id, {...prod}));
+    if (comensales.length === 0) {
+      setIsClearAllComensalesModalOpen(false);
+      return;
+    }
     
+    const newProducts = new Map(availableProducts);
     const processedInstances = new Set();
-    comensales.forEach(comensal => {
-      comensal.selectedItems.forEach(item => {
-        const product = newProducts.get(item.id);
-        if (product) {
-          if (item.type === 'full') {
-            product.quantity += item.quantity;
-          } else if (item.type === 'shared' && !processedInstances.has(item.shareInstanceId)) {
-            product.quantity += 1;
-            processedInstances.add(item.shareInstanceId);
-          }
-        }
-      });
+    
+    comensales.forEach(c => {
+        c.selectedItems.forEach(item => {
+            const product = newProducts.get(item.id);
+            if (product) {
+                if (item.type === 'full') {
+                    newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
+                } else if (item.type === 'shared' && !processedInstances.has(item.shareInstanceId)) {
+                    newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
+                    processedInstances.add(item.shareInstanceId);
+                }
+            }
+        });
     });
 
     setAvailableProducts(newProducts);
@@ -651,7 +653,13 @@ const App = () => {
 
   const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
     try {
-        const prompt = `Analiza la imagen de recibo adjunta. Extrae todos los ítems individuales, sus cantidades y sus precios base. Proporciona la salida como un objeto JSON con la propiedad "items", que es un array de objetos, cada uno con "name", "quantity" y "price".`;
+        // === PROMPT CORREGIDO PARA EL FORMATO DE NÚMEROS CHILENO ===
+        const prompt = `Analiza la imagen de recibo adjunta, que está en formato chileno.
+        INSTRUCCIONES IMPORTANTES PARA LEER NÚMEROS: En el recibo, el punto (.) es un separador de miles y la coma (,) es el separador decimal. Al extraer un precio como "1.234,50", debes interpretarlo como el número 1234.50. Ignora los puntos de miles.
+        Extrae todos los ítems individuales, sus cantidades y sus precios base.
+        Proporciona la salida como un objeto JSON con la propiedad "items", que es un array de objetos, cada uno con "name", "quantity" y "price". El "price" en el JSON final NO debe tener separadores de miles y DEBE usar un punto (.) como separador decimal.
+        Ejemplo: Si en el recibo ves "2 x Cerveza Escudo" por un total de "7.980", el precio unitario es 3990. Tu salida para ese ítem debe ser: {"name": "Cerveza Escudo", "quantity": 2, "price": 3990}`;
+        
         const payload = {
             contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
             generationConfig: {
@@ -890,7 +898,6 @@ const App = () => {
         </div>
       )}
 
-      {/* Secciones de la UI restauradas */}
       <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Agregar Nuevo Comensal</h2>
         <div className="flex flex-col sm:flex-row gap-4 items-center">
