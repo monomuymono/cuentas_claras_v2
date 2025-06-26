@@ -322,7 +322,6 @@ const App = () => {
     setAuthReady(true); 
   }, []);
 
-  // --- CORRECCIÓN: Este hook ahora solo se encarga de la carga inicial desde la URL ---
   useEffect(() => {
     if (!authReady || !userId || initialLoadDone.current) return;
     
@@ -338,7 +337,6 @@ const App = () => {
     initialLoadDone.current = true;
   }, [authReady, userId, loadStateFromGoogleSheets]);
 
-  // Polling para actualizaciones en segundo plano
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen;
     if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
@@ -349,7 +347,7 @@ const App = () => {
     return () => clearInterval(pollingInterval);
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen]);
 
-  // Guardado automático con debounce
+  // === CORRECCIÓN CRÍTICA: La lógica de guardado ahora maneja el caso de error ===
   useEffect(() => {
     if (!shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
 
@@ -362,8 +360,14 @@ const App = () => {
           lastUpdated: new Date().toISOString()
       };
       saveStateToGoogleSheets(shareId, dataToSave)
-        .then(() => { hasPendingChanges.current = false; })
-        .catch((e) => { console.error("El guardado falló:", e.message); });
+        .then(() => { 
+          hasPendingChanges.current = false; 
+        })
+        .catch((e) => { 
+          console.error("El guardado falló:", e.message);
+          // Reseteamos la bandera para permitir nuevos intentos de guardado y evitar el bloqueo.
+          hasPendingChanges.current = false;
+        });
     }, 1000);
     return () => clearTimeout(handler);
   }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
@@ -547,7 +551,6 @@ const App = () => {
       return;
     }
   
-    // Usamos una copia para iterar, ya que el estado se actualizará con cada llamada a handleRemoveItem.
     const itemsToRemove = [...comensalToClear.selectedItems];
     itemsToRemove.forEach(item => {
         handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
@@ -699,7 +702,21 @@ const App = () => {
   
   const handleExportToExcel = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    // ... Lógica para construir el CSV
+    csvContent += "Resumen General\n";
+    csvContent += "Concepto;Monto\n";
+    csvContent += `Total Cuenta (sin propina);${totalBillValue}\n`;
+    csvContent += `Propina Sugerida (10%);${propinaSugerida}\n`;
+    csvContent += `Total Asignado (con propina);${currentTotalComensales}\n`;
+    csvContent += `Diferencia por Asignar;${remainingAmount}\n\n`;
+    comensales.forEach(comensal => {
+        csvContent += `Detalle Comensal: ${comensal.name}\n`;
+        csvContent += "Cantidad;Ítem;Tipo;Precio Unitario (con propina);Total\n";
+        comensal.selectedItems.forEach(item => {
+            const totalItem = item.price * item.quantity;
+            csvContent += `${item.quantity};"${item.name}";${item.type};${item.price};${totalItem}\n`;
+        });
+        csvContent += `\nTotal ${comensal.name};;;;${comensal.total}\n\n`;
+    });
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -717,7 +734,6 @@ const App = () => {
     }
     const price = parseFloat(manualItemPrice);
     const quantity = parseInt(manualItemQuantity);
-
     setAvailableProducts(prevMap => {
         const newMap = new Map(prevMap);
         const name = manualItemName.trim();
@@ -730,7 +746,6 @@ const App = () => {
         }
         return newMap;
     });
-
     setManualItemName('');
     setManualItemPrice('');
     setManualItemQuantity('');
@@ -750,13 +765,11 @@ const App = () => {
   const confirmRemoveInventoryItem = () => {
     const itemIdToDelete = parseInt(itemToRemoveFromInventoryId);
     if(isNaN(itemIdToDelete)) return;
-
     setAvailableProducts(prev => {
         const newMap = new Map(prev);
         newMap.delete(itemIdToDelete);
         return newMap;
     });
-
     const newComensales = comensales.map(comensal => {
         const newSelectedItems = comensal.selectedItems.filter(item => item.id !== itemIdToDelete);
         if (newSelectedItems.length < comensal.selectedItems.length) {
@@ -766,7 +779,6 @@ const App = () => {
         return comensal;
     });
     setComensales(newComensales);
-
     setIsRemoveInventoryItemModalOpen(false);
     setItemToRemoveFromInventoryId('');
   };
@@ -782,7 +794,6 @@ const App = () => {
       comensales,
       availableProducts: Object.fromEntries(availableProducts),
       activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-      lastUpdated: new Date()
     };
 
     try {
