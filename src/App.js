@@ -13,7 +13,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, c
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 print:hidden">
       <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm mx-4 text-center">
         <h2 className="text-xl font-bold text-gray-800 mb-4">Confirmar Acción</h2>
         <p className="text-gray-700 mb-6">{message}</p>
@@ -36,7 +36,6 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, c
   );
 };
 
-
 // Componente para el modal de compartir ítems
 const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShareConfirm }) => {
   const [selectedProductToShare, setSelectedProductToShare] = useState('');
@@ -44,7 +43,6 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
   const [isShareWarningModalOpen, setIsShareWarningModalOpen] = useState(false);
   const [tempShareProductId, setTempShareProductId] = useState(null);
   const [tempSharingComensalIds, setTempSharingComensalIds] = useState([]);
-
 
   useEffect(() => {
     if (isOpen) {
@@ -159,6 +157,55 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
   );
 };
 
+// === NUEVO COMPONENTE: MODAL DE RESUMEN ===
+const SummaryModal = ({ isOpen, onClose, summaryData }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50 print:bg-white">
+      <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg mx-4 print:shadow-none print:border">
+        <div id="summary-content">
+          <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
+          <div className="space-y-6">
+            {summaryData.map(diner => (
+              <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4">
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
+                <div className="flex justify-between text-gray-600">
+                  <span>Consumo (sin propina):</span>
+                  <span>${diner.totalSinPropina.toLocaleString('de-DE')}</span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>Propina (10%):</span>
+                  <span>${diner.propina.toLocaleString('de-DE')}</span>
+                </div>
+                <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
+                  <span>TOTAL A PAGAR:</span>
+                  <span>${diner.totalConPropina.toLocaleString('de-DE')}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end space-x-4 mt-8 print:hidden">
+            <button
+                onClick={() => window.print()}
+                className="px-5 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                Imprimir
+            </button>
+            <button
+                onClick={onClose}
+                className="px-5 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+            >
+                Cerrar
+            </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 const App = () => {
   const [userId, setUserId] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -183,6 +230,8 @@ const App = () => {
   const [comensalToRemoveId, setComensalToRemoveId] = useState(null);
   const [isClearAllComensalesModalOpen, setIsClearAllComensalesModalOpen] = useState(false);
   const [isResetAllModalOpen, setIsResetAllModalOpen] = useState(false); 
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [summaryData, setSummaryData] = useState([]);
   
   const [isImageProcessing, setIsImageProcessing] = useState(false);
   const [imageProcessingError, setImageProcessingError] = useState(null);
@@ -322,7 +371,6 @@ const App = () => {
     setAuthReady(true); 
   }, []);
 
-  // --- CORRECCIÓN: Este hook ahora solo se encarga de la carga inicial desde la URL ---
   useEffect(() => {
     if (!authReady || !userId || initialLoadDone.current) return;
     
@@ -338,21 +386,17 @@ const App = () => {
     initialLoadDone.current = true;
   }, [authReady, userId, loadStateFromGoogleSheets]);
 
-  // Polling para actualizaciones en segundo plano
   useEffect(() => {
-    const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen;
-    // No hacer polling si hay un modal abierto, si los cambios están pendientes, o si la sesión es local
+    const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen || isSummaryModalOpen;
     if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
       return;
     }
 
     const pollingInterval = setInterval(() => loadStateFromGoogleSheets(shareId), 5000);
     return () => clearInterval(pollingInterval);
-  }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen]);
+  }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen, isSummaryModalOpen]);
 
-  // Guardado automático con debounce
   useEffect(() => {
-    // CORRECCIÓN CRÍTICA: No guardar nada hasta que la carga inicial esté completa
     if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
 
     hasPendingChanges.current = true;
@@ -368,7 +412,6 @@ const App = () => {
           console.error("El guardado falló:", e.message);
         })
         .finally(() => {
-          // Ya sea éxito o fracaso, reseteamos la bandera para permitir nuevos cambios/intentos.
           hasPendingChanges.current = false;
         });
     }, 1000);
@@ -657,12 +700,7 @@ const App = () => {
 
   const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
     try {
-        const prompt = `Analiza la imagen de recibo adjunta, que está en formato chileno.
-        INSTRUCCIONES IMPORTANTES PARA LEER NÚMEROS: En el recibo, el punto (.) es un separador de miles y la coma (,) es el separador decimal. Al extraer un precio como "1.234,50", debes interpretarlo como el número 1234.50. Ignora los puntos de miles.
-        Extrae todos los ítems individuales, sus cantidades y sus precios base.
-        Proporciona la salida como un objeto JSON con la propiedad "items", que es un array de objetos, cada uno con "name", "quantity" y "price". El "price" en el JSON final NO debe tener separadores de miles y DEBE usar un punto (.) como separador decimal.
-        Ejemplo: Si en el recibo ves "2 x Cerveza Escudo" por un total de "7.980", el precio unitario es 3990. Tu salida para ese ítem debe ser: {"name": "Cerveza Escudo", "quantity": 2, "price": 3990}`;
-        
+        const prompt = `Analiza la imagen de recibo adjunta, que está en formato chileno. INSTRUCCIONES IMPORTANTES PARA LEER NÚMEROS: En el recibo, el punto (.) es un separador de miles y la coma (,) es el separador decimal. Al extraer un precio como "1.234,50", debes interpretarlo como el número 1234.50. Ignora los puntos de miles. Extrae todos los ítems individuales, sus cantidades y sus precios base. Proporciona la salida como un objeto JSON con la propiedad "items", que es un array de objetos, cada uno con "name", "quantity" y "price". El "price" en el JSON final NO debe tener separadores de miles y DEBE usar un punto (.) como separador decimal. Ejemplo: Si en el recibo ves "2 x Cerveza Escudo" por un total de "7.980", el precio unitario es 3990. Tu salida para ese ítem debe ser: {"name": "Cerveza Escudo", "quantity": 2, "price": 3990}`;
         const payload = {
             contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
             generationConfig: {
@@ -670,7 +708,6 @@ const App = () => {
                 responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] }
             }
         };
-
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
         if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) throw new Error("Falta la clave de API de Gemini.");
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
@@ -708,18 +745,6 @@ const App = () => {
     }
   };
   
-  const handleExportToExcel = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    // ... Lógica para construir el CSV
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "reporte_cuentas.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const handleManualAddItem = () => {
     if (!manualItemName.trim() || isNaN(parseFloat(manualItemPrice)) || isNaN(parseInt(manualItemQuantity))) {
         setManualItemMessage({ type: 'error', text: 'Por favor, completa todos los campos correctamente.' });
@@ -917,8 +942,8 @@ const App = () => {
       <div className="text-center mb-8 flex flex-wrap justify-center gap-4">
           <button onClick={handleGenerateShareLink} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Generar Enlace</button>
           <button onClick={() => setIsShareModalOpen(true)} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir Ítem</button>
+          {comensales.length > 0 && (<button onClick={handleOpenSummaryModal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen</button>)}
           {comensales.length > 0 && (<button onClick={openClearAllComensalesModal} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Comensales</button>)}
-          <button onClick={handleExportToExcel} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Exportar a Excel</button>
           <button onClick={openResetAllModal} className="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Resetear Todo</button>
       </div>
 
@@ -977,6 +1002,7 @@ const App = () => {
         </p>
       </footer>
       
+      <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} />
       <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
       <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
       <ConfirmationModal isOpen={isClearAllComensalesModalOpen} onClose={() => setIsClearAllComensalesModalOpen(false)} onConfirm={confirmClearAllComensales} message="¿Estás seguro de que deseas eliminar a TODOS los comensales?" confirmText="Eliminar Todos" />
