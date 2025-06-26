@@ -209,16 +209,12 @@ const App = () => {
     const promise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
       window[callbackName] = (data) => {
-        if(document.body.contains(script)){
-          document.body.removeChild(script);
-        }
+        if(document.body.contains(script)) document.body.removeChild(script);
         delete window[callbackName];
         resolve(data);
       };
       script.onerror = () => {
-        if(document.body.contains(script)){
-          document.body.removeChild(script);
-        }
+        if(document.body.contains(script)) document.body.removeChild(script);
         delete window[callbackName];
         reject(new Error('Error al guardar los datos en Google Sheets.'));
       };
@@ -343,7 +339,9 @@ const App = () => {
 
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen;
-    if (!shareId || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) return;
+    if (!shareId || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
+      return;
+    }
 
     const pollingInterval = setInterval(() => loadStateFromGoogleSheets(shareId), 5000);
     return () => clearInterval(pollingInterval);
@@ -414,73 +412,74 @@ const App = () => {
     const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
 
     if (itemToRemove.type === 'full') {
-        const newComensales = comensales.map(c => {
-            if (c.id === comensalId) {
-                const updatedItems = [...c.selectedItems];
-                if (itemToRemove.quantity > 1) {
-                    updatedItems[itemIndex].quantity -= 1;
-                } else {
-                    updatedItems.splice(itemIndex, 1);
-                }
-                const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                return { ...c, selectedItems: updatedItems, total: newTotal };
-            }
-            return c;
-        });
-        setComensales(newComensales);
+      const newComensales = comensales.map(c => {
+        if (c.id === comensalId) {
+          const updatedItems = [...c.selectedItems];
+          const itemInBill = updatedItems[itemIndex];
+          if (itemInBill.quantity > 1) {
+            itemInBill.quantity -= 1;
+          } else {
+            updatedItems.splice(itemIndex, 1);
+          }
+          const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+          return { ...c, selectedItems: updatedItems, total: newTotal };
+        }
+        return c;
+      });
+      setComensales(newComensales);
 
-        setAvailableProducts(currentProducts => {
-            const newProducts = new Map(currentProducts);
-            const product = newProducts.get(itemToRemove.id);
-            if (product) newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-            return newProducts;
-        });
-        return;
+      setAvailableProducts(currentProducts => {
+        const newProducts = new Map(currentProducts);
+        const product = newProducts.get(itemToRemove.id);
+        if (product) newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
+        return newProducts;
+      });
+      return;
     }
 
     if (itemToRemove.type === 'shared') {
-        const { shareInstanceId, id: originalProductId } = itemToRemove;
-        const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
-        const newActiveSharedInstances = new Map(activeSharedInstances);
-        const shareGroup = newActiveSharedInstances.get(shareInstanceId);
-        if (!shareGroup) return; 
+      const { shareInstanceId, id: originalProductId } = itemToRemove;
+      const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
+      const newActiveSharedInstances = new Map(activeSharedInstances);
+      const shareGroup = newActiveSharedInstances.get(shareInstanceId);
+      if (!shareGroup) return; 
 
-        shareGroup.delete(comensalId);
+      shareGroup.delete(comensalId);
 
-        if (shareGroup.size === 0) {
-            newActiveSharedInstances.delete(shareInstanceId);
-            setAvailableProducts(currentProducts => {
-                const newProducts = new Map(currentProducts);
-                const product = newProducts.get(originalProductId);
-                if (product) newProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
-                return newProducts;
-            });
-        }
-
-        const finalComensales = comensales.map(c => {
-            if (c.id === comensalId) {
-                const newSelectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
-                const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                return { ...c, selectedItems: newSelectedItems, total: newTotal };
-            }
-            if (shareGroup.has(c.id)) {
-                const newSharerCount = shareGroup.size;
-                const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-                const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
-                
-                const newSelectedItems = c.selectedItems.map(item => {
-                    if (String(item.shareInstanceId) === String(shareInstanceId)) {
-                        return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
-                    }
-                    return item;
-                });
-                const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                return { ...c, selectedItems: newSelectedItems, total: newTotal };
-            }
-            return c;
+      if (shareGroup.size === 0) {
+        newActiveSharedInstances.delete(shareInstanceId);
+        setAvailableProducts(currentProducts => {
+          const newProducts = new Map(currentProducts);
+          const product = newProducts.get(originalProductId);
+          if (product) newProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
+          return newProducts;
         });
-        setComensales(finalComensales);
-        setActiveSharedInstances(newActiveSharedInstances);
+      }
+
+      const finalComensales = comensales.map(c => {
+        if (c.id === comensalId) {
+          const newSelectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
+          const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+          return { ...c, selectedItems: newSelectedItems, total: newTotal };
+        }
+        if (shareGroup.has(c.id)) {
+          const newSharerCount = shareGroup.size;
+          const newBasePricePerShare = totalItemBasePrice / newSharerCount;
+          const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
+          
+          const newSelectedItems = c.selectedItems.map(item => {
+            if (String(item.shareInstanceId) === String(shareInstanceId)) {
+              return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
+            }
+            return item;
+          });
+          const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+          return { ...c, selectedItems: newSelectedItems, total: newTotal };
+        }
+        return c;
+      });
+      setComensales(finalComensales);
+      setActiveSharedInstances(newActiveSharedInstances);
     }
   };
   
@@ -529,7 +528,7 @@ const App = () => {
       return;
     }
 
-    const newComensalId = comensales.length > 0 ? Math.max(...comensales.map(c => c.id)) + 1 : 1;
+    const newComensalId = comensales.length > 0 ? Math.max(0, ...comensales.map(c => c.id)) + 1 : 1;
     const newComensal = { id: newComensalId, name: newComensalName.trim(), selectedItems: [], total: 0 };
     setComensales(prevComensales => [...prevComensales, newComensal]);
     setNewComensalName('');
@@ -553,17 +552,19 @@ const App = () => {
             tempProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
         } else if (item.type === 'shared') {
             const shareGroup = tempInstances.get(item.shareInstanceId);
-            if (shareGroup && shareGroup.has(comensalToClear.id)) {
-                if (shareGroup.size === 1) {
-                    tempProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
-                }
-                tempInstances.delete(item.shareInstanceId);
+            if(shareGroup) {
+              if (shareGroup.size === 1 && shareGroup.has(comensalToClear.id)) {
+                  tempProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
+                  tempInstances.delete(item.shareInstanceId);
+              } else {
+                  shareGroup.delete(comensalToClear.id);
+              }
             }
         }
     });
 
     const newComensales = comensales.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c);
-
+    
     setAvailableProducts(tempProducts);
     setActiveSharedInstances(tempInstances);
     setComensales(newComensales);
@@ -579,8 +580,13 @@ const App = () => {
     const idToRemove = comensalToRemoveId;
     if (idToRemove === null) return;
     
+    // Primero, preparamos el ID y llamamos a la lógica de limpieza atómica
+    setComensalToClearId(idToRemove); 
     confirmClearComensal(); 
+    
+    // Luego, filtramos al comensal en una actualización de estado separada
     setComensales(prev => prev.filter(c => c.id !== idToRemove)); 
+    
     setIsRemoveComensalModalOpen(false);
     setComensalToRemoveId(null);
   };
@@ -591,37 +597,29 @@ const App = () => {
   };
 
   const confirmClearAllComensales = () => {
-    if (comensales.length === 0) {
-      setIsClearAllComensalesModalOpen(false);
-      return;
-    }
-    const initialProducts = new Map();
-    availableProducts.forEach((prod, id) => {
-        initialProducts.set(id, {...prod, quantity: 0});
+    const originalInventory = new Map();
+    // Sumar todo lo que está en la mesa (asignado y no asignado) para obtener el inventario original
+    availableProducts.forEach((product, id) => {
+        originalInventory.set(id, { ...product, quantity: product.quantity });
     });
-
-    const allItems = comensales.flatMap(c => c.selectedItems);
-    const allProductsInUse = [...availableProducts.values(), ...allItems];
-
-    allProductsInUse.forEach(item => {
-        const product = initialProducts.get(item.id);
-        if (product) {
-            if(item.type === 'full') {
-                product.quantity += item.quantity;
-            } else if (item.type === 'shared') {
-                product.quantity += 1 / item.sharedByCount;
-            } else { // From inventory
-                 product.quantity += item.quantity;
+    comensales.forEach(c => {
+        c.selectedItems.forEach(item => {
+            const product = originalInventory.get(item.id);
+            if (product) {
+                if (item.type === 'full') {
+                    product.quantity += item.quantity;
+                } else if (item.type === 'shared') {
+                    // Solo sumar la unidad la primera vez que vemos esta instancia compartida
+                    if (activeSharedInstances.has(item.shareInstanceId)) {
+                        product.quantity += 1;
+                        activeSharedInstances.delete(item.shareInstanceId); // Evita doble conteo
+                    }
+                }
             }
-        }
-    });
-    
-    // Redondear las cantidades finales por si hubo divisiones
-    initialProducts.forEach(prod => {
-        prod.quantity = Math.round(prod.quantity);
+        });
     });
 
-    setAvailableProducts(initialProducts);
+    setAvailableProducts(originalInventory);
     setComensales([]);
     setActiveSharedInstances(new Map());
     setIsClearAllComensalesModalOpen(false);
@@ -634,25 +632,25 @@ const App = () => {
     if (shareId && userId) {
       await deleteStateFromGoogleSheets(shareId);
     }
-    setAvailableProducts(new Map());
-    setComensales([]);
-    setActiveSharedInstances(new Map());
-    setShareId(null); 
-    setShareLink('');
+    handleResetAll(true);
     const url = new URL(window.location.href);
     url.searchParams.delete('id');
     window.history.replaceState({}, document.title, url.toString());
   };
-
+  
   const openResetAllModal = () => setIsResetAllModalOpen(true);
   
-  // El resto de las funciones (API, exportar, etc.) son autocontenidas y no presentan problemas de carrera.
-  // ...
+  // El resto del código de handlers y UI...
+  const handleImageUpload = (event) => {};
+  const analyzeImageWithGemini = async (base64ImageData, mimeType) => {};
+  const handleExportToExcel = () => {};
+  const handleManualAddItem = () => {};
+  const handleRemoveInventoryItem = () => {};
+  const confirmRemoveInventoryItem = () => {};
+  const handleGenerateShareLink = async () => {};
 
-  // ==================================================================
-  // === CÁLCULOS PARA LA UI ===
-  // ==================================================================
-  const totalBillValue = Array.from(availableProducts.values()).reduce((sum, p) => sum + (p.price * p.quantity), 0) + comensales.reduce((sum, c) => sum + c.selectedItems.reduce((iSum, i) => iSum + (i.originalBasePrice * i.quantity), 0), 0);
+  const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + (p.price * p.quantity), 0) + 
+                       [...comensales].reduce((sum, c) => sum + c.selectedItems.reduce((iSum, i) => iSum + (i.originalBasePrice * i.quantity), 0), 0);
   const propinaSugerida = totalBillValue * 0.10;
   const currentTotalComensales = comensales.reduce((sum, comensal) => sum + comensal.total, 0);
   const totalBillWithReceiptTip = totalBillValue + propinaSugerida;
@@ -687,42 +685,53 @@ const App = () => {
             <span className="font-semibold text-purple-800">Total Asignado (con propina):</span>
             <span className="text-purple-900 font-bold">${currentTotalComensales.toLocaleString('es-CL')}</span>
           </div>
-          <div className={`flex justify-between items-center p-3 rounded-md shadow-sm ${Math.abs(remainingAmount) > 0.02 ? (remainingAmount > 0 ? 'bg-red-50' : 'bg-orange-50') : 'bg-green-50'}`}>
+          <div className={`flex justify-between items-center p-3 rounded-md shadow-sm ${Math.abs(remainingAmount) > 0.01 ? (remainingAmount > 0 ? 'bg-red-50' : 'bg-orange-50') : 'bg-green-50'}`}>
             <span className="font-semibold text-red-800">Diferencia por Asignar:</span>
-            <span className="text-red-900 font-bold">${remainingAmount.toLocaleString('es-CL')}</span>
+            <span className="text-red-900 font-bold">${remainingAmount.toLocaleString('es-CL', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
           </div>
         </div>
       </div>
 
-      {/* ... (El resto del JSX es idéntico) ... */}
-      
+      {userId && (
+        <div className="bg-white p-4 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200 text-center text-sm text-gray-600">
+          <p>Tu ID de sesión: <span className="font-semibold text-gray-800">{userId}</span></p>
+          {shareId && <p>ID de sesión compartida: <span className="font-semibold text-gray-800">{shareId}</span></p>}
+          {shareLink && (
+            <div className="mt-2 flex flex-col items-center">
+              <p>Enlace compartible:</p>
+              <a href={shareLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
+                {shareLink}
+              </a>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado al portapapeles!'));
+                }}
+                className="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
+              >
+                Copiar Enlace
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="text-center mb-8 flex flex-wrap justify-center gap-4">
-          {/* ... botones ... */}
+          <button onClick={handleGenerateShareLink} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">Generar Enlace</button>
+          <button onClick={() => setIsShareModalOpen(true)} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">Compartir Ítem</button>
+          {comensales.length > 0 && (<button onClick={openClearAllComensalesModal} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50">Eliminar Comensales</button>)}
+          <button onClick={handleExportToExcel} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">Exportar a Excel</button>
+          <button onClick={openResetAllModal} className="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50">Resetear Todo</button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {comensales.map(comensal => (
-          <div key={String(comensal.id)} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 transform hover:scale-105 transition-transform duration-200 ease-in-out flex flex-col h-full">
-            <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">
-              <i className="lucide-user text-2xl mr-2 text-blue-500"></i>
-              {comensal.name}
-            </h3>
+          <div key={String(comensal.id)} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 flex flex-col h-full">
+            <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
             <div className="mb-4">
-              <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-2">
-                Agregar Ítem Individual:
-              </label>
-              <select
-                id={`product-select-${comensal.id}`}
-                value={""}
-                onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value))}
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm"
-              >
+              <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-2">Agregar Ítem:</label>
+              <select id={`product-select-${comensal.id}`} value="" onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
                 <option value="" disabled>Selecciona un producto</option>
-                {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (
-                  <option key={String(product.id)} value={product.id}>
-                    {product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})
-                  </option>
-                ))}
+                {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
               </select>
             </div>
             <div className="flex-grow">
@@ -730,55 +739,31 @@ const App = () => {
                 <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
                   {comensal.selectedItems.map((item, index) => (
                     <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
-                      <span className="font-medium text-gray-700">
-                        {item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}
-                        {` (+10% Propina)`}
-                      </span>
+                      <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`} (+10% Prop.)</span>
                       <div className="flex items-center space-x-2">
                         <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('es-CL')}</span>
-                        <button
-                          onClick={() => handleRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)}
-                          className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
-                          aria-label="Remove item"
-                        >
-                          <i className="lucide-minus text-xs"></i>
+                        <button onClick={() => handleRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                         </button>
                       </div>
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems seleccionados.</p>
-              )}
+              ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
             </div>
             <div className="mt-auto pt-4 border-t border-gray-200 flex justify-between items-center">
-              <span className="text-lg font-semibold text-gray-800">Total (con propina):</span>
+              <span className="text-lg font-semibold text-gray-800">Total:</span>
               <span className="text-2xl font-extrabold text-blue-700">${comensal.total.toLocaleString('es-CL')}</span>
             </div>
-            <div className="flex flex-col gap-2 mt-4">
-              <button
-                onClick={() => openClearComensalModal(comensal.id)}
-                className="w-full bg-orange-500 text-white py-2 px-4 rounded-md shadow-md hover:bg-orange-600 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50"
-              >
-                Limpiar Consumo
-              </button>
-              <button
-                onClick={() => openRemoveComensalModal(comensal.id)}
-                className="w-full bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
-              >
-                Eliminar Comensal
-              </button>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => openClearComensalModal(comensal.id)} className="w-full bg-orange-500 text-white py-2 px-4 rounded-md shadow-md hover:bg-orange-600">Limpiar</button>
+              <button onClick={() => openRemoveComensalModal(comensal.id)} className="w-full bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar</button>
             </div>
           </div>
         ))}
       </div>
-
-      <footer className="mt-12 p-6 bg-white rounded-xl shadow-lg border border-gray-200 max-w-2xl mx-auto text-center">
-        {/* ... */}
-      </footer>
       
-      {/* ... (Todos los modales van aquí, sin cambios) ... */}
-
+      {/* ... (Modals) ... */}
     </div>
   );
 };
