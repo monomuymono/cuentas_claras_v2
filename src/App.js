@@ -535,69 +535,129 @@ const App = () => {
     });
   };
 
+  // ==================================================================
+  // === INICIO DE LA FUNCIÓN CORREGIDA ===
+  // ==================================================================
   const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
-    // 1. Find the comensal and the item from the current state
     const comensalTarget = comensales.find(c => c.id === comensalId);
     if (!comensalTarget) return;
-
+  
     const itemIndex = comensalTarget.selectedItems.findIndex(item =>
         (item.type === 'shared' && String(item.shareInstanceId) === String(itemToRemoveIdentifier)) ||
         (item.type === 'full' && item.id === Number(itemToRemoveIdentifier))
     );
-
+  
     if (itemIndex === -1) return;
-
-    const itemDataToRestore = { ...comensalTarget.selectedItems[itemIndex] };
-    
-    // 2. Update the comensales state
-    const newComensales = comensales.map(comensal => {
-      if (comensal.id === comensalId) {
-        const updatedItems = [...comensal.selectedItems];
-        
-        if (itemDataToRestore.type === 'full' && itemDataToRestore.quantity > 1) {
-          updatedItems[itemIndex].quantity -= 1;
-          // For restoration, we only return 1 unit to the inventory
-          itemDataToRestore.quantity = 1;
-        } else {
-          updatedItems.splice(itemIndex, 1);
-        }
-        
-        const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        return { ...comensal, selectedItems: updatedItems, total: newTotal };
-      }
-      return comensal;
-    });
-    setComensales(newComensales);
-
-    // 3. Update the inventory state (availableProducts)
-    setAvailableProducts(currentProducts => {
-      const newProducts = new Map(currentProducts);
-      const product = newProducts.get(itemDataToRestore.id);
-      if (product) {
-        // The quantity to restore is 1 for shared items or single full items.
-        // If a "full" item had quantity > 1, we only decremented it, so we only restore 1.
-        const quantityToRestore = 1; 
-        newProducts.set(itemDataToRestore.id, { ...product, quantity: product.quantity + quantityToRestore });
-      }
-      return newProducts;
-    });
-
-    // 4. If the item was shared, clean up the activeSharedInstances record
-    if (itemDataToRestore.type === 'shared') {
-      setActiveSharedInstances(currentInstances => {
-        const newInstances = new Map(currentInstances);
-        const shareGroup = newInstances.get(itemDataToRestore.shareInstanceId);
-        
-        if (shareGroup) {
-          shareGroup.delete(comensalId);
-          if (shareGroup.size === 0) {
-            newInstances.delete(itemDataToRestore.shareInstanceId);
+  
+    const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
+  
+    // --- Lógica para Ítems Individuales ---
+    if (itemToRemove.type === 'full') {
+      const newComensales = comensales.map(c => {
+        if (c.id === comensalId) {
+          const updatedItems = [...c.selectedItems];
+          if (itemToRemove.quantity > 1) {
+            updatedItems[itemIndex].quantity -= 1;
+          } else {
+            updatedItems.splice(itemIndex, 1);
           }
+          const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+          return { ...c, selectedItems: updatedItems, total: newTotal };
         }
-        return newInstances;
+        return c;
       });
+      setComensales(newComensales);
+  
+      setAvailableProducts(currentProducts => {
+        const newProducts = new Map(currentProducts);
+        const product = newProducts.get(itemToRemove.id);
+        if (product) {
+          newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
+        }
+        return newProducts;
+      });
+      return;
+    }
+  
+    // --- Lógica para Ítems Compartidos ---
+    if (itemToRemove.type === 'shared') {
+      const { shareInstanceId, id: originalProductId } = itemToRemove;
+      
+      const originalProductPrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
+  
+      // Copia de trabajo de activeSharedInstances
+      const newActiveSharedInstances = new Map(activeSharedInstances);
+      const shareGroup = newActiveSharedInstances.get(shareInstanceId);
+      
+      if (!shareGroup) return; // Seguridad
+  
+      // Eliminar al comensal del grupo
+      shareGroup.delete(comensalId);
+  
+      // Primero, eliminar el ítem del comensal que hizo clic
+      let updatedComensales = comensales.map(c => {
+        if (c.id === comensalId) {
+          return {
+            ...c,
+            selectedItems: c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId)),
+          };
+        }
+        return c;
+      });
+  
+      // Si el grupo de compartido queda vacío
+      if (shareGroup.size === 0) {
+        newActiveSharedInstances.delete(shareInstanceId);
+        
+        // Devolver el ítem al inventario
+        setAvailableProducts(currentProducts => {
+          const newProducts = new Map(currentProducts);
+          const product = newProducts.get(originalProductId);
+          if (product) {
+            newProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
+          }
+          return newProducts;
+        });
+      } else {
+        // Si aún quedan comensales, redistribuir el costo
+        const newSharerCount = shareGroup.size;
+        const newBasePricePerShare = originalProductPrice / newSharerCount;
+        const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
+  
+        updatedComensales = updatedComensales.map(c => {
+          if (shareGroup.has(c.id)) {
+            return {
+              ...c,
+              selectedItems: c.selectedItems.map(item => {
+                if (String(item.shareInstanceId) === String(shareInstanceId)) {
+                  return {
+                    ...item,
+                    price: newPriceWithTipPerShare,
+                    originalBasePrice: newBasePricePerShare,
+                    sharedByCount: newSharerCount,
+                  };
+                }
+                return item;
+              }),
+            };
+          }
+          return c;
+        });
+      }
+      
+      // Actualizar los totales de todos los comensales afectados y aplicar los cambios
+      updatedComensales = updatedComensales.map(c => ({
+          ...c,
+          total: c.selectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+      }));
+      
+      setComensales(updatedComensales);
+      setActiveSharedInstances(newActiveSharedInstances);
     }
   };
+  // ==================================================================
+  // === FIN DE LA FUNCIÓN CORREGIDA ===
+  // ==================================================================
 
 
   // Function to clear all items for a comensal (but keep the comensal) - Refactored for single update
@@ -652,9 +712,6 @@ const App = () => {
     setIsClearComensalModalOpen(true);
   };
 
-  // ==================================================================
-  // === INICIO DE LA FUNCIÓN CORREGIDA ===
-  // ==================================================================
   const handleShareItem = (productId, sharingComensalIds) => {
     // 1. Read current state and validate
     const productToShare = availableProducts.get(productId);
@@ -703,9 +760,6 @@ const App = () => {
     setActiveSharedInstances(newActiveSharedInstances);
     setComensales(newComensales);
   };
-  // ==================================================================
-  // === FIN DE LA FUNCIÓN CORREGIDA ===
-  // ==================================================================
 
   // Function to add a new comensal
   const handleAddComensal = () => {
