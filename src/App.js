@@ -105,7 +105,7 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
             <option value="" disabled>Selecciona un producto</option>
             {sharableProducts.map(product => (
               <option key={String(product.id)} value={product.id}>
-                {product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})
+                {product.name} (${Number(product.price).toLocaleString('de-DE')}) (Disp: {Number(product.quantity)})
               </option>
             ))}
           </select>
@@ -328,13 +328,18 @@ const App = () => {
     if (idFromUrl) {
       setShareId(idFromUrl);
     } else {
-      // **CORRECCIÓN CRÍTICA:** Generar un ID de sesión si no hay uno en la URL.
       setShareId(`session_${Date.now()}`);
     }
   }, [authReady, userId]);
 
   useEffect(() => {
-    if (shareId) loadStateFromGoogleSheets(shareId);
+    if (shareId) {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('id') !== shareId) {
+        window.history.replaceState({}, '', `?id=${shareId}`);
+      }
+      loadStateFromGoogleSheets(shareId);
+    }
   }, [shareId, loadStateFromGoogleSheets]);
 
   useEffect(() => {
@@ -582,10 +587,8 @@ const App = () => {
     const idToRemove = comensalToRemoveId;
     if (idToRemove === null) return;
     
-    // Ejecutar la misma lógica de limpiar antes de eliminar
     const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
     if (comensalToRemoveData) {
-      // Crear copias para la manipulación atómica
       const newProducts = new Map(availableProducts);
       const newInstances = new Map(activeSharedInstances);
       comensalToRemoveData.selectedItems.forEach(item => {
@@ -742,20 +745,20 @@ const App = () => {
   const handleExportToExcel = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "Resumen General\n";
-    csvContent += "Concepto,Monto\n";
-    csvContent += `Total Cuenta (sin propina),${totalBillValue}\n`;
-    csvContent += `Propina Sugerida (10%),${propinaSugerida}\n`;
-    csvContent += `Total Asignado (con propina),${currentTotalComensales}\n`;
-    csvContent += `Diferencia por Asignar,${remainingAmount}\n\n`;
+    csvContent += "Concepto;Monto\n";
+    csvContent += `Total Cuenta (sin propina);${totalBillValue}\n`;
+    csvContent += `Propina Sugerida (10%);${propinaSugerida}\n`;
+    csvContent += `Total Asignado (con propina);${currentTotalComensales}\n`;
+    csvContent += `Diferencia por Asignar;${remainingAmount}\n\n`;
 
     comensales.forEach(comensal => {
         csvContent += `Detalle Comensal: ${comensal.name}\n`;
-        csvContent += "Cantidad,Ítem,Tipo,Precio Unitario (con propina),Total\n";
+        csvContent += "Cantidad;Ítem;Tipo;Precio Unitario (con propina);Total\n";
         comensal.selectedItems.forEach(item => {
             const totalItem = item.price * item.quantity;
-            csvContent += `${item.quantity},"${item.name}",${item.type},${item.price},${totalItem}\n`;
+            csvContent += `${item.quantity};"${item.name}";${item.type};${item.price};${totalItem}\n`;
         });
-        csvContent += `\nTotal ${comensal.name},,,${comensal.total}\n\n`;
+        csvContent += `\nTotal ${comensal.name};;;;${comensal.total}\n\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -835,7 +838,6 @@ const App = () => {
       return;
     }
     
-    // Si no hay shareId, crea uno. Si ya existe, lo reutiliza para actualizar.
     const currentShareId = shareId || `session_${Date.now()}`;
     if (!shareId) setShareId(currentShareId);
 
@@ -884,19 +886,19 @@ const App = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
           <div className="flex justify-between items-center bg-blue-50 p-3 rounded-md shadow-sm">
             <span className="font-semibold text-blue-800">Total General Cuenta (sin propina):</span>
-            <span className="text-blue-900 font-bold">${Math.round(totalBillValue).toLocaleString('es-CL')}</span>
+            <span className="text-blue-900 font-bold">${Math.round(totalBillValue).toLocaleString('de-DE')}</span>
           </div>
           <div className="flex justify-between items-center bg-green-50 p-3 rounded-md shadow-sm">
             <span className="font-semibold text-green-800">Propina Sugerida (10%):</span>
-            <span className="text-green-900 font-bold">${Math.round(propinaSugerida).toLocaleString('es-CL')}</span>
+            <span className="text-green-900 font-bold">${Math.round(propinaSugerida).toLocaleString('de-DE')}</span>
           </div>
           <div className="flex justify-between items-center bg-purple-50 p-3 rounded-md shadow-sm">
             <span className="font-semibold text-purple-800">Total Asignado (con propina):</span>
-            <span className="text-purple-900 font-bold">${Math.round(currentTotalComensales).toLocaleString('es-CL')}</span>
+            <span className="text-purple-900 font-bold">${Math.round(currentTotalComensales).toLocaleString('de-DE')}</span>
           </div>
           <div className={`flex justify-between items-center p-3 rounded-md shadow-sm ${Math.abs(remainingAmount) > 1 ? (remainingAmount > 0 ? 'bg-red-50' : 'bg-orange-50') : 'bg-green-50'}`}>
             <span className="font-semibold text-red-800">Diferencia por Asignar:</span>
-            <span className="text-red-900 font-bold">${Math.round(remainingAmount).toLocaleString('es-CL')}</span>
+            <span className="text-red-900 font-bold">${Math.round(remainingAmount).toLocaleString('de-DE')}</span>
           </div>
         </div>
       </div>
@@ -983,7 +985,7 @@ const App = () => {
               <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-2">Agregar Ítem:</label>
               <select id={`product-select-${comensal.id}`} value="" onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
                 <option value="" disabled>Selecciona un producto</option>
-                {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
+                {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('de-DE')}) (Disp: {Number(product.quantity)})</option>))}
               </select>
             </div>
             <div className="flex-grow">
@@ -993,7 +995,7 @@ const App = () => {
                     <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
                       <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`} (+10% Prop.)</span>
                       <div className="flex items-center space-x-2">
-                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('es-CL')}</span>
+                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('de-DE')}</span>
                         <button onClick={() => handleRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
                           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                         </button>
@@ -1005,7 +1007,7 @@ const App = () => {
             </div>
             <div className="mt-auto pt-4 border-t border-gray-200 flex justify-between items-center">
               <span className="text-lg font-semibold text-gray-800">Total:</span>
-              <span className="text-2xl font-extrabold text-blue-700">${comensal.total.toLocaleString('es-CL')}</span>
+              <span className="text-2xl font-extrabold text-blue-700">${comensal.total.toLocaleString('de-DE')}</span>
             </div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => openClearComensalModal(comensal.id)} className="w-full bg-orange-500 text-white py-2 px-4 rounded-md shadow-md hover:bg-orange-600">Limpiar</button>
@@ -1019,10 +1021,10 @@ const App = () => {
         <h2 className="text-2xl font-bold text-blue-600 mb-4">¡Cuentas Claras!</h2>
         <div className="flex justify-around items-center text-xl font-semibold">
           <div className="text-gray-700">
-            Total Asignado (con propina): <span className="text-green-700 font-extrabold">${currentTotalComensales.toLocaleString('es-CL')}</span>
+            Total Asignado (con propina): <span className="text-green-700 font-extrabold">${currentTotalComensales.toLocaleString('de-DE')}</span>
           </div>
           <div className="text-gray-700">
-            Propina Pendiente: <span className="text-orange-700 font-extrabold">${Math.round(remainingPropinaDisplay).toLocaleString('es-CL')}</span>
+            Propina Pendiente: <span className="text-orange-700 font-extrabold">${Math.round(remainingPropinaDisplay).toLocaleString('de-DE')}</span>
           </div>
         </div>
         <p className="mt-4 text-gray-500 text-sm">
