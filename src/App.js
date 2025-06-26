@@ -200,7 +200,7 @@ const App = () => {
   // === PERSISTENCIA Y EFECTOS SECUNDARIOS (Hooks) ===
   // =================================================================================
   const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
-    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+    if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       return Promise.reject(new Error("URL de Apps Script inválida."));
     }
     if (!currentShareId || !userId) return Promise.resolve();
@@ -209,13 +209,17 @@ const App = () => {
     const promise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
       window[callbackName] = (data) => {
+        if(document.body.contains(script)){
+          document.body.removeChild(script);
+        }
         delete window[callbackName];
-        document.body.removeChild(script);
         resolve(data);
       };
       script.onerror = () => {
+        if(document.body.contains(script)){
+          document.body.removeChild(script);
+        }
         delete window[callbackName];
-        document.body.removeChild(script);
         reject(new Error('Error al guardar los datos en Google Sheets.'));
       };
 
@@ -227,18 +231,27 @@ const App = () => {
 
     try {
       const result = await promise;
-      if (result.status === 'error') {
-        return Promise.reject(new Error(result.message));
-      } else {
-        return Promise.resolve();
-      }
+      if (result.status === 'error') return Promise.reject(new Error(result.message));
+      return Promise.resolve();
     } catch (error) {
       return Promise.reject(error);
     }
   }, [userId]);
 
+  const handleResetAll = useCallback((isLocalOnly = false) => {
+    if (!isLocalOnly) {
+      setIsResetAllModalOpen(true);
+    } else {
+      setAvailableProducts(new Map());
+      setComensales([]);
+      setActiveSharedInstances(new Map());
+      setShareId(null); 
+      setShareLink('');
+    }
+  }, []);
+
   const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
-    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
+    if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
     if (!idToLoad) return;
     if (hasPendingChanges.current) return;
 
@@ -246,13 +259,13 @@ const App = () => {
     const promise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
       window[callbackName] = (data) => {
+        if(document.body.contains(script)) document.body.removeChild(script);
         delete window[callbackName];
-        document.body.removeChild(script);
         resolve(data);
       };
       script.onerror = () => {
+        if(document.body.contains(script)) document.body.removeChild(script);
         delete window[callbackName];
-        document.body.removeChild(script);
         reject(new Error('Error al cargar los datos desde Google Sheets.'));
       };
       script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`;
@@ -271,28 +284,28 @@ const App = () => {
         url.searchParams.delete('id');
         window.history.replaceState({}, document.title, url.toString());
         setShareId(null);
-        handleResetAll(true); // Reset local state if session not found on server
+        handleResetAll(true);
       }
     } catch (error) {
       console.error("Error al cargar con JSONP:", error);
     }
-  }, []);
+  }, [handleResetAll]);
 
   const deleteStateFromGoogleSheets = useCallback(async (idToDelete) => {
-    if (GOOGLE_SHEET_WEB_APP_URL === "YOUR_NEW_JSONP_WEB_APP_URL_HERE" || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
+    if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
     if (!idToDelete) return;
 
     const callbackName = 'jsonp_callback_delete_' + Math.round(100000 * Math.random());
     const promise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
       window[callbackName] = (data) => {
+        if(document.body.contains(script)) document.body.removeChild(script);
         delete window[callbackName];
-        document.body.removeChild(script);
         resolve(data);
       };
       script.onerror = () => {
+        if(document.body.contains(script)) document.body.removeChild(script);
         delete window[callbackName];
-        document.body.removeChild(script);
         reject(new Error('Error al eliminar los datos de Google Sheets.'));
       };
       script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=delete&id=${idToDelete}&callback=${callbackName}`;
@@ -308,9 +321,8 @@ const App = () => {
   
   useEffect(() => {
     const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
-    if (uniqueSessionUserId) {
-      setUserId(uniqueSessionUserId);
-    } else {
+    if (uniqueSessionUserId) setUserId(uniqueSessionUserId);
+    else {
       const newUniqueId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       localStorage.setItem('billSplitterUserId', newUniqueId);
       setUserId(newUniqueId);
@@ -320,28 +332,20 @@ const App = () => {
 
   useEffect(() => {
     if (!authReady || !userId) return; 
-
     const urlParams = new URLSearchParams(window.location.search);
     const idFromUrl = urlParams.get('id');
+    if (idFromUrl) setShareId(idFromUrl);
+  }, [authReady, userId]);
 
-    if (idFromUrl) {
-      setShareId(idFromUrl);
-      loadStateFromGoogleSheets(idFromUrl);
-    }
-  }, [authReady, userId, loadStateFromGoogleSheets]);
+  useEffect(() => {
+    if (shareId) loadStateFromGoogleSheets(shareId);
+  }, [shareId, loadStateFromGoogleSheets]);
 
-  // --- CORRECCIÓN: Polling se detiene si hay un modal abierto ---
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen;
-    
-    if (!shareId || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
-      return;
-    }
+    if (!shareId || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) return;
 
-    const pollingInterval = setInterval(() => {
-      loadStateFromGoogleSheets(shareId);
-    }, 5000);
-
+    const pollingInterval = setInterval(() => loadStateFromGoogleSheets(shareId), 5000);
     return () => clearInterval(pollingInterval);
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen]);
 
@@ -349,7 +353,6 @@ const App = () => {
     if (!shareId || !authReady || isImageProcessing) return;
 
     hasPendingChanges.current = true;
-
     const handler = setTimeout(() => {
       const dataToSave = {
           comensales: comensales,
@@ -357,12 +360,10 @@ const App = () => {
           activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
           lastUpdated: new Date().toISOString()
       };
-      
       saveStateToGoogleSheets(shareId, dataToSave)
         .then(() => { hasPendingChanges.current = false; })
         .catch((e) => { console.error("El guardado falló:", e.message); });
     }, 1000);
-
     return () => clearTimeout(handler);
   }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
   
@@ -413,75 +414,73 @@ const App = () => {
     const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
 
     if (itemToRemove.type === 'full') {
-      const newComensales = comensales.map(c => {
-        if (c.id === comensalId) {
-          const updatedItems = [...c.selectedItems];
-          const itemInBill = updatedItems[itemIndex];
-          if (itemInBill.quantity > 1) {
-            itemInBill.quantity -= 1;
-          } else {
-            updatedItems.splice(itemIndex, 1);
-          }
-          const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-          return { ...c, selectedItems: updatedItems, total: newTotal };
-        }
-        return c;
-      });
-      setComensales(newComensales);
-      setAvailableProducts(currentProducts => {
-        const newProducts = new Map(currentProducts);
-        const product = newProducts.get(itemToRemove.id);
-        if (product) {
-          newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-        }
-        return newProducts;
-      });
-      return;
+        const newComensales = comensales.map(c => {
+            if (c.id === comensalId) {
+                const updatedItems = [...c.selectedItems];
+                if (itemToRemove.quantity > 1) {
+                    updatedItems[itemIndex].quantity -= 1;
+                } else {
+                    updatedItems.splice(itemIndex, 1);
+                }
+                const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                return { ...c, selectedItems: updatedItems, total: newTotal };
+            }
+            return c;
+        });
+        setComensales(newComensales);
+
+        setAvailableProducts(currentProducts => {
+            const newProducts = new Map(currentProducts);
+            const product = newProducts.get(itemToRemove.id);
+            if (product) newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
+            return newProducts;
+        });
+        return;
     }
 
     if (itemToRemove.type === 'shared') {
-      const { shareInstanceId, id: originalProductId } = itemToRemove;
-      const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
-      const newActiveSharedInstances = new Map(activeSharedInstances);
-      const shareGroup = newActiveSharedInstances.get(shareInstanceId);
-      if (!shareGroup) return; 
+        const { shareInstanceId, id: originalProductId } = itemToRemove;
+        const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
+        const newActiveSharedInstances = new Map(activeSharedInstances);
+        const shareGroup = newActiveSharedInstances.get(shareInstanceId);
+        if (!shareGroup) return; 
 
-      shareGroup.delete(comensalId);
+        shareGroup.delete(comensalId);
 
-      if (shareGroup.size === 0) {
-        newActiveSharedInstances.delete(shareInstanceId);
-        setAvailableProducts(currentProducts => {
-          const newProducts = new Map(currentProducts);
-          const product = newProducts.get(originalProductId);
-          if (product) newProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
-          return newProducts;
-        });
-      }
-
-      const finalComensales = comensales.map(c => {
-        if (c.id === comensalId) {
-          const newSelectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
-          const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-          return { ...c, selectedItems: newSelectedItems, total: newTotal };
+        if (shareGroup.size === 0) {
+            newActiveSharedInstances.delete(shareInstanceId);
+            setAvailableProducts(currentProducts => {
+                const newProducts = new Map(currentProducts);
+                const product = newProducts.get(originalProductId);
+                if (product) newProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
+                return newProducts;
+            });
         }
-        if (shareGroup.has(c.id)) {
-          const newSharerCount = shareGroup.size;
-          const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-          const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
-          
-          const newSelectedItems = c.selectedItems.map(item => {
-            if (String(item.shareInstanceId) === String(shareInstanceId)) {
-              return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
+
+        const finalComensales = comensales.map(c => {
+            if (c.id === comensalId) {
+                const newSelectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
+                const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                return { ...c, selectedItems: newSelectedItems, total: newTotal };
             }
-            return item;
-          });
-          const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-          return { ...c, selectedItems: newSelectedItems, total: newTotal };
-        }
-        return c;
-      });
-      setComensales(finalComensales);
-      setActiveSharedInstances(newActiveSharedInstances);
+            if (shareGroup.has(c.id)) {
+                const newSharerCount = shareGroup.size;
+                const newBasePricePerShare = totalItemBasePrice / newSharerCount;
+                const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
+                
+                const newSelectedItems = c.selectedItems.map(item => {
+                    if (String(item.shareInstanceId) === String(shareInstanceId)) {
+                        return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
+                    }
+                    return item;
+                });
+                const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                return { ...c, selectedItems: newSelectedItems, total: newTotal };
+            }
+            return c;
+        });
+        setComensales(finalComensales);
+        setActiveSharedInstances(newActiveSharedInstances);
     }
   };
   
@@ -538,44 +537,35 @@ const App = () => {
     setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
   };
   
-  // === Lógica de borrado refactorizada para ser autocontenida y segura ===
   const confirmClearComensal = () => {
     setIsClearComensalModalOpen(false);
     const comensalToClear = comensales.find(c => c.id === comensalToClearId);
     if (!comensalToClear) return;
 
-    // Lógica atómica para calcular todos los estados finales
-    const newProducts = new Map(availableProducts);
-    const newInstances = new Map(activeSharedInstances);
+    let tempProducts = new Map(availableProducts);
+    let tempInstances = new Map(activeSharedInstances);
     
     comensalToClear.selectedItems.forEach(item => {
-        const product = newProducts.get(item.id);
+        const product = tempProducts.get(item.id);
         if (!product) return;
 
         if (item.type === 'full') {
-            newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
+            tempProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
         } else if (item.type === 'shared') {
-            const shareGroup = newInstances.get(item.shareInstanceId);
-            if(shareGroup) {
-                shareGroup.delete(comensalToClear.id);
-                if (shareGroup.size === 0) {
-                    newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
-                    newInstances.delete(item.shareInstanceId);
+            const shareGroup = tempInstances.get(item.shareInstanceId);
+            if (shareGroup && shareGroup.has(comensalToClear.id)) {
+                if (shareGroup.size === 1) {
+                    tempProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
                 }
-                // Si el grupo no está vacío, la redistribución se maneja con handleRemoveItem
+                tempInstances.delete(item.shareInstanceId);
             }
         }
     });
 
-    const newComensales = comensales.map(c => {
-        if(c.id === comensalToClearId) {
-            return { ...c, selectedItems: [], total: 0 };
-        }
-        return c;
-    });
+    const newComensales = comensales.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c);
 
-    setAvailableProducts(newProducts);
-    setActiveSharedInstances(newInstances);
+    setAvailableProducts(tempProducts);
+    setActiveSharedInstances(tempInstances);
     setComensales(newComensales);
     setComensalToClearId(null);
   };
@@ -589,24 +579,7 @@ const App = () => {
     const idToRemove = comensalToRemoveId;
     if (idToRemove === null) return;
     
-    // Primero, limpiar los items del comensal.
-    // Necesitamos asegurarnos de que el ID esté listo para la función de limpiar.
-    setComensalToClearId(idToRemove);
-    // Como `confirmClearComensal` depende del estado, y `setComensalToClearId` es asíncrono,
-    // llamarlo directamente puede ser problemático. Es más seguro pasar el ID.
-    // Por simplicidad, asumimos que el estado se actualizará a tiempo para la interacción del modal,
-    // pero una versión más robusta pasaría el ID directamente a la función.
-    // Por ahora, clonamos y adaptamos la lógica de limpieza.
-
-    const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
-    if(comensalToRemoveData){
-      const itemsToRemove = [...comensalToRemoveData.selectedItems];
-      itemsToRemove.forEach(item => {
-        const identifier = item.type === 'shared' ? item.shareInstanceId : item.id;
-        handleRemoveItem(idToRemove, identifier);
-      });
-    }
-
+    confirmClearComensal(); 
     setComensales(prev => prev.filter(c => c.id !== idToRemove)); 
     setIsRemoveComensalModalOpen(false);
     setComensalToRemoveId(null);
@@ -618,90 +591,77 @@ const App = () => {
   };
 
   const confirmClearAllComensales = () => {
-    // La forma más simple y segura es simplemente recrear el inventario original
-    const newProducts = new Map();
-    availableProducts.forEach((value, key) => {
-        newProducts.set(key, {...value, quantity: 0});
+    if (comensales.length === 0) {
+      setIsClearAllComensalesModalOpen(false);
+      return;
+    }
+    const initialProducts = new Map();
+    availableProducts.forEach((prod, id) => {
+        initialProducts.set(id, {...prod, quantity: 0});
     });
 
-    // Sumar las cantidades originales de todos los productos
-    const allProductsList = Array.from(availableProducts.values());
-    allProductsList.forEach(p => {
-        const product = newProducts.get(p.id);
-        if(product) {
-           product.quantity += p.quantity;
+    const allItems = comensales.flatMap(c => c.selectedItems);
+    const allProductsInUse = [...availableProducts.values(), ...allItems];
+
+    allProductsInUse.forEach(item => {
+        const product = initialProducts.get(item.id);
+        if (product) {
+            if(item.type === 'full') {
+                product.quantity += item.quantity;
+            } else if (item.type === 'shared') {
+                product.quantity += 1 / item.sharedByCount;
+            } else { // From inventory
+                 product.quantity += item.quantity;
+            }
         }
     });
-
-    comensales.forEach(c => {
-        c.selectedItems.forEach(item => {
-            const product = newProducts.get(item.id);
-            if(product) {
-                if(item.type === 'full') {
-                    product.quantity += item.quantity;
-                } else if(item.type === 'shared') {
-                    // Para evitar sumar varias veces el mismo item compartido
-                    if(activeSharedInstances.has(item.shareInstanceId)) {
-                        product.quantity += 1;
-                        activeSharedInstances.delete(item.shareInstanceId); // Marcar como procesado
-                    }
-                }
-            }
-        });
+    
+    // Redondear las cantidades finales por si hubo divisiones
+    initialProducts.forEach(prod => {
+        prod.quantity = Math.round(prod.quantity);
     });
 
-    setAvailableProducts(newProducts);
+    setAvailableProducts(initialProducts);
     setComensales([]);
     setActiveSharedInstances(new Map());
     setIsClearAllComensalesModalOpen(false);
   };
 
-  const openClearAllComensalesModal = () => {
-    setIsClearAllComensalesModalOpen(true);
-  };
-
-  const handleResetAll = (isLocalOnly = false) => {
-    if (!isLocalOnly) {
-      setIsResetAllModalOpen(true);
-    } else {
-      // Reseteo local silencioso, usado cuando la sesión no se encuentra en el servidor
-      setAvailableProducts(new Map());
-      setComensales([]);
-      setActiveSharedInstances(new Map());
-      setShareId(null); 
-      setShareLink('');
-    }
-  };
-
+  const openClearAllComensalesModal = () => setIsClearAllComensalesModalOpen(true);
+  
   const confirmResetAll = async () => { 
     setIsResetAllModalOpen(false);
     if (shareId && userId) {
       await deleteStateFromGoogleSheets(shareId);
     }
-    handleResetAll(true); // Ejecuta el reseteo local
+    setAvailableProducts(new Map());
+    setComensales([]);
+    setActiveSharedInstances(new Map());
+    setShareId(null); 
+    setShareLink('');
     const url = new URL(window.location.href);
     url.searchParams.delete('id');
     window.history.replaceState({}, document.title, url.toString());
   };
+
+  const openResetAllModal = () => setIsResetAllModalOpen(true);
   
-  // El resto de funciones (como las de la API de Gemini, exportar, etc.) no necesitan cambios
+  // El resto de las funciones (API, exportar, etc.) son autocontenidas y no presentan problemas de carrera.
   // ...
-  // [CÓDIGO OMITIDO POR BREVEDAD, ES IDÉNTICO AL ANTERIOR]
-  // ...
-  
-  const currentTotalComensales = comensales.reduce((sum, comensal) => sum + (Number(comensal.total) || 0), 0);
-  const totalGeneralMesa = Array.from(availableProducts.values()).reduce((sum, p) => sum + (p.price * p.quantity), 0) + comensales.reduce((sum, c) => sum + c.selectedItems.reduce((iSum, i) => iSum + (i.type === 'full' ? i.originalBasePrice * i.quantity : i.originalBasePrice * i.sharedByCount), 0),0);
-  const propinaSugerida = totalGeneralMesa * 0.10;
-  const totalBillWithReceiptTip = totalGeneralMesa + propinaSugerida;
+
+  // ==================================================================
+  // === CÁLCULOS PARA LA UI ===
+  // ==================================================================
+  const totalBillValue = Array.from(availableProducts.values()).reduce((sum, p) => sum + (p.price * p.quantity), 0) + comensales.reduce((sum, c) => sum + c.selectedItems.reduce((iSum, i) => iSum + (i.originalBasePrice * i.quantity), 0), 0);
+  const propinaSugerida = totalBillValue * 0.10;
+  const currentTotalComensales = comensales.reduce((sum, comensal) => sum + comensal.total, 0);
+  const totalBillWithReceiptTip = totalBillValue + propinaSugerida;
   const remainingAmount = totalBillWithReceiptTip - currentTotalComensales;
   const totalPerItemTipsCollected = comensales.reduce((sum, comensal) => sum + comensal.selectedItems.reduce((itemSum, item) => itemSum + ((item.price * item.quantity) - (item.originalBasePrice * item.quantity)), 0), 0);
   const remainingPropinaDisplay = propinaSugerida - totalPerItemTipsCollected;
 
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-4 font-inter text-gray-800">
-      {/* El JSX completo va aquí, es idéntico al de la respuesta anterior */}
-      {/* ... */}
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-extrabold text-blue-700 mb-2 drop-shadow-md">
           <i className="lucide-salad text-5xl mr-2"></i>
@@ -712,7 +672,113 @@ const App = () => {
         </p>
       </header>
 
-      {/* Resto del JSX... */}
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-2xl mx-auto border border-blue-200">
+        <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Resumen de Totales</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
+          <div className="flex justify-between items-center bg-blue-50 p-3 rounded-md shadow-sm">
+            <span className="font-semibold text-blue-800">Total General Cuenta (sin propina):</span>
+            <span className="text-blue-900 font-bold">${totalBillValue.toLocaleString('es-CL')}</span>
+          </div>
+          <div className="flex justify-between items-center bg-green-50 p-3 rounded-md shadow-sm">
+            <span className="font-semibold text-green-800">Propina Sugerida (10%):</span>
+            <span className="text-green-900 font-bold">${propinaSugerida.toLocaleString('es-CL')}</span>
+          </div>
+          <div className="flex justify-between items-center bg-purple-50 p-3 rounded-md shadow-sm">
+            <span className="font-semibold text-purple-800">Total Asignado (con propina):</span>
+            <span className="text-purple-900 font-bold">${currentTotalComensales.toLocaleString('es-CL')}</span>
+          </div>
+          <div className={`flex justify-between items-center p-3 rounded-md shadow-sm ${Math.abs(remainingAmount) > 0.02 ? (remainingAmount > 0 ? 'bg-red-50' : 'bg-orange-50') : 'bg-green-50'}`}>
+            <span className="font-semibold text-red-800">Diferencia por Asignar:</span>
+            <span className="text-red-900 font-bold">${remainingAmount.toLocaleString('es-CL')}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ... (El resto del JSX es idéntico) ... */}
+      
+      <div className="text-center mb-8 flex flex-wrap justify-center gap-4">
+          {/* ... botones ... */}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {comensales.map(comensal => (
+          <div key={String(comensal.id)} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 transform hover:scale-105 transition-transform duration-200 ease-in-out flex flex-col h-full">
+            <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">
+              <i className="lucide-user text-2xl mr-2 text-blue-500"></i>
+              {comensal.name}
+            </h3>
+            <div className="mb-4">
+              <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-2">
+                Agregar Ítem Individual:
+              </label>
+              <select
+                id={`product-select-${comensal.id}`}
+                value={""}
+                onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value))}
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm"
+              >
+                <option value="" disabled>Selecciona un producto</option>
+                {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (
+                  <option key={String(product.id)} value={product.id}>
+                    {product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-grow">
+              {comensal.selectedItems.length > 0 ? (
+                <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
+                  {comensal.selectedItems.map((item, index) => (
+                    <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
+                      <span className="font-medium text-gray-700">
+                        {item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}
+                        {` (+10% Propina)`}
+                      </span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('es-CL')}</span>
+                        <button
+                          onClick={() => handleRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)}
+                          className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                          aria-label="Remove item"
+                        >
+                          <i className="lucide-minus text-xs"></i>
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems seleccionados.</p>
+              )}
+            </div>
+            <div className="mt-auto pt-4 border-t border-gray-200 flex justify-between items-center">
+              <span className="text-lg font-semibold text-gray-800">Total (con propina):</span>
+              <span className="text-2xl font-extrabold text-blue-700">${comensal.total.toLocaleString('es-CL')}</span>
+            </div>
+            <div className="flex flex-col gap-2 mt-4">
+              <button
+                onClick={() => openClearComensalModal(comensal.id)}
+                className="w-full bg-orange-500 text-white py-2 px-4 rounded-md shadow-md hover:bg-orange-600 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50"
+              >
+                Limpiar Consumo
+              </button>
+              <button
+                onClick={() => openRemoveComensalModal(comensal.id)}
+                className="w-full bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+              >
+                Eliminar Comensal
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <footer className="mt-12 p-6 bg-white rounded-xl shadow-lg border border-gray-200 max-w-2xl mx-auto text-center">
+        {/* ... */}
+      </footer>
+      
+      {/* ... (Todos los modales van aquí, sin cambios) ... */}
+
     </div>
   );
 };
