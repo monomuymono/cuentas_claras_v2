@@ -651,7 +651,8 @@ const App = () => {
 
 
   // Function to handle sharing an item among multiple comensales
-  const handleShareItem = useCallback((productId, sharingComensalIds) => {
+  // MODIFICACIÓN: Se ha eliminado `useCallback` para prevenir errores de "stale state"
+  const handleShareItem = (productId, sharingComensalIds) => {
     setAvailableProducts(currentProducts => {
       const productToShare = currentProducts.get(productId);
       if (!productToShare || Number(productToShare.quantity) <= 0) {
@@ -697,7 +698,7 @@ const App = () => {
 
       return newProductsMap;
     });
-  }, []);
+  };
 
   // Function to add a new comensal
   const handleAddComensal = () => {
@@ -1309,7 +1310,7 @@ const App = () => {
       </header>
 
       {/* Summary Totals */}
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w_2xl mx-auto border border-blue-200">
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_2xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Resumen de Totales</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
           <div className="flex justify-between items-center bg-blue-50 p-3 rounded-md shadow-sm">
