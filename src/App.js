@@ -525,7 +525,7 @@ const App = () => {
             }
   
             const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
-            return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
+            return { ...comensal, selectedItems: updatedItems, total: newTotal };
           }
           return comensal;
         })
@@ -543,116 +543,115 @@ const App = () => {
     if (!comensalTarget) return;
 
     const itemIndex = comensalTarget.selectedItems.findIndex(item =>
-      (item.type === 'shared' && String(item.shareInstanceId) === String(itemToRemoveIdentifier)) ||
-      (item.type === 'full' && item.id === Number(itemToRemoveIdentifier))
+        (item.type === 'shared' && String(item.shareInstanceId) === String(itemToRemoveIdentifier)) ||
+        (item.type === 'full' && item.id === Number(itemToRemoveIdentifier))
     );
 
     if (itemIndex === -1) return;
 
     const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
 
-    // --- Lógica para Ítems Individuales ('full') ---
+    // --- Logic for 'full' (individual) items ---
     if (itemToRemove.type === 'full') {
-      const newComensales = comensales.map(c => {
-        if (c.id === comensalId) {
-          const updatedItems = [...c.selectedItems];
-          if (itemToRemove.quantity > 1) {
-            updatedItems[itemIndex].quantity -= 1;
-          } else {
-            updatedItems.splice(itemIndex, 1);
-          }
-          const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-          return { ...c, selectedItems: updatedItems, total: newTotal };
-        }
-        return c;
-      });
-      setComensales(newComensales);
+        let newComensales = comensales.map(c => {
+            if (c.id === comensalId) {
+                const updatedItems = [...c.selectedItems];
+                const itemInBill = updatedItems[itemIndex];
 
-      setAvailableProducts(currentProducts => {
-        const newProducts = new Map(currentProducts);
-        const product = newProducts.get(itemToRemove.id);
-        if (product) {
-          newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-        }
-        return newProducts;
-      });
-      return;
+                if (itemInBill.quantity > 1) {
+                    itemInBill.quantity -= 1;
+                } else {
+                    updatedItems.splice(itemIndex, 1);
+                }
+                const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                return { ...c, selectedItems: updatedItems, total: newTotal };
+            }
+            return c;
+        });
+        setComensales(newComensales);
+
+        setAvailableProducts(currentProducts => {
+            const newProducts = new Map(currentProducts);
+            const product = newProducts.get(itemToRemove.id);
+            if (product) {
+                newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
+            }
+            return newProducts;
+        });
+        return;
     }
 
-    // --- Lógica para Ítems Compartidos ('shared') ---
+    // --- Logic for 'shared' items ---
     if (itemToRemove.type === 'shared') {
-      const { shareInstanceId, id: originalProductId } = itemToRemove;
-      
-      // Reconstruir el precio total base del ítem original
-      const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
+        const { shareInstanceId, id: originalProductId } = itemToRemove;
+        const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
 
-      const newActiveSharedInstances = new Map(activeSharedInstances);
-      const shareGroup = newActiveSharedInstances.get(shareInstanceId);
-      
-      if (!shareGroup) return;
+        const newActiveSharedInstances = new Map(activeSharedInstances);
+        const shareGroup = newActiveSharedInstances.get(shareInstanceId);
 
-      shareGroup.delete(comensalId);
+        if (!shareGroup) return;
 
-      // Si el grupo de compartido queda vacío
-      if (shareGroup.size === 0) {
-        newActiveSharedInstances.delete(shareInstanceId);
-        
-        // Devolver el ítem al inventario
-        setAvailableProducts(currentProducts => {
-          const newProducts = new Map(currentProducts);
-          const product = newProducts.get(originalProductId);
-          if (product) {
-            newProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
-          }
-          return newProducts;
-        });
+        shareGroup.delete(comensalId);
 
-        // Eliminar el ítem del comensal y recalcular su total
-        const finalComensales = comensales.map(c => {
-          if (c.id === comensalId) {
-            const newSelectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
-            const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            return { ...c, selectedItems: newSelectedItems, total: newTotal };
-          }
-          return c;
-        });
-        setComensales(finalComensales);
-
-      } else { // Si aún quedan comensales, redistribuir el costo
-        const newSharerCount = shareGroup.size;
-        const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-        const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
-
-        const finalComensales = comensales.map(c => {
-          // Caso 1: La persona que eliminó el ítem
-          if (c.id === comensalId) {
-            const newSelectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
-            const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            return { ...c, selectedItems: newSelectedItems, total: newTotal };
-          }
-          // Caso 2: Una persona que sigue compartiendo el ítem
-          if (shareGroup.has(c.id)) {
-            const newSelectedItems = c.selectedItems.map(item => {
-              if (String(item.shareInstanceId) === String(shareInstanceId)) {
-                return {
-                  ...item,
-                  price: newPriceWithTipPerShare,
-                  originalBasePrice: newBasePricePerShare,
-                  sharedByCount: newSharerCount,
-                };
-              }
-              return item;
+        // Case 1: The last person leaves the share group
+        if (shareGroup.size === 0) {
+            newActiveSharedInstances.delete(shareInstanceId);
+            
+            setAvailableProducts(currentProducts => {
+                const newProducts = new Map(currentProducts);
+                const product = newProducts.get(originalProductId);
+                if (product) {
+                    newProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
+                }
+                return newProducts;
             });
-            const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            return { ...c, selectedItems: newSelectedItems, total: newTotal };
-          }
-          // Caso 3: Un comensal no afectado
-          return c;
-        });
-        setComensales(finalComensales);
-      }
+            
+            const finalComensales = comensales.map(c => {
+                if (c.id === comensalId) {
+                    const newSelectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
+                    const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                    return { ...c, selectedItems: newSelectedItems, total: newTotal };
+                }
+                return c;
+            });
 
-      setActiveSharedInstances(newActiveSharedInstances);
+            setComensales(finalComensales);
+
+        } else { // Case 2: People still remain in the share group, so redistribute cost
+            const newSharerCount = shareGroup.size;
+            const newBasePricePerShare = totalItemBasePrice / newSharerCount;
+            const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
+
+            const finalComensales = comensales.map(c => {
+                // The person who is leaving
+                if (c.id === comensalId) {
+                    const newSelectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
+                    const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                    return { ...c, selectedItems: newSelectedItems, total: newTotal };
+                }
+                // A person who is remaining in the share
+                if (shareGroup.has(c.id)) {
+                    const newSelectedItems = c.selectedItems.map(item => {
+                        if (String(item.shareInstanceId) === String(shareInstanceId)) {
+                            return {
+                                ...item,
+                                price: newPriceWithTipPerShare,
+                                originalBasePrice: newBasePricePerShare,
+                                sharedByCount: newSharerCount,
+                            };
+                        }
+                        return item;
+                    });
+                    const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                    return { ...c, selectedItems: newSelectedItems, total: newTotal };
+                }
+                // An unaffected comensal
+                return c;
+            });
+            setComensales(finalComensales);
+        }
+        
+        setActiveSharedInstances(newActiveSharedInstances);
     }
   };
   // ==================================================================
@@ -700,7 +699,7 @@ const App = () => {
       setActiveSharedInstances(updatedActiveSharedInstances);
       
       setComensales(prevComensales => prevComensales.map(c => 
-          c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0, selectedProductId: "" } : c
+          c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c
       ));
     }
     setComensalToClearId(null);
@@ -750,7 +749,7 @@ const App = () => {
           }
         ];
         const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
-        return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
+        return { ...comensal, selectedItems: updatedItems, total: newTotal };
       }
       return comensal;
     });
@@ -773,13 +772,12 @@ const App = () => {
     }
 
     // Generate a unique ID for the new comensal
-    const newComensalId = comensales.length > 0 ? Math.max(...comensales.map(c => Number(c.id))) + 1 : 1; // Ensure c.id is number
+    const newComensalId = comensales.length > 0 ? Math.max(...comensales.map(c => Number(c.id))) + 1 : 1;
     const newComensal = {
       id: newComensalId,
       name: newComensalName.trim(),
       selectedItems: [],
       total: 0,
-      selectedProductId: "", // Initialize selectedProductId for new comensal
     };
 
     setComensales(prevComensales => [...prevComensales, newComensal]);
