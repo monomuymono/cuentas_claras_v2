@@ -651,7 +651,7 @@ const App = () => {
 
 
   // Function to handle sharing an item among multiple comensales
-  const handleShareItem = (productId, sharingComensalIds) => {
+  const handleShareItem = useCallback((productId, sharingComensalIds) => {
     setAvailableProducts(currentProducts => {
       const productToShare = currentProducts.get(productId);
       if (!productToShare || Number(productToShare.quantity) <= 0) {
@@ -697,7 +697,7 @@ const App = () => {
 
       return newProductsMap;
     });
-  };
+  }, []);
 
   // Function to add a new comensal
   const handleAddComensal = () => {
