@@ -189,6 +189,7 @@ const App = () => {
   const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
   const [activeSharedInstances, setActiveSharedInstances] = useState(new Map());
   const hasPendingChanges = useRef(false);
+  const initialLoadComplete = useRef(false);
   const MAX_COMENSALES = 20;
 
   // =================================================================================
@@ -236,14 +237,14 @@ const App = () => {
       setAvailableProducts(new Map());
       setComensales([]);
       setActiveSharedInstances(new Map());
-      setShareId(null); 
+      setShareId(`local-session-${Date.now()}`); // Inicia una nueva sesión local
       setShareLink('');
     }
   }, []);
 
   const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
     if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
-    if (!idToLoad) return;
+    if (!idToLoad || idToLoad.startsWith('local-')) return;
     if (hasPendingChanges.current) return;
 
     const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
@@ -271,10 +272,10 @@ const App = () => {
         setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
         setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
       } else {
+        alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
         const url = new URL(window.location.href);
         url.searchParams.delete('id');
         window.history.replaceState({}, document.title, url.toString());
-        setShareId(null);
         handleResetAll(true);
       }
     } catch (error) {
@@ -321,27 +322,23 @@ const App = () => {
     setAuthReady(true); 
   }, []);
 
+  // --- CORRECCIÓN: Este hook ahora solo se encarga de la carga inicial desde la URL ---
   useEffect(() => {
-    if (!authReady || !userId) return; 
+    if (!authReady || !userId || initialLoadComplete.current) return;
+    
     const urlParams = new URLSearchParams(window.location.search);
     const idFromUrl = urlParams.get('id');
+    
     if (idFromUrl) {
       setShareId(idFromUrl);
+      loadStateFromGoogleSheets(idFromUrl);
     } else {
-      setShareId(`session_${Date.now()}`);
+      setShareId(`local-session-${Date.now()}`);
     }
-  }, [authReady, userId]);
+    initialLoadComplete.current = true;
+  }, [authReady, userId, loadStateFromGoogleSheets]);
 
-  useEffect(() => {
-    if (shareId) {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('id') !== shareId) {
-        window.history.replaceState({}, '', `?id=${shareId}`);
-      }
-      loadStateFromGoogleSheets(shareId);
-    }
-  }, [shareId, loadStateFromGoogleSheets]);
-
+  // --- CORRECCIÓN: Polling se detiene si hay un modal abierto ---
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen;
     if (!shareId || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
@@ -353,7 +350,7 @@ const App = () => {
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen]);
 
   useEffect(() => {
-    if (!shareId || !authReady || isImageProcessing) return;
+    if (!shareId || !authReady || isImageProcessing || shareId.startsWith('local-')) return;
 
     hasPendingChanges.current = true;
     const handler = setTimeout(() => {
@@ -542,20 +539,20 @@ const App = () => {
   };
   
   const confirmClearComensal = () => {
+    setIsClearComensalModalOpen(false);
     const comensalToClear = comensales.find(c => c.id === comensalToClearId);
     if (!comensalToClear) {
-        setIsClearComensalModalOpen(false);
-        setComensalToClearId(null);
-        return;
+      setComensalToClearId(null);
+      return;
     }
-
+  
     const itemsToRemove = [...comensalToClear.selectedItems];
     itemsToRemove.forEach(item => {
         handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
     });
     
+    // Forzamos una actualización final para asegurar que la UI refleje el estado vacío.
     setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
-    setIsClearComensalModalOpen(false);
     setComensalToClearId(null);
   };
 
@@ -592,22 +589,18 @@ const App = () => {
       setIsClearAllComensalesModalOpen(false);
       return;
     }
-    
-    const newProducts = new Map(availableProducts);
-    const processedInstances = new Set();
-    
-    comensales.forEach(c => {
-        c.selectedItems.forEach(item => {
-            const product = newProducts.get(item.id);
-            if (product) {
-                if (item.type === 'full') {
-                    newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
-                } else if (item.type === 'shared' && !processedInstances.has(item.shareInstanceId)) {
-                    newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
-                    processedInstances.add(item.shareInstanceId);
-                }
-            }
-        });
+    const newProducts = new Map();
+    // Reconstruir un inventario desde cero para evitar errores
+    const allProductDefinitions = new Map();
+    [...availableProducts.values(), ...comensales.flatMap(c => c.selectedItems)].forEach(item => {
+        if (!allProductDefinitions.has(item.id)) {
+            allProductDefinitions.set(item.id, { id: item.id, name: item.name, price: item.originalBasePrice || item.price });
+        }
+    });
+
+    allProductDefinitions.forEach(prodDef => {
+        const originalQty = [...availableProducts.values(), ...comensales.flatMap(c => c.selectedItems)].filter(item => item.id === prodDef.id).reduce((sum, item) => sum + item.quantity, 0);
+        newProducts.set(prodDef.id, { ...prodDef, quantity: originalQty });
     });
 
     setAvailableProducts(newProducts);
@@ -616,11 +609,12 @@ const App = () => {
     setIsClearAllComensalesModalOpen(false);
   };
 
+
   const openClearAllComensalesModal = () => setIsClearAllComensalesModalOpen(true);
   
   const confirmResetAll = async () => { 
     setIsResetAllModalOpen(false);
-    if (shareId && userId) {
+    if (shareId && !shareId.startsWith('local-') && userId) {
       await deleteStateFromGoogleSheets(shareId);
     }
     handleResetAll(true);
@@ -653,7 +647,6 @@ const App = () => {
 
   const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
     try {
-        // === PROMPT CORREGIDO PARA EL FORMATO DE NÚMEROS CHILENO ===
         const prompt = `Analiza la imagen de recibo adjunta, que está en formato chileno.
         INSTRUCCIONES IMPORTANTES PARA LEER NÚMEROS: En el recibo, el punto (.) es un separador de miles y la coma (,) es el separador decimal. Al extraer un precio como "1.234,50", debes interpretarlo como el número 1234.50. Ignora los puntos de miles.
         Extrae todos los ítems individuales, sus cantidades y sus precios base.
@@ -672,9 +665,9 @@ const App = () => {
             }
         };
 
-        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
+        const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
 
-        if (apiKey.includes("TU_CLAVE_DE_API_DE_GEMINI_AQUI") || apiKey.trim() === "") {
+        if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) {
           throw new Error("Falta la clave de API de Gemini.");
         }
 
@@ -810,9 +803,8 @@ const App = () => {
       return;
     }
     
-    const currentShareId = shareId || `session_${Date.now()}`;
-    if (!shareId) setShareId(currentShareId);
-
+    const currentShareId = shareId && !shareId.startsWith('local-') ? shareId : `session_${Date.now()}`;
+    
     const dataToSave = {
       comensales,
       availableProducts: Object.fromEntries(availableProducts),
@@ -823,7 +815,12 @@ const App = () => {
     try {
       await saveStateToGoogleSheets(currentShareId, dataToSave);
       const fullLink = `${window.location.origin}${window.location.pathname}?id=${currentShareId}`;
+      
+      // Actualizar el estado y la URL solo después de guardar con éxito
+      setShareId(currentShareId);
       setShareLink(fullLink);
+      window.history.pushState({ path: fullLink }, '', fullLink);
+      
       navigator.clipboard.writeText(fullLink).then(() => alert('¡Enlace para compartir copiado al portapapeles!'));
     } catch (e) {
       alert(`Error al generar enlace: ${e.message}`);
@@ -898,6 +895,7 @@ const App = () => {
         </div>
       )}
 
+      {/* Secciones de la UI restauradas */}
       <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
         <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Agregar Nuevo Comensal</h2>
         <div className="flex flex-col sm:flex-row gap-4 items-center">
