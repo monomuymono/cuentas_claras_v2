@@ -159,53 +159,74 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
   );
 };
 
-// Componente para el modal de resumen
+// === NUEVO COMPONENTE: MODAL DE RESUMEN CON ESTILOS DE IMPRESIÓN ===
 const SummaryModal = ({ isOpen, onClose, summaryData }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50 print:bg-white">
-      <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg mx-4 print:shadow-none print:border">
-        <div id="summary-content">
-          <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
-          <div className="space-y-6">
-            {summaryData.map(diner => (
-              <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4">
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
-                <div className="flex justify-between text-gray-600">
-                  <span>Consumo (sin propina):</span>
-                  <span>${diner.totalSinPropina.toLocaleString('de-DE')}</span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Propina (10%):</span>
-                  <span>${diner.propina.toLocaleString('de-DE')}</span>
-                </div>
-                <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
-                  <span>TOTAL A PAGAR:</span>
-                  <span>${diner.totalConPropina.toLocaleString('de-DE')}</span>
-                </div>
+    <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50 print:bg-white print:block">
+      <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg mx-4 print:shadow-none print:border-none print:m-0 print:max-w-none print:rounded-none" id="summary-to-print">
+        <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
+        <div className="space-y-6">
+          {summaryData.map(diner => (
+            <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0">
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
+              <div className="flex justify-between text-gray-600">
+                <span>Consumo (sin propina):</span>
+                <span>${diner.totalSinPropina.toLocaleString('de-DE')}</span>
               </div>
-            ))}
-          </div>
+              <div className="flex justify-between text-gray-600">
+                <span>Propina (10%):</span>
+                <span>${diner.propina.toLocaleString('de-DE')}</span>
+              </div>
+              <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
+                <span>TOTAL A PAGAR:</span>
+                <span>${diner.totalConPropina.toLocaleString('de-DE')}</span>
+              </div>
+            </div>
+          ))}
         </div>
         <div className="flex justify-end space-x-4 mt-8 print:hidden">
-            <button
-                onClick={() => window.print()}
-                className="px-5 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-                Imprimir
-            </button>
-            <button
-                onClick={onClose}
-                className="px-5 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-            >
-                Cerrar
-            </button>
+          <button
+              onClick={() => window.print()}
+              className="px-5 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+              Imprimir
+          </button>
+          <button
+              onClick={onClose}
+              className="px-5 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+          >
+              Cerrar
+          </button>
         </div>
       </div>
     </div>
   );
 };
+
+// Componente de estilos para controlar la impresión
+const PrintStyles = () => (
+  <style>
+    {`
+      @media print {
+        body > *:not(#printable-area) {
+          display: none;
+        }
+        #printable-area {
+          display: block;
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+        }
+        #printable-area > *:not(#summary-to-print) {
+          display: none;
+        }
+      }
+    `}
+  </style>
+);
 
 
 const App = () => {
@@ -593,17 +614,19 @@ const App = () => {
   
   const confirmClearComensal = () => {
     setIsClearComensalModalOpen(false);
-    const idToClear = comensalToClearId;
-    setComensalToClearId(null);
-    if (idToClear === null) return;
-    
-    const comensalToClear = comensales.find(c => c.id === idToClear);
-    if (!comensalToClear) return;
+    const comensalToClear = comensales.find(c => c.id === comensalToClearId);
+    if (!comensalToClear) {
+      setComensalToClearId(null);
+      return;
+    }
   
     const itemsToRemove = [...comensalToClear.selectedItems];
     itemsToRemove.forEach(item => {
-        handleRemoveItem(idToClear, item.type === 'shared' ? item.shareInstanceId : item.id);
+        handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
     });
+    
+    setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
+    setComensalToClearId(null);
   };
 
   const openClearComensalModal = (comensalId) => {
@@ -613,12 +636,17 @@ const App = () => {
   
   const confirmRemoveComensal = () => {
     const idToRemove = comensalToRemoveId;
-    if (idToRemove === null) {
-        setIsRemoveComensalModalOpen(false);
-        return;
+    if (idToRemove === null) return;
+    
+    const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
+    if (comensalToRemoveData) {
+      const itemsToRemove = [...comensalToRemoveData.selectedItems];
+      itemsToRemove.forEach(item => {
+        const identifier = item.type === 'shared' ? item.shareInstanceId : item.id;
+        handleRemoveItem(idToRemove, identifier);
+      });
     }
     
-    confirmClearComensal(); 
     setComensales(prev => prev.filter(c => c.id !== idToRemove)); 
     setIsRemoveComensalModalOpen(false);
     setComensalToRemoveId(null);
@@ -635,7 +663,7 @@ const App = () => {
       return;
     }
     
-    let newProducts = new Map(availableProducts);
+    const newProducts = new Map(availableProducts);
     const processedInstances = new Set();
     
     comensales.forEach(c => {
@@ -740,24 +768,6 @@ const App = () => {
     }
   };
   
-  const handleExportToExcel = () => { /* Esta función se reemplaza por handleOpenSummaryModal */ };
-  const handleOpenSummaryModal = () => {
-    const data = comensales.map(comensal => {
-      const totalConPropina = comensal.total;
-      const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + (item.originalBasePrice * item.quantity), 0);
-      const propina = totalConPropina - totalSinPropina;
-      return {
-        id: comensal.id,
-        name: comensal.name,
-        totalSinPropina: Math.round(totalSinPropina),
-        propina: Math.round(propina),
-        totalConPropina: Math.round(totalConPropina),
-      };
-    });
-    setSummaryData(data);
-    setIsSummaryModalOpen(true);
-  };
-
   const handleManualAddItem = () => {
     if (!manualItemName.trim() || isNaN(parseFloat(manualItemPrice)) || isNaN(parseInt(manualItemQuantity))) {
         setManualItemMessage({ type: 'error', text: 'Por favor, completa todos los campos correctamente.' });
@@ -842,6 +852,22 @@ const App = () => {
     }
   };
 
+  const handleOpenSummaryModal = () => {
+    const data = comensales.map(comensal => {
+      const totalConPropina = comensal.total;
+      const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + (item.originalBasePrice * item.quantity), 0);
+      const propina = totalConPropina - totalSinPropina;
+      return {
+        id: comensal.id,
+        name: comensal.name,
+        totalSinPropina: Math.round(totalSinPropina),
+        propina: Math.round(propina),
+        totalConPropina: Math.round(totalConPropina),
+      };
+    });
+    setSummaryData(data);
+    setIsSummaryModalOpen(true);
+  };
   // ==================================================================
   // === CÁLCULOS DERIVADOS PARA LA UI (Corregidos) ===
   // ==================================================================
@@ -855,173 +881,176 @@ const App = () => {
   const remainingPropinaDisplay = propinaSugerida - totalPerItemTipsCollected;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-4 font-inter text-gray-800">
-      <header className="mb-8 text-center">
-        <h1 className="text-4xl font-extrabold text-blue-700 mb-2 drop-shadow-md">
-          Calculadora de Cuentas por Comensal
-        </h1>
-        <p className="text-xl text-gray-600">
-          Selecciona los ítems del recibo para cada comensal y calcula el total individual.
-        </p>
-      </header>
+    <div id="printable-area">
+      <PrintStyles />
+      <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-4 font-inter text-gray-800">
+        <header className="mb-8 text-center">
+          <h1 className="text-4xl font-extrabold text-blue-700 mb-2 drop-shadow-md">
+            Calculadora de Cuentas por Comensal
+          </h1>
+          <p className="text-xl text-gray-600">
+            Selecciona los ítems del recibo para cada comensal y calcula el total individual.
+          </p>
+        </header>
 
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-2xl mx-auto border border-blue-200">
-        <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Resumen de Totales</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
-          <div className="flex justify-between items-center bg-blue-50 p-3 rounded-md shadow-sm">
-            <span className="font-semibold text-blue-800">Total General Cuenta (sin propina):</span>
-            <span className="text-blue-900 font-bold">${Math.round(totalBillValue).toLocaleString('de-DE')}</span>
-          </div>
-          <div className="flex justify-between items-center bg-green-50 p-3 rounded-md shadow-sm">
-            <span className="font-semibold text-green-800">Propina Sugerida (10%):</span>
-            <span className="text-green-900 font-bold">${Math.round(propinaSugerida).toLocaleString('de-DE')}</span>
-          </div>
-          <div className="flex justify-between items-center bg-purple-50 p-3 rounded-md shadow-sm">
-            <span className="font-semibold text-purple-800">Total Asignado (con propina):</span>
-            <span className="text-purple-900 font-bold">${Math.round(currentTotalComensales).toLocaleString('de-DE')}</span>
-          </div>
-          <div className={`flex justify-between items-center p-3 rounded-md shadow-sm ${Math.abs(remainingAmount) > 1 ? (remainingAmount > 0 ? 'bg-red-50' : 'bg-orange-50') : 'bg-green-50'}`}>
-            <span className="font-semibold text-red-800">Diferencia por Asignar:</span>
-            <span className="text-red-900 font-bold">${Math.round(remainingAmount).toLocaleString('de-DE')}</span>
-          </div>
-        </div>
-      </div>
-      
-      {userId && (
-        <div className="bg-white p-4 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200 text-center text-sm text-gray-600">
-          <p>Tu ID de sesión: <span className="font-semibold text-gray-800">{userId}</span></p>
-          {shareId && <p>ID de sesión compartida: <span className="font-semibold text-gray-800">{shareId}</span></p>}
-          {shareLink && (
-            <div className="mt-2 flex flex-col items-center">
-              <p>Enlace compartible:</p>
-              <a href={shareLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
-                {shareLink}
-              </a>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado al portapapeles!'));
-                }}
-                className="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
-              >
-                Copiar Enlace
-              </button>
+        <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-2xl mx-auto border border-blue-200">
+          <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Resumen de Totales</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
+            <div className="flex justify-between items-center bg-blue-50 p-3 rounded-md shadow-sm">
+              <span className="font-semibold text-blue-800">Total General Cuenta (sin propina):</span>
+              <span className="text-blue-900 font-bold">${Math.round(totalBillValue).toLocaleString('de-DE')}</span>
             </div>
-          )}
-        </div>
-      )}
-
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
-        <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Agregar Nuevo Comensal</h2>
-        <div className="flex flex-col sm:flex-row gap-4 items-center">
-          <input type="text" placeholder="Nombre del Comensal" value={newComensalName} onChange={(e) => setNewComensalName(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-          <button onClick={handleAddComensal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 w-full sm:w-auto">Añadir Comensal</button>
-        </div>
-        {addComensalMessage.text && (<p className={`mt-4 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
-      </div>
-
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
-          <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Agregar Ítem Manualmente</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input type="text" placeholder="Nombre del Ítem" value={manualItemName} onChange={(e) => setManualItemName(e.target.value)} className="p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 col-span-2 sm:col-span-1" />
-            <input type="number" placeholder="Precio Base (sin propina)" value={manualItemPrice} onChange={(e) => setManualItemPrice(e.target.value)} className="p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-            <input type="number" placeholder="Cantidad" value={manualItemQuantity} onChange={(e) => setManualItemQuantity(e.target.value)} className="p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-            <button onClick={handleManualAddItem} className="px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 col-span-2">Añadir Ítem</button>
-          </div>
-          {manualItemMessage.text && (<p className={`mt-4 text-center text-sm ${manualItemMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{manualItemMessage.text}</p>)}
-      </div>
-      
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
-        <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Administrar Inventario</h2>
-        <div className="flex flex-col sm:flex-row gap-4 items-center">
-          <select value={itemToRemoveFromInventoryId} onChange={(e) => setItemToRemoveFromInventoryId(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-            <option value="">Selecciona ítem a eliminar</option>
-            {Array.from(availableProducts.values()).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${product.price.toLocaleString('de-DE')}) (Disp: {product.quantity})</option>))}
-          </select>
-          <button onClick={handleRemoveInventoryItem} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 w-full sm:w-auto">Eliminar del Inventario</button>
-        </div>
-        {removeInventoryItemMessage.text && (<p className={`mt-4 text-center text-sm ${removeInventoryItemMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{removeInventoryItemMessage.text}</p>)}
-      </div>
-
-      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
-        <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Cargar y Analizar Recibo</h2>
-        <div className="flex flex-col sm:flex-row gap-4 items-center">
-            <input type="file" accept="image/*" onChange={handleImageUpload} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" aria-label="Cargar imagen de recibo" disabled={isImageProcessing} />
-        </div>
-        {isImageProcessing && (<p className="mt-4 text-center text-blue-600 font-semibold flex items-center justify-center"><svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Procesando imagen...</p>)}
-        {imageProcessingError && (<p className={`mt-4 text-center text-red-600 text-sm`}>Error: {imageProcessingError}</p>)}
-        {uploadedImageUrl && (<div className="mt-4 text-center"><p className="text-sm text-gray-500 mb-2">Imagen cargada:</p><img src={uploadedImageUrl} alt="Recibo cargado" className="max-w-xs h-auto rounded-md border border-gray-300 mx-auto" style={{ maxHeight: '200px' }} /></div>)}
-      </div>
-
-      <div className="text-center mb-8 flex flex-wrap justify-center gap-4">
-          <button onClick={handleGenerateShareLink} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Generar Enlace</button>
-          <button onClick={() => setIsShareModalOpen(true)} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir Ítem</button>
-          {comensales.length > 0 && (<button onClick={handleOpenSummaryModal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen</button>)}
-          {comensales.length > 0 && (<button onClick={openClearAllComensalesModal} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Comensales</button>)}
-          <button onClick={openResetAllModal} className="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Resetear Todo</button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {comensales.map(comensal => (
-          <div key={String(comensal.id)} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 flex flex-col h-full">
-            <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
-            <div className="mb-4">
-              <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-2">Agregar Ítem:</label>
-              <select id={`product-select-${comensal.id}`} value="" onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
-                <option value="" disabled>Selecciona un producto</option>
-                {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('de-DE')}) (Disp: {Number(product.quantity)})</option>))}
-              </select>
+            <div className="flex justify-between items-center bg-green-50 p-3 rounded-md shadow-sm">
+              <span className="font-semibold text-green-800">Propina Sugerida (10%):</span>
+              <span className="text-green-900 font-bold">${Math.round(propinaSugerida).toLocaleString('de-DE')}</span>
             </div>
-            <div className="flex-grow">
-              {comensal.selectedItems.length > 0 ? (
-                <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
-                  {comensal.selectedItems.map((item, index) => (
-                    <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
-                      <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`} (+10% Prop.)</span>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('de-DE')}</span>
-                        <button onClick={() => handleRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
+            <div className="flex justify-between items-center bg-purple-50 p-3 rounded-md shadow-sm">
+              <span className="font-semibold text-purple-800">Total Asignado (con propina):</span>
+              <span className="text-purple-900 font-bold">${Math.round(currentTotalComensales).toLocaleString('de-DE')}</span>
             </div>
-            <div className="mt-auto pt-4 border-t border-gray-200 flex justify-between items-center">
-              <span className="text-lg font-semibold text-gray-800">Total:</span>
-              <span className="text-2xl font-extrabold text-blue-700">${comensal.total.toLocaleString('de-DE')}</span>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => openClearComensalModal(comensal.id)} className="w-full bg-orange-500 text-white py-2 px-4 rounded-md shadow-md hover:bg-orange-600">Limpiar</button>
-              <button onClick={() => openRemoveComensalModal(comensal.id)} className="w-full bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar</button>
+            <div className={`flex justify-between items-center p-3 rounded-md shadow-sm ${Math.abs(remainingAmount) > 1 ? (remainingAmount > 0 ? 'bg-red-50' : 'bg-orange-50') : 'bg-green-50'}`}>
+              <span className="font-semibold text-red-800">Diferencia por Asignar:</span>
+              <span className="text-red-900 font-bold">${Math.round(remainingAmount).toLocaleString('de-DE')}</span>
             </div>
           </div>
-        ))}
-      </div>
-
-      <footer className="mt-12 p-6 bg-white rounded-xl shadow-lg border border-gray-200 max-w-2xl mx-auto text-center">
-        <h2 className="text-2xl font-bold text-blue-600 mb-4">¡Cuentas Claras!</h2>
-        <div className="flex justify-around items-center text-xl font-semibold">
-          <div className="text-gray-700">
-            Total Asignado (con propina): <span className="text-green-700 font-extrabold">${currentTotalComensales.toLocaleString('de-DE')}</span>
-          </div>
-          <div className="text-gray-700">
-            Propina Pendiente: <span className="text-orange-700 font-extrabold">${Math.round(remainingPropinaDisplay).toLocaleString('de-DE')}</span>
-          </div>
         </div>
-        <p className="mt-4 text-gray-500 text-sm">
-          Puedes ajustar los montos seleccionando y deseleccionando ítems para cada comensal.
-        </p>
-      </footer>
-      
-      <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} />
-      <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
-      <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
-      <ConfirmationModal isOpen={isClearAllComensalesModalOpen} onClose={() => setIsClearAllComensalesModalOpen(false)} onConfirm={confirmClearAllComensales} message="¿Estás seguro de que deseas eliminar a TODOS los comensales?" confirmText="Eliminar Todos" />
-      <ConfirmationModal isOpen={isResetAllModalOpen} onClose={() => setIsResetAllModalOpen(false)} onConfirm={confirmResetAll} message="¿Estás seguro de que deseas resetear toda la aplicación?" confirmText="Sí, Resetear Todo" cancelText="Cancelar" />
-      <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
-      <ConfirmationModal isOpen={isRemoveInventoryItemModalOpen} onClose={() => setIsRemoveInventoryItemModalOpen(false)} onConfirm={confirmRemoveInventoryItem} message={`¿Estás seguro de que quieres eliminar "${availableProducts.get(Number(itemToRemoveFromInventoryId))?.name || 'este ítem'}" del inventario?`} confirmText="Sí, Eliminar" cancelText="No, Mantener" />
+        
+        {userId && (
+          <div className="bg-white p-4 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200 text-center text-sm text-gray-600">
+            <p>Tu ID de sesión: <span className="font-semibold text-gray-800">{userId}</span></p>
+            {shareId && <p>ID de sesión compartida: <span className="font-semibold text-gray-800">{shareId}</span></p>}
+            {shareLink && (
+              <div className="mt-2 flex flex-col items-center">
+                <p>Enlace compartible:</p>
+                <a href={shareLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
+                  {shareLink}
+                </a>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado al portapapeles!'));
+                  }}
+                  className="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
+                >
+                  Copiar Enlace
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200">
+          <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Agregar Nuevo Comensal</h2>
+          <div className="flex flex-col sm:flex-row gap-4 items-center">
+            <input type="text" placeholder="Nombre del Comensal" value={newComensalName} onChange={(e) => setNewComensalName(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+            <button onClick={handleAddComensal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 w-full sm:w-auto">Añadir Comensal</button>
+          </div>
+          {addComensalMessage.text && (<p className={`mt-4 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
+            <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Agregar Ítem Manualmente</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input type="text" placeholder="Nombre del Ítem" value={manualItemName} onChange={(e) => setManualItemName(e.target.value)} className="p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 col-span-2 sm:col-span-1" />
+              <input type="number" placeholder="Precio Base (sin propina)" value={manualItemPrice} onChange={(e) => setManualItemPrice(e.target.value)} className="p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+              <input type="number" placeholder="Cantidad" value={manualItemQuantity} onChange={(e) => setManualItemQuantity(e.target.value)} className="p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+              <button onClick={handleManualAddItem} className="px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 col-span-2">Añadir Ítem</button>
+            </div>
+            {manualItemMessage.text && (<p className={`mt-4 text-center text-sm ${manualItemMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{manualItemMessage.text}</p>)}
+        </div>
+        
+        <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
+          <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Administrar Inventario</h2>
+          <div className="flex flex-col sm:flex-row gap-4 items-center">
+            <select value={itemToRemoveFromInventoryId} onChange={(e) => setItemToRemoveFromInventoryId(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+              <option value="">Selecciona ítem a eliminar</option>
+              {Array.from(availableProducts.values()).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${product.price.toLocaleString('de-DE')}) (Disp: {product.quantity})</option>))}
+            </select>
+            <button onClick={handleRemoveInventoryItem} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 w-full sm:w-auto">Eliminar del Inventario</button>
+          </div>
+          {removeInventoryItemMessage.text && (<p className={`mt-4 text-center text-sm ${removeInventoryItemMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{removeInventoryItemMessage.text}</p>)}
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
+          <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Cargar y Analizar Recibo</h2>
+          <div className="flex flex-col sm:flex-row gap-4 items-center">
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" aria-label="Cargar imagen de recibo" disabled={isImageProcessing} />
+          </div>
+          {isImageProcessing && (<p className="mt-4 text-center text-blue-600 font-semibold flex items-center justify-center"><svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Procesando imagen...</p>)}
+          {imageProcessingError && (<p className={`mt-4 text-center text-red-600 text-sm`}>Error: {imageProcessingError}</p>)}
+          {uploadedImageUrl && (<div className="mt-4 text-center"><p className="text-sm text-gray-500 mb-2">Imagen cargada:</p><img src={uploadedImageUrl} alt="Recibo cargado" className="max-w-xs h-auto rounded-md border border-gray-300 mx-auto" style={{ maxHeight: '200px' }} /></div>)}
+        </div>
+
+        <div className="text-center mb-8 flex flex-wrap justify-center gap-4">
+            <button onClick={handleGenerateShareLink} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Generar Enlace</button>
+            <button onClick={() => setIsShareModalOpen(true)} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir Ítem</button>
+            {comensales.length > 0 && (<button onClick={handleOpenSummaryModal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen</button>)}
+            {comensales.length > 0 && (<button onClick={openClearAllComensalesModal} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Comensales</button>)}
+            <button onClick={openResetAllModal} className="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Resetear Todo</button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {comensales.map(comensal => (
+            <div key={String(comensal.id)} className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 flex flex-col h-full">
+              <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
+              <div className="mb-4">
+                <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-2">Agregar Ítem:</label>
+                <select id={`product-select-${comensal.id}`} value="" onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                  <option value="" disabled>Selecciona un producto</option>
+                  {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('de-DE')}) (Disp: {Number(product.quantity)})</option>))}
+                </select>
+              </div>
+              <div className="flex-grow">
+                {comensal.selectedItems.length > 0 ? (
+                  <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
+                    {comensal.selectedItems.map((item, index) => (
+                      <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
+                        <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`} (+10% Prop.)</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('de-DE')}</span>
+                          <button onClick={() => handleRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
+              </div>
+              <div className="mt-auto pt-4 border-t border-gray-200 flex justify-between items-center">
+                <span className="text-lg font-semibold text-gray-800">Total:</span>
+                <span className="text-2xl font-extrabold text-blue-700">${comensal.total.toLocaleString('de-DE')}</span>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => openClearComensalModal(comensal.id)} className="w-full bg-orange-500 text-white py-2 px-4 rounded-md shadow-md hover:bg-orange-600">Limpiar</button>
+                <button onClick={() => openRemoveComensalModal(comensal.id)} className="w-full bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <footer className="mt-12 p-6 bg-white rounded-xl shadow-lg border border-gray-200 max-w-2xl mx-auto text-center">
+          <h2 className="text-2xl font-bold text-blue-600 mb-4">¡Cuentas Claras!</h2>
+          <div className="flex justify-around items-center text-xl font-semibold">
+            <div className="text-gray-700">
+              Total Asignado (con propina): <span className="text-green-700 font-extrabold">${currentTotalComensales.toLocaleString('de-DE')}</span>
+            </div>
+            <div className="text-gray-700">
+              Propina Pendiente: <span className="text-orange-700 font-extrabold">${Math.round(remainingPropinaDisplay).toLocaleString('de-DE')}</span>
+            </div>
+          </div>
+          <p className="mt-4 text-gray-500 text-sm">
+            Puedes ajustar los montos seleccionando y deseleccionando ítems para cada comensal.
+          </p>
+        </footer>
+        
+        <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} />
+        <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
+        <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
+        <ConfirmationModal isOpen={isClearAllComensalesModalOpen} onClose={() => setIsClearAllComensalesModalOpen(false)} onConfirm={confirmClearAllComensales} message="¿Estás seguro de que deseas eliminar a TODOS los comensales?" confirmText="Eliminar Todos" />
+        <ConfirmationModal isOpen={isResetAllModalOpen} onClose={() => setIsResetAllModalOpen(false)} onConfirm={confirmResetAll} message="¿Estás seguro de que deseas resetear toda la aplicación?" confirmText="Sí, Resetear Todo" cancelText="Cancelar" />
+        <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
+        <ConfirmationModal isOpen={isRemoveInventoryItemModalOpen} onClose={() => setIsRemoveInventoryItemModalOpen(false)} onConfirm={confirmRemoveInventoryItem} message={`¿Estás seguro de que quieres eliminar "${availableProducts.get(Number(itemToRemoveFromInventoryId))?.name || 'este ítem'}" del inventario?`} confirmText="Sí, Eliminar" cancelText="No, Mantener" />
+      </div>
     </div>
   );
 };
