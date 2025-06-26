@@ -535,11 +535,8 @@ const App = () => {
     });
   };
 
-  // ==================================================================
-  // === INICIO DE LA FUNCIÓN CORREGIDA ===
-  // ==================================================================
   const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
-    // 1. Encontrar el comensal y el ítem a partir del estado actual
+    // 1. Find the comensal and the item from the current state
     const comensalTarget = comensales.find(c => c.id === comensalId);
     if (!comensalTarget) return;
 
@@ -552,14 +549,14 @@ const App = () => {
 
     const itemDataToRestore = { ...comensalTarget.selectedItems[itemIndex] };
     
-    // 2. Actualizar el estado de los comensales
+    // 2. Update the comensales state
     const newComensales = comensales.map(comensal => {
       if (comensal.id === comensalId) {
         const updatedItems = [...comensal.selectedItems];
         
         if (itemDataToRestore.type === 'full' && itemDataToRestore.quantity > 1) {
           updatedItems[itemIndex].quantity -= 1;
-          // Para la restauración, solo devolvemos 1 unidad al inventario
+          // For restoration, we only return 1 unit to the inventory
           itemDataToRestore.quantity = 1;
         } else {
           updatedItems.splice(itemIndex, 1);
@@ -572,20 +569,20 @@ const App = () => {
     });
     setComensales(newComensales);
 
-    // 3. Actualizar el estado del inventario (availableProducts)
+    // 3. Update the inventory state (availableProducts)
     setAvailableProducts(currentProducts => {
       const newProducts = new Map(currentProducts);
       const product = newProducts.get(itemDataToRestore.id);
       if (product) {
-        // La cantidad a restaurar es 1 para ítems compartidos o ítems únicos.
-        // Si un ítem "full" tenía cantidad > 1, solo decrementamos en 1, por lo que solo restauramos 1.
+        // The quantity to restore is 1 for shared items or single full items.
+        // If a "full" item had quantity > 1, we only decremented it, so we only restore 1.
         const quantityToRestore = 1; 
         newProducts.set(itemDataToRestore.id, { ...product, quantity: product.quantity + quantityToRestore });
       }
       return newProducts;
     });
 
-    // 4. Si el ítem era compartido, limpiar el registro en activeSharedInstances
+    // 4. If the item was shared, clean up the activeSharedInstances record
     if (itemDataToRestore.type === 'shared') {
       setActiveSharedInstances(currentInstances => {
         const newInstances = new Map(currentInstances);
@@ -595,22 +592,12 @@ const App = () => {
           shareGroup.delete(comensalId);
           if (shareGroup.size === 0) {
             newInstances.delete(itemDataToRestore.shareInstanceId);
-          } else {
-            // Si el grupo aún tiene miembros, no se devuelve el ítem al inventario general
-            // La lógica de devolución del ítem ya se hizo en el paso 3,
-            // pero solo debe ocurrir si el grupo compartido se disuelve.
-            // La lógica actual devuelve el item al inventario tan pronto una persona lo elimina.
-            // Para una división más precisa, se debería re-calcular el costo para los restantes.
-            // Por simplicidad del bug fix, mantenemos la devolución unitaria.
           }
         }
         return newInstances;
       });
     }
   };
-  // ==================================================================
-  // === FIN DE LA FUNCIÓN CORREGIDA ===
-  // ==================================================================
 
 
   // Function to clear all items for a comensal (but keep the comensal) - Refactored for single update
@@ -665,55 +652,60 @@ const App = () => {
     setIsClearComensalModalOpen(true);
   };
 
-
-  // Function to handle sharing an item among multiple comensales
+  // ==================================================================
+  // === INICIO DE LA FUNCIÓN CORREGIDA ===
+  // ==================================================================
   const handleShareItem = (productId, sharingComensalIds) => {
-    setAvailableProducts(currentProducts => {
-      const productToShare = currentProducts.get(productId);
-      if (!productToShare || Number(productToShare.quantity) <= 0) {
-        alert('Producto no disponible para compartir.');
-        return currentProducts;
-      }
+    // 1. Read current state and validate
+    const productToShare = availableProducts.get(productId);
+    if (!productToShare || Number(productToShare.quantity) <= 0) {
+      alert('Producto no disponible para compartir.');
+      return;
+    }
 
-      const newProductsMap = new Map(currentProducts);
-      newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 });
+    // 2. Calculate all new state values
+    //  a. New product inventory
+    const newProductsMap = new Map(availableProducts);
+    newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 });
 
-      const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
-      const priceWithTipPerShare = basePricePerShare * 1.10;
-      const shareInstanceId = Date.now() + Math.random();
+    //  b. New shared instance tracking
+    const shareInstanceId = Date.now() + Math.random();
+    const newActiveSharedInstances = new Map(activeSharedInstances);
+    newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds));
+    
+    //  c. New comensales array
+    const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
+    const priceWithTipPerShare = basePricePerShare * 1.10;
 
-      setActiveSharedInstances(prevActive => {
-        const newActive = new Map(prevActive);
-        newActive.set(shareInstanceId, new Set(sharingComensalIds));
-        return newActive;
-      });
-
-      setComensales(prevComensales => {
-        return prevComensales.map(comensal => {
-          if (sharingComensalIds.includes(comensal.id)) {
-            const updatedItems = [
-              ...comensal.selectedItems,
-              {
-                id: productToShare.id,
-                name: productToShare.name,
-                price: priceWithTipPerShare,
-                originalBasePrice: basePricePerShare,
-                quantity: 1,
-                type: 'shared',
-                sharedByCount: Number(sharingComensalIds.length),
-                shareInstanceId: shareInstanceId
-              }
-            ];
-            const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
-            return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
+    const newComensales = comensales.map(comensal => {
+      if (sharingComensalIds.includes(comensal.id)) {
+        const updatedItems = [
+          ...comensal.selectedItems,
+          {
+            id: productToShare.id,
+            name: productToShare.name,
+            price: priceWithTipPerShare,
+            originalBasePrice: basePricePerShare,
+            quantity: 1,
+            type: 'shared',
+            sharedByCount: Number(sharingComensalIds.length),
+            shareInstanceId: shareInstanceId
           }
-          return comensal;
-        });
-      });
-
-      return newProductsMap;
+        ];
+        const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+        return { ...comensal, selectedItems: updatedItems, total: newTotal, selectedProductId: "" };
+      }
+      return comensal;
     });
+
+    // 3. Set all new states sequentially
+    setAvailableProducts(newProductsMap);
+    setActiveSharedInstances(newActiveSharedInstances);
+    setComensales(newComensales);
   };
+  // ==================================================================
+  // === FIN DE LA FUNCIÓN CORREGIDA ===
+  // ==================================================================
 
   // Function to add a new comensal
   const handleAddComensal = () => {
