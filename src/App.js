@@ -36,6 +36,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, c
   );
 };
 
+
 // Componente para el modal de compartir ítems
 const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShareConfirm }) => {
   const [selectedProductToShare, setSelectedProductToShare] = useState('');
@@ -43,6 +44,7 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
   const [isShareWarningModalOpen, setIsShareWarningModalOpen] = useState(false);
   const [tempShareProductId, setTempShareProductId] = useState(null);
   const [tempSharingComensalIds, setTempSharingComensalIds] = useState([]);
+
 
   useEffect(() => {
     if (isOpen) {
@@ -157,7 +159,7 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
   );
 };
 
-// === NUEVO COMPONENTE: MODAL DE RESUMEN ===
+// Componente para el modal de resumen
 const SummaryModal = ({ isOpen, onClose, summaryData }) => {
   if (!isOpen) return null;
 
@@ -402,7 +404,7 @@ const App = () => {
     hasPendingChanges.current = true;
     const handler = setTimeout(() => {
       const dataToSave = {
-          comensales: comensales,
+          comensales,
           availableProducts: Object.fromEntries(availableProducts),
           activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
           lastUpdated: new Date().toISOString()
@@ -591,19 +593,17 @@ const App = () => {
   
   const confirmClearComensal = () => {
     setIsClearComensalModalOpen(false);
-    const comensalToClear = comensales.find(c => c.id === comensalToClearId);
-    if (!comensalToClear) {
-      setComensalToClearId(null);
-      return;
-    }
+    const idToClear = comensalToClearId;
+    setComensalToClearId(null);
+    if (idToClear === null) return;
+    
+    const comensalToClear = comensales.find(c => c.id === idToClear);
+    if (!comensalToClear) return;
   
     const itemsToRemove = [...comensalToClear.selectedItems];
     itemsToRemove.forEach(item => {
-        handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
+        handleRemoveItem(idToClear, item.type === 'shared' ? item.shareInstanceId : item.id);
     });
-    
-    setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
-    setComensalToClearId(null);
   };
 
   const openClearComensalModal = (comensalId) => {
@@ -613,17 +613,12 @@ const App = () => {
   
   const confirmRemoveComensal = () => {
     const idToRemove = comensalToRemoveId;
-    if (idToRemove === null) return;
-    
-    const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
-    if (comensalToRemoveData) {
-      const itemsToRemove = [...comensalToRemoveData.selectedItems];
-      itemsToRemove.forEach(item => {
-        const identifier = item.type === 'shared' ? item.shareInstanceId : item.id;
-        handleRemoveItem(idToRemove, identifier);
-      });
+    if (idToRemove === null) {
+        setIsRemoveComensalModalOpen(false);
+        return;
     }
     
+    confirmClearComensal(); 
     setComensales(prev => prev.filter(c => c.id !== idToRemove)); 
     setIsRemoveComensalModalOpen(false);
     setComensalToRemoveId(null);
@@ -640,7 +635,7 @@ const App = () => {
       return;
     }
     
-    const newProducts = new Map(availableProducts);
+    let newProducts = new Map(availableProducts);
     const processedInstances = new Set();
     
     comensales.forEach(c => {
@@ -745,6 +740,24 @@ const App = () => {
     }
   };
   
+  const handleExportToExcel = () => { /* Esta función se reemplaza por handleOpenSummaryModal */ };
+  const handleOpenSummaryModal = () => {
+    const data = comensales.map(comensal => {
+      const totalConPropina = comensal.total;
+      const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + (item.originalBasePrice * item.quantity), 0);
+      const propina = totalConPropina - totalSinPropina;
+      return {
+        id: comensal.id,
+        name: comensal.name,
+        totalSinPropina: Math.round(totalSinPropina),
+        propina: Math.round(propina),
+        totalConPropina: Math.round(totalConPropina),
+      };
+    });
+    setSummaryData(data);
+    setIsSummaryModalOpen(true);
+  };
+
   const handleManualAddItem = () => {
     if (!manualItemName.trim() || isNaN(parseFloat(manualItemPrice)) || isNaN(parseInt(manualItemQuantity))) {
         setManualItemMessage({ type: 'error', text: 'Por favor, completa todos los campos correctamente.' });
