@@ -347,9 +347,9 @@ const App = () => {
     return () => clearInterval(pollingInterval);
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen]);
 
-  // === CORRECCIÓN CRÍTICA: La lógica de guardado ahora maneja el caso de error ===
+  // === CORRECCIÓN CRÍTICA: La lógica de guardado ahora maneja el caso de error y espera a que la app esté inicializada ===
   useEffect(() => {
-    if (!shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
+    if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
 
     hasPendingChanges.current = true;
     const handler = setTimeout(() => {
@@ -360,12 +360,11 @@ const App = () => {
           lastUpdated: new Date().toISOString()
       };
       saveStateToGoogleSheets(shareId, dataToSave)
-        .then(() => { 
-          hasPendingChanges.current = false; 
-        })
         .catch((e) => { 
           console.error("El guardado falló:", e.message);
-          // Reseteamos la bandera para permitir nuevos intentos de guardado y evitar el bloqueo.
+        })
+        .finally(() => {
+          // Ya sea éxito o fracaso, reseteamos la bandera para permitir nuevos cambios/intentos.
           hasPendingChanges.current = false;
         });
     }, 1000);
@@ -556,7 +555,6 @@ const App = () => {
         handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
     });
     
-    // Forzamos una actualización final para asegurar que la UI refleje el estado vacío.
     setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
     setComensalToClearId(null);
   };
