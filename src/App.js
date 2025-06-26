@@ -874,12 +874,12 @@ const App = () => {
   // === CÁLCULOS DERIVADOS PARA LA UI (Corregidos y Robustos) ===
   // ==================================================================
   const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + ((p.price || 0) * (p.quantity || 0)), 0) + 
-                       [...comensales].reduce((sum, c) => sum + (c.selectedItems || []).reduce((iSum, i) => iSum + ((i.originalBasePrice || 0) * (i.quantity || 0)), 0), 0);
+                       [...comensales].reduce((sum, c) => sum + (c.selectedItems || []).reduce((iSum, i) => iSum + ((i.originalBasePrice || 0) * (i.quantity || 1)), 0), 0);
   const propinaSugerida = totalBillValue * 0.10;
   const currentTotalComensales = comensales.reduce((sum, comensal) => sum + (comensal.total || 0), 0);
   const totalBillWithReceiptTip = totalBillValue + propinaSugerida;
   const remainingAmount = totalBillWithReceiptTip - currentTotalComensales;
-  const totalPerItemTipsCollected = comensales.reduce((sum, comensal) => sum + (comensal.selectedItems || []).reduce((itemSum, item) => itemSum + (((item.price || 0) * (item.quantity || 0)) - ((item.originalBasePrice || 0) * (item.quantity || 0))), 0), 0);
+  const totalPerItemTipsCollected = comensales.reduce((sum, comensal) => sum + (comensal.selectedItems || []).reduce((itemSum, item) => itemSum + (((item.price || 0) * (item.quantity || 1)) - ((item.originalBasePrice || 0) * (item.quantity || 1))), 0), 0);
   const remainingPropinaDisplay = propinaSugerida - totalPerItemTipsCollected;
 
   return (
@@ -920,7 +920,7 @@ const App = () => {
         {userId && (
           <div className="bg-white p-4 rounded-xl shadow-lg mb-8 max-w-xl mx-auto border border-blue-200 text-center text-sm text-gray-600">
             <p>Tu ID de sesión: <span className="font-semibold text-gray-800">{userId}</span></p>
-            {shareId && !shareId.startsWith('local-') && <p>ID de sesión compartida: <span className="font-semibold text-gray-800">{shareId}</span></p>}
+            {shareId && <p>ID de sesión compartida: <span className="font-semibold text-gray-800">{shareId}</span></p>}
             {shareLink && (
               <div className="mt-2 flex flex-col items-center">
                 <p>Enlace compartible:</p>
