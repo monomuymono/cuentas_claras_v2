@@ -325,7 +325,12 @@ const App = () => {
     if (!authReady || !userId) return; 
     const urlParams = new URLSearchParams(window.location.search);
     const idFromUrl = urlParams.get('id');
-    if (idFromUrl) setShareId(idFromUrl);
+    if (idFromUrl) {
+      setShareId(idFromUrl);
+    } else {
+      // **CORRECCIÓN CRÍTICA:** Generar un ID de sesión si no hay uno en la URL.
+      setShareId(`session_${Date.now()}`);
+    }
   }, [authReady, userId]);
 
   useEffect(() => {
@@ -539,13 +544,32 @@ const App = () => {
       return;
     }
 
-    const itemsToRemove = [...comensalToClear.selectedItems];
-    itemsToRemove.forEach(item => {
-        handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
-    });
+    const newProducts = new Map(availableProducts);
+    const newInstances = new Map(activeSharedInstances);
     
-    // Forzamos una actualización final para asegurar que la UI refleje el estado vacío.
-    setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
+    comensalToClear.selectedItems.forEach(item => {
+      const product = newProducts.get(item.id);
+      if (product) {
+        if (item.type === 'full') {
+          newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
+        } else if (item.type === 'shared') {
+          const shareGroup = newInstances.get(item.shareInstanceId);
+          if (shareGroup) {
+            shareGroup.delete(comensalToClear.id);
+            if (shareGroup.size === 0) {
+              newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
+              newInstances.delete(item.shareInstanceId);
+            }
+          }
+        }
+      }
+    });
+
+    const newComensales = comensales.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c);
+
+    setAvailableProducts(newProducts);
+    setActiveSharedInstances(newInstances);
+    setComensales(newComensales);
     setComensalToClearId(null);
   };
 
@@ -556,14 +580,32 @@ const App = () => {
   
   const confirmRemoveComensal = () => {
     const idToRemove = comensalToRemoveId;
-    const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
+    if (idToRemove === null) return;
     
+    // Ejecutar la misma lógica de limpiar antes de eliminar
+    const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
     if (comensalToRemoveData) {
-      const itemsToRemove = [...comensalToRemoveData.selectedItems];
-      itemsToRemove.forEach(item => {
-        const identifier = item.type === 'shared' ? item.shareInstanceId : item.id;
-        handleRemoveItem(idToRemove, identifier);
+      // Crear copias para la manipulación atómica
+      const newProducts = new Map(availableProducts);
+      const newInstances = new Map(activeSharedInstances);
+      comensalToRemoveData.selectedItems.forEach(item => {
+        const product = newProducts.get(item.id);
+        if (product) {
+          if (item.type === 'full') newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
+          else if (item.type === 'shared') {
+            const shareGroup = newInstances.get(item.shareInstanceId);
+            if (shareGroup) {
+              shareGroup.delete(idToRemove);
+              if (shareGroup.size === 0) {
+                newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
+                newInstances.delete(item.shareInstanceId);
+              }
+            }
+          }
+        }
       });
+      setAvailableProducts(newProducts);
+      setActiveSharedInstances(newInstances);
     }
     
     setComensales(prev => prev.filter(c => c.id !== idToRemove)); 
@@ -581,7 +623,7 @@ const App = () => {
       setIsClearAllComensalesModalOpen(false);
       return;
     }
-
+    
     const newProducts = new Map(availableProducts);
     const processedInstances = new Set();
     
@@ -642,8 +684,19 @@ const App = () => {
 
   const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
     try {
-        const prompt = `Analiza la imagen de recibo adjunta...`; // Omitido por brevedad
-        const payload = { /* ... */ }; // Omitido por brevedad
+        const prompt = `Analiza la imagen de recibo adjunta. Extrae todos los ítems individuales, sus cantidades y sus precios base. Proporciona la salida como un objeto JSON con la propiedad "items", que es un array de objetos, cada uno con "name", "quantity" y "price".`;
+        const payload = {
+            contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
+            generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: "OBJECT",
+                    properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } },
+                    required: ["items"]
+                }
+            }
+        };
+
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
 
         if (apiKey.includes("TU_CLAVE_DE_API_DE_GEMINI_AQUI") || apiKey.trim() === "") {
@@ -688,7 +741,23 @@ const App = () => {
   
   const handleExportToExcel = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    // ... lógica de construcción de CSV
+    csvContent += "Resumen General\n";
+    csvContent += "Concepto,Monto\n";
+    csvContent += `Total Cuenta (sin propina),${totalBillValue}\n`;
+    csvContent += `Propina Sugerida (10%),${propinaSugerida}\n`;
+    csvContent += `Total Asignado (con propina),${currentTotalComensales}\n`;
+    csvContent += `Diferencia por Asignar,${remainingAmount}\n\n`;
+
+    comensales.forEach(comensal => {
+        csvContent += `Detalle Comensal: ${comensal.name}\n`;
+        csvContent += "Cantidad,Ítem,Tipo,Precio Unitario (con propina),Total\n";
+        comensal.selectedItems.forEach(item => {
+            const totalItem = item.price * item.quantity;
+            csvContent += `${item.quantity},"${item.name}",${item.type},${item.price},${totalItem}\n`;
+        });
+        csvContent += `\nTotal ${comensal.name},,,${comensal.total}\n\n`;
+    });
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -728,7 +797,11 @@ const App = () => {
   };
 
   const handleRemoveInventoryItem = () => {
-    if (!itemToRemoveFromInventoryId) return;
+    if (!itemToRemoveFromInventoryId) {
+        setRemoveInventoryItemMessage({ type: 'error', text: 'Por favor, selecciona un ítem.'});
+        setTimeout(() => setRemoveInventoryItemMessage({type:'', text:''}), 3000);
+        return;
+    }
     setIsRemoveInventoryItemModalOpen(true);
   };
 
@@ -761,8 +834,10 @@ const App = () => {
       alert("La sesión no está lista. Intenta de nuevo en un momento.");
       return;
     }
-    const newShareId = shareId || `session_${Date.now()}`;
-    if (!shareId) setShareId(newShareId);
+    
+    // Si no hay shareId, crea uno. Si ya existe, lo reutiliza para actualizar.
+    const currentShareId = shareId || `session_${Date.now()}`;
+    if (!shareId) setShareId(currentShareId);
 
     const dataToSave = {
       comensales: comensales,
@@ -772,10 +847,10 @@ const App = () => {
     };
 
     try {
-      await saveStateToGoogleSheets(newShareId, dataToSave);
-      const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`;
+      await saveStateToGoogleSheets(currentShareId, dataToSave);
+      const fullLink = `${window.location.origin}${window.location.pathname}?id=${currentShareId}`;
       setShareLink(fullLink);
-      navigator.clipboard.writeText(fullLink).then(() => alert('¡Enlace copiado al portapapeles!'));
+      navigator.clipboard.writeText(fullLink).then(() => alert('¡Enlace para compartir copiado al portapapeles!'));
     } catch (e) {
       alert(`Error al generar enlace: ${e.message}`);
     }
@@ -868,6 +943,18 @@ const App = () => {
             <button onClick={handleManualAddItem} className="px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 col-span-2">Añadir Ítem</button>
           </div>
           {manualItemMessage.text && (<p className={`mt-4 text-center text-sm ${manualItemMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{manualItemMessage.text}</p>)}
+      </div>
+      
+      <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
+        <h2 className="text-2xl font-bold text-blue-600 mb-4 text-center">Administrar Inventario</h2>
+        <div className="flex flex-col sm:flex-row gap-4 items-center">
+          <select value={itemToRemoveFromInventoryId} onChange={(e) => setItemToRemoveFromInventoryId(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            <option value="">Selecciona ítem a eliminar del inventario</option>
+            {Array.from(availableProducts.values()).map(product => (<option key={String(product.id)} value={product.id}>{product.name}</option>))}
+          </select>
+          <button onClick={handleRemoveInventoryItem} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 w-full sm:w-auto">Eliminar del Inventario</button>
+        </div>
+        {removeInventoryItemMessage.text && (<p className={`mt-4 text-center text-sm ${removeInventoryItemMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{removeInventoryItemMessage.text}</p>)}
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-lg mb-8 max_w_xl mx-auto border border-blue-200">
