@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom'; // <-- AÑADIDO: Importación para Portales
+// No necesitamos createPortal para esta solución
+// import { createPortal } from 'react-dom'; 
 
 // Polyfill para 'process' si no está definido (por ejemplo, en algunos entornos de cliente)
 if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
@@ -14,7 +15,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, c
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 print:hidden">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm mx-4 text-center">
         <h2 className="text-xl font-bold text-gray-800 mb-4">Confirmar Acción</h2>
         <p className="text-gray-700 mb-6">{message}</p>
@@ -90,7 +91,7 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
 
   return (
     <>
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 print:hidden">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md mx-4">
         <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Compartir Ítem</h2>
         <div className="mb-4">
@@ -161,14 +162,14 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
 };
 
 // ***** INICIO DE LA SECCIÓN MODIFICADA *****
-// Componente para el modal de resumen, AHORA USANDO UN PORTAL
-const SummaryModal = ({ isOpen, onClose, summaryData }) => {
+
+// Componente para el modal de resumen. El botón de imprimir ahora llama a una función del padre.
+const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
   if (!isOpen) return null;
 
-  // Este es el JSX que se renderizará en el portal
-  const modalContent = (
-    <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50 print:bg-white print:block">
-      <div id="summary-to-print" className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg mx-4 print:shadow-none print:border-none print:m-0 print:max-w-none print:rounded-none">
+  return (
+    <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50">
+      <div id="summary-to-print" className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg mx-4">
         <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
         <div className="space-y-6">
           {summaryData.map(diner => (
@@ -189,9 +190,9 @@ const SummaryModal = ({ isOpen, onClose, summaryData }) => {
             </div>
           ))}
         </div>
-        <div className="flex justify-end space-x-4 mt-8 print:hidden">
+        <div className="flex justify-end space-x-4 mt-8">
             <button
-                onClick={() => window.print()}
+                onClick={onPrint} // Llama a la nueva función
                 className="px-5 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
                 Imprimir
@@ -206,34 +207,35 @@ const SummaryModal = ({ isOpen, onClose, summaryData }) => {
       </div>
     </div>
   );
-
-  // Usamos createPortal para renderizar el modal en el div #modal-root de tu index.html
-  return createPortal(modalContent, document.getElementById('modal-root'));
 };
 
-// Nuevo componente de estilos de impresión, simplificado para funcionar con el portal
-const PrintStyles = () => (
-    <style>
-    {`
-      @media print {
-        /* Oculta el contenedor principal de la aplicación React */
-        #root {
-          display: none;
-        }
-        /* El #modal-root y su contenido serán visibles por defecto */
-        /* Nos aseguramos de que el contenido del resumen ocupe toda la página */
-        #summary-to-print {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-          height: 100%;
-          overflow: visible;
-        }
-      }
-    `}
-    </style>
-);
+// Nuevo componente que renderiza solo el contenido para imprimir.
+const PrintLayout = ({ summaryData }) => {
+    return (
+        <div className="p-8">
+            <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
+            <div className="space-y-6">
+            {summaryData.map(diner => (
+                <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
+                <div className="flex justify-between text-gray-600">
+                    <span>Consumo (sin propina):</span>
+                    <span>${diner.totalSinPropina.toLocaleString('de-DE')}</span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                    <span>Propina (10%):</span>
+                    <span>${diner.propina.toLocaleString('de-DE')}</span>
+                </div>
+                <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
+                    <span>TOTAL A PAGAR:</span>
+                    <span>${diner.totalConPropina.toLocaleString('de-DE')}</span>
+                </div>
+                </div>
+            ))}
+            </div>
+        </div>
+    );
+}
 // ***** FIN DE LA SECCIÓN MODIFICADA *****
 
 
@@ -263,6 +265,7 @@ const App = () => {
   const [isResetAllModalOpen, setIsResetAllModalOpen] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [summaryData, setSummaryData] = useState([]);
+  const [isPrinting, setIsPrinting] = useState(false); // <-- Nuevo estado para el modo impresión
 
   const [isImageProcessing, setIsImageProcessing] = useState(false);
   const [imageProcessingError, setImageProcessingError] = useState(null);
@@ -275,7 +278,6 @@ const App = () => {
   const justCreatedSessionId = useRef(null);
   const MAX_COMENSALES = 20;
 
-  // ... (Toda la lógica de guardado, carga y efectos permanece idéntica a la versión anterior y es correcta)
   const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
     if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       return Promise.reject(new Error("URL de Apps Script inválida."));
@@ -519,6 +521,18 @@ const App = () => {
     }, 1000);
     return () => clearTimeout(handler);
   }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
+
+  // ***** INICIO DE LA SECCIÓN MODIFICADA *****
+  // Nuevo efecto para manejar la impresión
+  useEffect(() => {
+    if (isPrinting) {
+      window.print();
+      // Resetea el estado después de que el diálogo de impresión se cierre
+      setIsPrinting(false);
+    }
+  }, [isPrinting]);
+  // ***** FIN DE LA SECCIÓN MODIFICADA *****
+
 
   const handleAddItem = (comensalId, productId) => {
     const productInStock = availableProducts.get(productId);
@@ -957,6 +971,11 @@ const App = () => {
     setIsSummaryModalOpen(true);
   };
   
+  // ***** INICIO DE LA SECCIÓN MODIFICADA *****
+  const handlePrint = () => {
+    setIsPrinting(true);
+  };
+
   const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + ((p.price || 0) * (p.quantity || 0)), 0) +
                        [...comensales].reduce((sum, c) => sum + (c.selectedItems || []).reduce((iSum, i) => iSum + ((i.originalBasePrice || 0) * (i.quantity || 1)), 0), 0);
   const propinaSugerida = totalBillValue * 0.10;
@@ -966,10 +985,14 @@ const App = () => {
   const totalPerItemTipsCollected = comensales.reduce((sum, comensal) => sum + (comensal.selectedItems || []).reduce((itemSum, item) => itemSum + (((item.price || 0) * (item.quantity || 1)) - ((item.originalBasePrice || 0) * (item.quantity || 1))), 0), 0);
   const remainingPropinaDisplay = propinaSugerida - totalPerItemTipsCollected;
 
+  if (isPrinting) {
+    return <PrintLayout summaryData={summaryData} />;
+  }
+  // ***** FIN DE LA SECCIÓN MODIFICADA *****
+
   return (
     <div>
-        <PrintStyles />
-        <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-4 font-inter text-gray-800 print:hidden">
+        <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-4 font-inter text-gray-800">
             <header className="mb-8 text-center">
                 <h1 className="text-4xl font-extrabold text-blue-700 mb-2 drop-shadow-md">
                 Calculadora de Cuentas por Comensal
@@ -1130,7 +1153,7 @@ const App = () => {
             </footer>
         </div>
         
-        <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} />
+        <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
         <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
         <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
         <ConfirmationModal isOpen={isClearAllComensalesModalOpen} onClose={() => setIsClearAllComensalesModalOpen(false)} onConfirm={confirmClearAllComensales} message="¿Estás seguro de que deseas eliminar a TODOS los comensales?" confirmText="Eliminar Todos" />
