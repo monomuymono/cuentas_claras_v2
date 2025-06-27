@@ -266,46 +266,66 @@ const App = () => {
   const hasPendingChanges = useRef(false);
   const initialLoadDone = useRef(false);
   const isLoadingFromServer = useRef(false);
-  const justCreatedSessionId = useRef(null); // <-- AÑADIDO
+  const justCreatedSessionId = useRef(null);
   const MAX_COMENSALES = 20;
 
   // =================================================================================
   // === PERSISTENCIA Y EFECTOS SECUNDARIOS (Hooks) ===
   // =================================================================================
+  
+  // <-- ***** INICIO DE LA SECCIÓN MODIFICADA ***** -->
   const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
     if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       return Promise.reject(new Error("URL de Apps Script inválida."));
     }
     if (!currentShareId || !userId) return Promise.resolve();
 
-    const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
-    const promise = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      window[callbackName] = (data) => {
-        if(document.body.contains(script)) document.body.removeChild(script);
-        delete window[callbackName];
-        resolve(data);
-      };
-      script.onerror = () => {
-        if(document.body.contains(script)) document.body.removeChild(script);
-        delete window[callbackName];
-        reject(new Error('Error al guardar los datos en Google Sheets.'));
-      };
+    // Envolver la lógica JSONP en una promesa con timeout para evitar bloqueos
+    const promiseWithTimeout = new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+            // Rechazar la promesa si tarda demasiado
+            reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
+        }, 8000); // Timeout de 8 segundos
 
-      const dataString = JSON.stringify(dataToSave);
-      const encodedData = encodeURIComponent(dataString);
-      script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
-      document.body.appendChild(script);
+        const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
+        const script = document.createElement('script');
+
+        // Función de limpieza para eliminar todo
+        const cleanup = () => {
+            clearTimeout(timeoutId);
+            if (document.body.contains(script)) {
+                document.body.removeChild(script);
+            }
+            delete window[callbackName];
+        };
+
+        window[callbackName] = (data) => {
+            cleanup();
+            resolve(data);
+        };
+
+        script.onerror = () => {
+            cleanup();
+            reject(new Error('Error de red al guardar los datos en Google Sheets.'));
+        };
+
+        const dataString = JSON.stringify(dataToSave);
+        const encodedData = encodeURIComponent(dataString);
+        script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
+        document.body.appendChild(script);
     });
 
     try {
-      const result = await promise;
-      if (result.status === 'error') return Promise.reject(new Error(result.message));
+      const result = await promiseWithTimeout;
+      if (result.status === 'error') {
+        return Promise.reject(new Error(result.message));
+      }
       return Promise.resolve();
     } catch (error) {
       return Promise.reject(error);
     }
   }, [userId]);
+  // <-- ***** FIN DE LA SECCIÓN MODIFICADA ***** -->
 
   const handleResetAll = useCallback((isLocalOnly = false) => {
     if (!isLocalOnly) {
@@ -352,15 +372,11 @@ const App = () => {
         setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
         setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
       } else {
-        // <-- INICIO DE MODIFICACIÓN -->
-        // Si el ID no encontrado es el que acabamos de crear, no hacer nada y esperar.
         if (idToLoad === justCreatedSessionId.current) {
           console.warn("La sesión recién creada aún no está disponible para lectura. Reintentando en el próximo ciclo.");
           return; 
         }
-        // <-- FIN DE MODIFICACIÓN -->
 
-        // Si es un "not_found" genuino, entonces sí reseteamos.
         alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
         const url = new URL(window.location.href);
         url.searchParams.delete('id');
@@ -463,6 +479,8 @@ const App = () => {
       saveStateToGoogleSheets(shareId, dataToSave)
         .catch((e) => {
           console.error("El guardado falló:", e.message);
+          // Opcional: Mostrar un toast/alerta al usuario de que el guardado falló.
+          alert(`No se pudieron guardar los últimos cambios: ${e.message}`);
         })
         .finally(() => {
           hasPendingChanges.current = false;
@@ -855,7 +873,6 @@ const App = () => {
     setItemToRemoveFromInventoryId('');
   };
 
-  // <-- INICIO DE MODIFICACIÓN -->
   const handleGenerateShareLink = async () => {
     if (!userId) {
       alert("La sesión no está lista. Intenta de nuevo en un momento.");
@@ -863,7 +880,7 @@ const App = () => {
     }
 
     const newShareId = `session_${Date.now()}`;
-    justCreatedSessionId.current = newShareId; // Marcar ID como recién creado
+    justCreatedSessionId.current = newShareId;
 
     const dataToSave = {
       comensales,
@@ -881,19 +898,17 @@ const App = () => {
 
       navigator.clipboard.writeText(fullLink).then(() => alert('¡Enlace para compartir copiado al portapapeles!'));
       
-      // Limpiar la marca después de un tiempo prudencial
       setTimeout(() => {
         if (justCreatedSessionId.current === newShareId) {
           justCreatedSessionId.current = null;
         }
-      }, 10000); // 10 segundos
+      }, 10000);
 
     } catch (e) {
       alert(`Error al generar enlace: ${e.message}`);
-      justCreatedSessionId.current = null; // Limpiar en caso de error
+      justCreatedSessionId.current = null;
     }
   };
-  // <-- FIN DE MODIFICACIÓN -->
 
   const handleOpenSummaryModal = () => {
     const data = comensales.map(comensal => {
