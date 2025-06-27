@@ -6,7 +6,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 }
 
 // URL de tu Google Apps Script Web App
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec"; 
+const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec";
 
 // Componente para el modal de confirmación personalizado
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => {
@@ -238,15 +238,15 @@ const App = () => {
   const [shareLink, setShareLink] = useState('');
   const [availableProducts, setAvailableProducts] = useState(new Map());
   const [comensales, setComensales] = useState([]);
-  const [newComensalName, setNewComensalName] = useState(''); 
-  const [addComensalMessage, setAddComensalMessage] = useState({ type: '', text: '' }); 
+  const [newComensalName, setNewComensalName] = useState('');
+  const [addComensalMessage, setAddComensalMessage] = useState({ type: '', text: '' });
   const [manualItemName, setManualItemName] = useState('');
   const [manualItemPrice, setManualItemPrice] = useState('');
   const [manualItemQuantity, setManualItemQuantity] = useState('');
   const [manualItemMessage, setManualItemMessage] = useState({ type: '', text: '' });
   const [itemToRemoveFromInventoryId, setItemToRemoveFromInventoryId] = useState('');
   const [removeInventoryItemMessage, setRemoveInventoryItemMessage] = useState({ type: '', text: '' });
-  
+
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isRemoveInventoryItemModalOpen, setIsRemoveInventoryItemModalOpen] = useState(false);
   const [isClearComensalModalOpen, setIsClearComensalModalOpen] = useState(false);
@@ -254,16 +254,18 @@ const App = () => {
   const [isRemoveComensalModalOpen, setIsRemoveComensalModalOpen] = useState(false);
   const [comensalToRemoveId, setComensalToRemoveId] = useState(null);
   const [isClearAllComensalesModalOpen, setIsClearAllComensalesModalOpen] = useState(false);
-  const [isResetAllModalOpen, setIsResetAllModalOpen] = useState(false); 
+  const [isResetAllModalOpen, setIsResetAllModalOpen] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [summaryData, setSummaryData] = useState([]);
-  
+
   const [isImageProcessing, setIsImageProcessing] = useState(false);
   const [imageProcessingError, setImageProcessingError] = useState(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
   const [activeSharedInstances, setActiveSharedInstances] = useState(new Map());
+  
   const hasPendingChanges = useRef(false);
   const initialLoadDone = useRef(false);
+  const isLoadingFromServer = useRef(false); // <-- AÑADIDO: Bandera para controlar la carga desde el servidor
   const MAX_COMENSALES = 20;
 
   // =================================================================================
@@ -311,7 +313,7 @@ const App = () => {
       setAvailableProducts(new Map());
       setComensales([]);
       setActiveSharedInstances(new Map());
-      setShareId(`local-session-${Date.now()}`); 
+      setShareId(`local-session-${Date.now()}`);
       setShareLink('');
     }
   }, []);
@@ -342,6 +344,9 @@ const App = () => {
       const data = await promise;
       if (data && data.status !== "not_found") {
         if (hasPendingChanges.current) return;
+        
+        isLoadingFromServer.current = true; // <-- AÑADIDO: Activar bandera antes de actualizar estado
+
         setComensales(data.comensales || []);
         setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
         setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
@@ -354,6 +359,11 @@ const App = () => {
       }
     } catch (error) {
       console.error("Error al cargar con JSONP:", error);
+    } finally {
+      // <-- MODIFICADO: Mover la desactivación de la bandera a un bloque finally
+      setTimeout(() => {
+        isLoadingFromServer.current = false; // <-- AÑADIDO: Desactivar bandera después del ciclo de renderizado
+      }, 0);
     }
   }, [handleResetAll]);
 
@@ -384,7 +394,7 @@ const App = () => {
       console.error("Error de red al eliminar de Google Sheets (JSONP):", error);
     }
   }, []);
-  
+
   useEffect(() => {
     const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
     if (uniqueSessionUserId) setUserId(uniqueSessionUserId);
@@ -393,15 +403,15 @@ const App = () => {
       localStorage.setItem('billSplitterUserId', newUniqueId);
       setUserId(newUniqueId);
     }
-    setAuthReady(true); 
+    setAuthReady(true);
   }, []);
 
   useEffect(() => {
     if (!authReady || !userId || initialLoadDone.current) return;
-    
+
     const urlParams = new URLSearchParams(window.location.search);
     const idFromUrl = urlParams.get('id');
-    
+
     if (idFromUrl) {
       setShareId(idFromUrl);
       loadStateFromGoogleSheets(idFromUrl);
@@ -422,6 +432,11 @@ const App = () => {
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen, isSummaryModalOpen]);
 
   useEffect(() => {
+    // <-- AÑADIDO: Condición para no guardar si los datos vienen del servidor
+    if (isLoadingFromServer.current) {
+        return;
+    }
+      
     if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
 
     hasPendingChanges.current = true;
@@ -433,7 +448,7 @@ const App = () => {
           lastUpdated: new Date().toISOString()
       };
       saveStateToGoogleSheets(shareId, dataToSave)
-        .catch((e) => { 
+        .catch((e) => {
           console.error("El guardado falló:", e.message);
         })
         .finally(() => {
@@ -442,7 +457,7 @@ const App = () => {
     }, 1000);
     return () => clearTimeout(handler);
   }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
-  
+
   // ==================================================================
   // === INICIO DE FUNCIONES DE MANEJO DE ESTADO ROBUSTAS ===
   // ==================================================================
@@ -520,7 +535,7 @@ const App = () => {
         const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
         const newActiveSharedInstances = new Map(activeSharedInstances);
         const shareGroup = newActiveSharedInstances.get(shareInstanceId);
-        if (!shareGroup) return; 
+        if (!shareGroup) return;
 
         shareGroup.delete(comensalId);
 
@@ -544,7 +559,7 @@ const App = () => {
                 const newSharerCount = shareGroup.size;
                 const newBasePricePerShare = totalItemBasePrice / newSharerCount;
                 const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
-                
+
                 const newSelectedItems = c.selectedItems.map(item => {
                     if (String(item.shareInstanceId) === String(shareInstanceId)) {
                         return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
@@ -560,7 +575,7 @@ const App = () => {
         setActiveSharedInstances(newActiveSharedInstances);
     }
   };
-  
+
   const handleShareItem = (productId, sharingComensalIds) => {
     const productToShare = availableProducts.get(productId);
     if (!productToShare || Number(productToShare.quantity) <= 0) {
@@ -574,7 +589,7 @@ const App = () => {
     const shareInstanceId = Date.now() + Math.random();
     const newActiveSharedInstances = new Map(activeSharedInstances);
     newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds));
-    
+
     const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
     const priceWithTipPerShare = basePricePerShare * 1.10;
 
@@ -595,7 +610,7 @@ const App = () => {
     setActiveSharedInstances(newActiveSharedInstances);
     setComensales(newComensales);
   };
-  
+
   const handleAddComensal = () => {
     if (newComensalName.trim() === '') {
       setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre para el nuevo comensal.' });
@@ -613,7 +628,7 @@ const App = () => {
     setAddComensalMessage({ type: 'success', text: `¡Comensal "${newComensal.name}" añadido con éxito!` });
     setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
   };
-  
+
   const confirmClearComensal = () => {
     setIsClearComensalModalOpen(false);
     const comensalToClear = comensales.find(c => c.id === comensalToClearId);
@@ -621,12 +636,12 @@ const App = () => {
       setComensalToClearId(null);
       return;
     }
-  
+
     const itemsToRemove = [...comensalToClear.selectedItems];
     itemsToRemove.forEach(item => {
         handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
     });
-    
+
     setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
     setComensalToClearId(null);
   };
@@ -635,11 +650,11 @@ const App = () => {
     setComensalToClearId(comensalId);
     setIsClearComensalModalOpen(true);
   };
-  
+
   const confirmRemoveComensal = () => {
     const idToRemove = comensalToRemoveId;
     if (idToRemove === null) return;
-    
+
     const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
     if (comensalToRemoveData) {
       const itemsToRemove = [...comensalToRemoveData.selectedItems];
@@ -648,12 +663,12 @@ const App = () => {
         handleRemoveItem(idToRemove, identifier);
       });
     }
-    
-    setComensales(prev => prev.filter(c => c.id !== idToRemove)); 
+
+    setComensales(prev => prev.filter(c => c.id !== idToRemove));
     setIsRemoveComensalModalOpen(false);
     setComensalToRemoveId(null);
   };
-  
+
   const openRemoveComensalModal = (comensalId) => {
     setComensalToRemoveId(comensalId);
     setIsRemoveComensalModalOpen(true);
@@ -664,10 +679,10 @@ const App = () => {
       setIsClearAllComensalesModalOpen(false);
       return;
     }
-    
+
     const newProducts = new Map(availableProducts);
     const processedInstances = new Set();
-    
+
     comensales.forEach(c => {
         c.selectedItems.forEach(item => {
             const product = newProducts.get(item.id);
@@ -689,8 +704,8 @@ const App = () => {
   };
 
   const openClearAllComensalesModal = () => setIsClearAllComensalesModalOpen(true);
-  
-  const confirmResetAll = async () => { 
+
+  const confirmResetAll = async () => {
     setIsResetAllModalOpen(false);
     if (shareId && userId && !shareId.startsWith('local-')) {
       await deleteStateFromGoogleSheets(shareId);
@@ -700,16 +715,16 @@ const App = () => {
     url.searchParams.delete('id');
     window.history.replaceState({}, document.title, url.toString());
   };
-  
+
   const openResetAllModal = () => setIsResetAllModalOpen(true);
-  
+
   const handleImageUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
     setUploadedImageUrl(URL.createObjectURL(file));
     setIsImageProcessing(true);
     setImageProcessingError(null);
-    
+
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64Image = reader.result.split(',')[1];
@@ -740,8 +755,8 @@ const App = () => {
         const result = await response.json();
 
         if (result.candidates && result.candidates[0].content.parts[0].text) {
-            const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); 
-            handleResetAll(true); 
+            const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
+            handleResetAll(true);
             const newProductsMap = new Map();
             let currentMaxId = 0;
             (parsedData.items || []).forEach(item => {
@@ -758,7 +773,7 @@ const App = () => {
                     }
                 }
             });
-            setAvailableProducts(newProductsMap); 
+            setAvailableProducts(newProductsMap);
         } else {
             throw new Error("No se pudo extraer información de la imagen.");
         }
@@ -769,7 +784,7 @@ const App = () => {
         setIsImageProcessing(false);
     }
   };
-  
+
   const handleManualAddItem = () => {
     if (!manualItemName.trim() || isNaN(parseFloat(manualItemPrice)) || isNaN(parseInt(manualItemQuantity))) {
         setManualItemMessage({ type: 'error', text: 'Por favor, completa todos los campos correctamente.' });
@@ -826,13 +841,13 @@ const App = () => {
     setIsRemoveInventoryItemModalOpen(false);
     setItemToRemoveFromInventoryId('');
   };
-  
+
   const handleGenerateShareLink = async () => {
     if (!userId) {
       alert("La sesión no está lista. Intenta de nuevo en un momento.");
       return;
     }
-    
+
     const newShareId = `session_${Date.now()}`;
     const dataToSave = {
       comensales,
@@ -843,11 +858,11 @@ const App = () => {
     try {
       await saveStateToGoogleSheets(newShareId, dataToSave);
       const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`;
-      
+
       setShareId(newShareId);
       setShareLink(fullLink);
       window.history.pushState({ path: fullLink }, '', fullLink);
-      
+
       navigator.clipboard.writeText(fullLink).then(() => alert('¡Enlace para compartir copiado al portapapeles!'));
     } catch (e) {
       alert(`Error al generar enlace: ${e.message}`);
@@ -873,7 +888,7 @@ const App = () => {
   // ==================================================================
   // === CÁLCULOS DERIVADOS PARA LA UI (Corregidos y Robustos) ===
   // ==================================================================
-  const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + ((p.price || 0) * (p.quantity || 0)), 0) + 
+  const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + ((p.price || 0) * (p.quantity || 0)), 0) +
                        [...comensales].reduce((sum, c) => sum + (c.selectedItems || []).reduce((iSum, i) => iSum + ((i.originalBasePrice || 0) * (i.quantity || 1)), 0), 0);
   const propinaSugerida = totalBillValue * 0.10;
   const currentTotalComensales = comensales.reduce((sum, comensal) => sum + (comensal.total || 0), 0);
