@@ -273,24 +273,20 @@ const App = () => {
   // === PERSISTENCIA Y EFECTOS SECUNDARIOS (Hooks) ===
   // =================================================================================
   
-  // <-- ***** INICIO DE LA SECCIÓN MODIFICADA ***** -->
   const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
     if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       return Promise.reject(new Error("URL de Apps Script inválida."));
     }
     if (!currentShareId || !userId) return Promise.resolve();
 
-    // Envolver la lógica JSONP en una promesa con timeout para evitar bloqueos
     const promiseWithTimeout = new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
-            // Rechazar la promesa si tarda demasiado
             reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
-        }, 8000); // Timeout de 8 segundos
+        }, 8000);
 
         const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
         const script = document.createElement('script');
 
-        // Función de limpieza para eliminar todo
         const cleanup = () => {
             clearTimeout(timeoutId);
             if (document.body.contains(script)) {
@@ -325,7 +321,6 @@ const App = () => {
       return Promise.reject(error);
     }
   }, [userId]);
-  // <-- ***** FIN DE LA SECCIÓN MODIFICADA ***** -->
 
   const handleResetAll = useCallback((isLocalOnly = false) => {
     if (!isLocalOnly) {
@@ -342,7 +337,9 @@ const App = () => {
   const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
     if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
     if (!idToLoad || idToLoad.startsWith('local-')) return;
-    if (hasPendingChanges.current) return;
+    
+    // Mover la comprobación de hasPendingChanges al nuevo sistema de sondeo
+    // if (hasPendingChanges.current) return;
 
     const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
     const promise = new Promise((resolve, reject) => {
@@ -451,15 +448,47 @@ const App = () => {
     performInitialLoad();
   }, [authReady, userId, loadStateFromGoogleSheets]);
 
+  // <-- ***** INICIO DE LA SECCIÓN MODIFICADA: SONDEO ROBUSTO ***** -->
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen || isSummaryModalOpen;
-    if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || hasPendingChanges.current || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
+    
+    if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
       return;
     }
 
-    const pollingInterval = setInterval(() => loadStateFromGoogleSheets(shareId), 5000);
-    return () => clearInterval(pollingInterval);
+    let isCancelled = false;
+    const pollTimeout = 5000;
+
+    const poll = () => {
+      if (isCancelled) {
+        return;
+      }
+
+      // Solo ejecutar el sondeo si no hay cambios pendientes de guardado.
+      if (!hasPendingChanges.current) {
+        loadStateFromGoogleSheets(shareId).finally(() => {
+          if (!isCancelled) {
+            setTimeout(poll, pollTimeout);
+          }
+        });
+      } else {
+        // Si hay cambios pendientes, reintentar más tarde sin hacer la petición.
+        if (!isCancelled) {
+          setTimeout(poll, pollTimeout);
+        }
+      }
+    };
+
+    // Iniciar el primer ciclo de sondeo
+    const initialPollTimeout = setTimeout(poll, pollTimeout);
+
+    // Función de limpieza para detener el sondeo cuando el componente se desmonte o las dependencias cambien.
+    return () => {
+      isCancelled = true;
+      clearTimeout(initialPollTimeout);
+    };
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen, isSummaryModalOpen]);
+  // <-- ***** FIN DE LA SECCIÓN MODIFICADA ***** -->
 
   useEffect(() => {
     if (isLoadingFromServer.current) {
@@ -479,7 +508,6 @@ const App = () => {
       saveStateToGoogleSheets(shareId, dataToSave)
         .catch((e) => {
           console.error("El guardado falló:", e.message);
-          // Opcional: Mostrar un toast/alerta al usuario de que el guardado falló.
           alert(`No se pudieron guardar los últimos cambios: ${e.message}`);
         })
         .finally(() => {
@@ -488,6 +516,10 @@ const App = () => {
     }, 1000);
     return () => clearTimeout(handler);
   }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
+
+  // Resto del código... (sin cambios)
+  // ...
+  // (El resto del archivo, desde la línea `// === INICIO DE FUNCIONES DE MANEJO DE ESTADO ROBUSTAS ===` hasta el final, permanece idéntico al que ya tienes)
 
   // ==================================================================
   // === INICIO DE FUNCIONES DE MANEJO DE ESTADO ROBUSTAS ===
@@ -926,9 +958,8 @@ const App = () => {
     setSummaryData(data);
     setIsSummaryModalOpen(true);
   };
-  // ==================================================================
-  // === CÁLCULOS DERIVADOS PARA LA UI (Corregidos y Robustos) ===
-  // ==================================================================
+  
+  // ... resto del código sin cambios (cálculos de UI, JSX, etc.)
   const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + ((p.price || 0) * (p.quantity || 0)), 0) +
                        [...comensales].reduce((sum, c) => sum + (c.selectedItems || []).reduce((iSum, i) => iSum + ((i.originalBasePrice || 0) * (i.quantity || 1)), 0), 0);
   const propinaSugerida = totalBillValue * 0.10;
