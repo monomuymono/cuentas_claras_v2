@@ -338,9 +338,6 @@ const App = () => {
     if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
     if (!idToLoad || idToLoad.startsWith('local-')) return;
     
-    // Mover la comprobación de hasPendingChanges al nuevo sistema de sondeo
-    // if (hasPendingChanges.current) return;
-
     const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
     const promise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
@@ -365,9 +362,20 @@ const App = () => {
         
         isLoadingFromServer.current = true;
 
+        // <-- ***** INICIO DE LA MODIFICACIÓN CRÍTICA ***** -->
+        // Asegurarse de que las claves de los Map se conviertan a NÚMEROS
+        const loadedProducts = new Map(
+          Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value])
+        );
+        const loadedSharedInstances = new Map(
+          Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])
+        );
+
         setComensales(data.comensales || []);
-        setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
-        setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
+        setAvailableProducts(loadedProducts);
+        setActiveSharedInstances(loadedSharedInstances);
+        // <-- ***** FIN DE LA MODIFICACIÓN CRÍTICA ***** -->
+
       } else {
         if (idToLoad === justCreatedSessionId.current) {
           console.warn("La sesión recién creada aún no está disponible para lectura. Reintentando en el próximo ciclo.");
@@ -448,7 +456,6 @@ const App = () => {
     performInitialLoad();
   }, [authReady, userId, loadStateFromGoogleSheets]);
 
-  // <-- ***** INICIO DE LA SECCIÓN MODIFICADA: SONDEO ROBUSTO ***** -->
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen || isSummaryModalOpen;
     
@@ -458,37 +465,33 @@ const App = () => {
 
     let isCancelled = false;
     const pollTimeout = 5000;
+    let pollTimer;
 
     const poll = () => {
       if (isCancelled) {
         return;
       }
 
-      // Solo ejecutar el sondeo si no hay cambios pendientes de guardado.
       if (!hasPendingChanges.current) {
         loadStateFromGoogleSheets(shareId).finally(() => {
           if (!isCancelled) {
-            setTimeout(poll, pollTimeout);
+            pollTimer = setTimeout(poll, pollTimeout);
           }
         });
       } else {
-        // Si hay cambios pendientes, reintentar más tarde sin hacer la petición.
         if (!isCancelled) {
-          setTimeout(poll, pollTimeout);
+          pollTimer = setTimeout(poll, pollTimeout);
         }
       }
     };
 
-    // Iniciar el primer ciclo de sondeo
-    const initialPollTimeout = setTimeout(poll, pollTimeout);
+    pollTimer = setTimeout(poll, pollTimeout);
 
-    // Función de limpieza para detener el sondeo cuando el componente se desmonte o las dependencias cambien.
     return () => {
       isCancelled = true;
-      clearTimeout(initialPollTimeout);
+      clearTimeout(pollTimer);
     };
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen, isSummaryModalOpen]);
-  // <-- ***** FIN DE LA SECCIÓN MODIFICADA ***** -->
 
   useEffect(() => {
     if (isLoadingFromServer.current) {
@@ -517,17 +520,17 @@ const App = () => {
     return () => clearTimeout(handler);
   }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
-  // Resto del código... (sin cambios)
-  // ...
-  // (El resto del archivo, desde la línea `// === INICIO DE FUNCIONES DE MANEJO DE ESTADO ROBUSTAS ===` hasta el final, permanece idéntico al que ya tienes)
-
   // ==================================================================
-  // === INICIO DE FUNCIONES DE MANEJO DE ESTADO ROBUSTAS ===
+  // === EL RESTO DEL CÓDIGO PERMANECE IGUAL ===
+  // ... (Copiar y pegar el resto del archivo desde aquí)
   // ==================================================================
 
   const handleAddItem = (comensalId, productId) => {
     const productInStock = availableProducts.get(productId);
-    if (!productInStock || Number(productInStock.quantity) <= 0) return;
+    if (!productInStock || Number(productInStock.quantity) <= 0) {
+      console.error(`Producto con ID ${productId} no encontrado o sin stock. El inventario puede tener claves de tipo incorrecto.`);
+      return;
+    }
 
     const newProductsMap = new Map(availableProducts);
     newProductsMap.set(productId, { ...productInStock, quantity: Number(productInStock.quantity) - 1 });
@@ -959,7 +962,6 @@ const App = () => {
     setIsSummaryModalOpen(true);
   };
   
-  // ... resto del código sin cambios (cálculos de UI, JSX, etc.)
   const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + ((p.price || 0) * (p.quantity || 0)), 0) +
                        [...comensales].reduce((sum, c) => sum + (c.selectedItems || []).reduce((iSum, i) => iSum + ((i.originalBasePrice || 0) * (i.quantity || 1)), 0), 0);
   const propinaSugerida = totalBillValue * 0.10;
@@ -1083,7 +1085,7 @@ const App = () => {
               <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
               <div className="mb-4">
                 <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-2">Agregar Ítem:</label>
-                <select id={`product-select-${comensal.id}`} value="" onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                <select id={`product-select-${comensal.id}`} value="" onChange={(e) => handleAddItem(comensal.id, parseInt(e.target.value, 10))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
                   <option value="" disabled>Selecciona un producto</option>
                   {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('de-DE')}) (Disp: {Number(product.quantity)})</option>))}
                 </select>
