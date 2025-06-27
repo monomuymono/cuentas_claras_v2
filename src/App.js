@@ -265,7 +265,7 @@ const App = () => {
   
   const hasPendingChanges = useRef(false);
   const initialLoadDone = useRef(false);
-  const isLoadingFromServer = useRef(false); // <-- AÑADIDO: Bandera para controlar la carga desde el servidor
+  const isLoadingFromServer = useRef(false);
   const MAX_COMENSALES = 20;
 
   // =================================================================================
@@ -345,7 +345,7 @@ const App = () => {
       if (data && data.status !== "not_found") {
         if (hasPendingChanges.current) return;
         
-        isLoadingFromServer.current = true; // <-- AÑADIDO: Activar bandera antes de actualizar estado
+        isLoadingFromServer.current = true;
 
         setComensales(data.comensales || []);
         setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
@@ -360,9 +360,8 @@ const App = () => {
     } catch (error) {
       console.error("Error al cargar con JSONP:", error);
     } finally {
-      // <-- MODIFICADO: Mover la desactivación de la bandera a un bloque finally
       setTimeout(() => {
-        isLoadingFromServer.current = false; // <-- AÑADIDO: Desactivar bandera después del ciclo de renderizado
+        isLoadingFromServer.current = false;
       }, 0);
     }
   }, [handleResetAll]);
@@ -406,20 +405,28 @@ const App = () => {
     setAuthReady(true);
   }, []);
 
+  // <-- ***** INICIO DE LA SECCIÓN MODIFICADA ***** -->
   useEffect(() => {
-    if (!authReady || !userId || initialLoadDone.current) return;
+    const performInitialLoad = async () => {
+        if (!authReady || !userId || initialLoadDone.current) return;
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const idFromUrl = urlParams.get('id');
+        const urlParams = new URLSearchParams(window.location.search);
+        const idFromUrl = urlParams.get('id');
 
-    if (idFromUrl) {
-      setShareId(idFromUrl);
-      loadStateFromGoogleSheets(idFromUrl);
-    } else {
-      setShareId(`local-session-${Date.now()}`);
-    }
-    initialLoadDone.current = true;
+        if (idFromUrl) {
+            setShareId(idFromUrl);
+            await loadStateFromGoogleSheets(idFromUrl); // Esperar a que la carga termine
+        } else {
+            setShareId(`local-session-${Date.now()}`);
+        }
+        
+        // Marcar como hecho solo después de que la carga (si hubo) haya finalizado
+        initialLoadDone.current = true;
+    };
+
+    performInitialLoad();
   }, [authReady, userId, loadStateFromGoogleSheets]);
+  // <-- ***** FIN DE LA SECCIÓN MODIFICADA ***** -->
 
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen || isSummaryModalOpen;
@@ -432,7 +439,6 @@ const App = () => {
   }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen, isSummaryModalOpen]);
 
   useEffect(() => {
-    // <-- AÑADIDO: Condición para no guardar si los datos vienen del servidor
     if (isLoadingFromServer.current) {
         return;
     }
