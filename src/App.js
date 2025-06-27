@@ -266,6 +266,7 @@ const App = () => {
   const hasPendingChanges = useRef(false);
   const initialLoadDone = useRef(false);
   const isLoadingFromServer = useRef(false);
+  const justCreatedSessionId = useRef(null); // <-- AÑADIDO
   const MAX_COMENSALES = 20;
 
   // =================================================================================
@@ -351,6 +352,15 @@ const App = () => {
         setAvailableProducts(new Map(Object.entries(data.availableProducts || {})));
         setActiveSharedInstances(new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [key, new Set(value)])));
       } else {
+        // <-- INICIO DE MODIFICACIÓN -->
+        // Si el ID no encontrado es el que acabamos de crear, no hacer nada y esperar.
+        if (idToLoad === justCreatedSessionId.current) {
+          console.warn("La sesión recién creada aún no está disponible para lectura. Reintentando en el próximo ciclo.");
+          return; 
+        }
+        // <-- FIN DE MODIFICACIÓN -->
+
+        // Si es un "not_found" genuino, entonces sí reseteamos.
         alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
         const url = new URL(window.location.href);
         url.searchParams.delete('id');
@@ -405,7 +415,6 @@ const App = () => {
     setAuthReady(true);
   }, []);
 
-  // <-- ***** INICIO DE LA SECCIÓN MODIFICADA ***** -->
   useEffect(() => {
     const performInitialLoad = async () => {
         if (!authReady || !userId || initialLoadDone.current) return;
@@ -415,18 +424,16 @@ const App = () => {
 
         if (idFromUrl) {
             setShareId(idFromUrl);
-            await loadStateFromGoogleSheets(idFromUrl); // Esperar a que la carga termine
+            await loadStateFromGoogleSheets(idFromUrl);
         } else {
             setShareId(`local-session-${Date.now()}`);
         }
         
-        // Marcar como hecho solo después de que la carga (si hubo) haya finalizado
         initialLoadDone.current = true;
     };
 
     performInitialLoad();
   }, [authReady, userId, loadStateFromGoogleSheets]);
-  // <-- ***** FIN DE LA SECCIÓN MODIFICADA ***** -->
 
   useEffect(() => {
     const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen || isSummaryModalOpen;
@@ -848,6 +855,7 @@ const App = () => {
     setItemToRemoveFromInventoryId('');
   };
 
+  // <-- INICIO DE MODIFICACIÓN -->
   const handleGenerateShareLink = async () => {
     if (!userId) {
       alert("La sesión no está lista. Intenta de nuevo en un momento.");
@@ -855,6 +863,8 @@ const App = () => {
     }
 
     const newShareId = `session_${Date.now()}`;
+    justCreatedSessionId.current = newShareId; // Marcar ID como recién creado
+
     const dataToSave = {
       comensales,
       availableProducts: Object.fromEntries(availableProducts),
@@ -870,10 +880,20 @@ const App = () => {
       window.history.pushState({ path: fullLink }, '', fullLink);
 
       navigator.clipboard.writeText(fullLink).then(() => alert('¡Enlace para compartir copiado al portapapeles!'));
+      
+      // Limpiar la marca después de un tiempo prudencial
+      setTimeout(() => {
+        if (justCreatedSessionId.current === newShareId) {
+          justCreatedSessionId.current = null;
+        }
+      }, 10000); // 10 segundos
+
     } catch (e) {
       alert(`Error al generar enlace: ${e.message}`);
+      justCreatedSessionId.current = null; // Limpiar en caso de error
     }
   };
+  // <-- FIN DE MODIFICACIÓN -->
 
   const handleOpenSummaryModal = () => {
     const data = comensales.map(comensal => {
