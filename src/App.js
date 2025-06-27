@@ -89,7 +89,7 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
 
   return (
     <>
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 print:hidden">
       <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md mx-4">
         <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Compartir Ítem</h2>
         <div className="mb-4">
@@ -205,31 +205,6 @@ const SummaryModal = ({ isOpen, onClose, summaryData }) => {
   );
 };
 
-// Componente de estilos para controlar la impresión
-const PrintStyles = () => (
-  <style>
-    {`
-      @media print {
-        body > *:not(#printable-area) {
-          display: none;
-        }
-        #printable-area, #printable-area > * {
-          visibility: hidden;
-        }
-        #summary-to-print, #summary-to-print * {
-          visibility: visible;
-        }
-        #summary-to-print {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-        }
-      }
-    `}
-  </style>
-);
-
 
 const App = () => {
   const [userId, setUserId] = useState(null);
@@ -269,10 +244,6 @@ const App = () => {
   const justCreatedSessionId = useRef(null);
   const MAX_COMENSALES = 20;
 
-  // =================================================================================
-  // === PERSISTENCIA Y EFECTOS SECUNDARIOS (Hooks) ===
-  // =================================================================================
-  
   const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
     if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
       return Promise.reject(new Error("URL de Apps Script inválida."));
@@ -337,7 +308,7 @@ const App = () => {
   const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
     if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
     if (!idToLoad || idToLoad.startsWith('local-')) return;
-    
+
     const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
     const promise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
@@ -362,8 +333,6 @@ const App = () => {
         
         isLoadingFromServer.current = true;
 
-        // <-- ***** INICIO DE LA MODIFICACIÓN CRÍTICA ***** -->
-        // Asegurarse de que las claves de los Map se conviertan a NÚMEROS
         const loadedProducts = new Map(
           Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value])
         );
@@ -374,7 +343,6 @@ const App = () => {
         setComensales(data.comensales || []);
         setAvailableProducts(loadedProducts);
         setActiveSharedInstances(loadedSharedInstances);
-        // <-- ***** FIN DE LA MODIFICACIÓN CRÍTICA ***** -->
 
       } else {
         if (idToLoad === justCreatedSessionId.current) {
@@ -520,11 +488,6 @@ const App = () => {
     return () => clearTimeout(handler);
   }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
-  // ==================================================================
-  // === EL RESTO DEL CÓDIGO PERMANECE IGUAL ===
-  // ... (Copiar y pegar el resto del archivo desde aquí)
-  // ==================================================================
-
   const handleAddItem = (comensalId, productId) => {
     const productInStock = availableProducts.get(productId);
     if (!productInStock || Number(productInStock.quantity) <= 0) {
@@ -557,7 +520,7 @@ const App = () => {
     setAvailableProducts(newProductsMap);
     setComensales(newComensales);
   };
-
+  
   const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
     const comensalTarget = comensales.find(c => c.id === comensalId);
     if (!comensalTarget) return;
@@ -676,7 +639,7 @@ const App = () => {
     setActiveSharedInstances(newActiveSharedInstances);
     setComensales(newComensales);
   };
-
+  
   const handleAddComensal = () => {
     if (newComensalName.trim() === '') {
       setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre para el nuevo comensal.' });
@@ -734,7 +697,7 @@ const App = () => {
     setIsRemoveComensalModalOpen(false);
     setComensalToRemoveId(null);
   };
-
+  
   const openRemoveComensalModal = (comensalId) => {
     setComensalToRemoveId(comensalId);
     setIsRemoveComensalModalOpen(true);
@@ -770,7 +733,7 @@ const App = () => {
   };
 
   const openClearAllComensalesModal = () => setIsClearAllComensalesModalOpen(true);
-
+  
   const confirmResetAll = async () => {
     setIsResetAllModalOpen(false);
     if (shareId && userId && !shareId.startsWith('local-')) {
@@ -781,9 +744,9 @@ const App = () => {
     url.searchParams.delete('id');
     window.history.replaceState({}, document.title, url.toString());
   };
-
+  
   const openResetAllModal = () => setIsResetAllModalOpen(true);
-
+  
   const handleImageUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -850,7 +813,7 @@ const App = () => {
         setIsImageProcessing(false);
     }
   };
-
+  
   const handleManualAddItem = () => {
     if (!manualItemName.trim() || isNaN(parseFloat(manualItemPrice)) || isNaN(parseInt(manualItemQuantity))) {
         setManualItemMessage({ type: 'error', text: 'Por favor, completa todos los campos correctamente.' });
@@ -972,9 +935,8 @@ const App = () => {
   const remainingPropinaDisplay = propinaSugerida - totalPerItemTipsCollected;
 
   return (
-    <div id="printable-area">
-      <PrintStyles />
-      <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-4 font-inter text-gray-800">
+    <div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-4 font-inter text-gray-800 print:hidden">
         <header className="mb-8 text-center">
           <h1 className="text-4xl font-extrabold text-blue-700 mb-2 drop-shadow-md">
             Calculadora de Cuentas por Comensal
@@ -1133,15 +1095,15 @@ const App = () => {
             Puedes ajustar los montos seleccionando y deseleccionando ítems para cada comensal.
           </p>
         </footer>
-        
-        <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} />
-        <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
-        <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
-        <ConfirmationModal isOpen={isClearAllComensalesModalOpen} onClose={() => setIsClearAllComensalesModalOpen(false)} onConfirm={confirmClearAllComensales} message="¿Estás seguro de que deseas eliminar a TODOS los comensales?" confirmText="Eliminar Todos" />
-        <ConfirmationModal isOpen={isResetAllModalOpen} onClose={() => setIsResetAllModalOpen(false)} onConfirm={confirmResetAll} message="¿Estás seguro de que deseas resetear toda la aplicación?" confirmText="Sí, Resetear Todo" cancelText="Cancelar" />
-        <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
-        <ConfirmationModal isOpen={isRemoveInventoryItemModalOpen} onClose={() => setIsRemoveInventoryItemModalOpen(false)} onConfirm={confirmRemoveInventoryItem} message={`¿Estás seguro de que quieres eliminar "${availableProducts.get(Number(itemToRemoveFromInventoryId))?.name || 'este ítem'}" del inventario?`} confirmText="Sí, Eliminar" cancelText="No, Mantener" />
       </div>
+      
+      <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} />
+      <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
+      <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
+      <ConfirmationModal isOpen={isClearAllComensalesModalOpen} onClose={() => setIsClearAllComensalesModalOpen(false)} onConfirm={confirmClearAllComensales} message="¿Estás seguro de que deseas eliminar a TODOS los comensales?" confirmText="Eliminar Todos" />
+      <ConfirmationModal isOpen={isResetAllModalOpen} onClose={() => setIsResetAllModalOpen(false)} onConfirm={confirmResetAll} message="¿Estás seguro de que deseas resetear toda la aplicación?" confirmText="Sí, Resetear Todo" cancelText="Cancelar" />
+      <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
+      <ConfirmationModal isOpen={isRemoveInventoryItemModalOpen} onClose={() => setIsRemoveInventoryItemModalOpen(false)} onConfirm={confirmRemoveInventoryItem} message={`¿Estás seguro de que quieres eliminar "${availableProducts.get(Number(itemToRemoveFromInventoryId))?.name || 'este ítem'}" del inventario?`} confirmText="Sí, Eliminar" cancelText="No, Mantener" />
     </div>
   );
 };
