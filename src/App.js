@@ -1067,7 +1067,7 @@ const App = () => {
         <div className="text-center mb-8 flex flex-wrap justify-center gap-4">
             <button onClick={handleGenerateShareLink} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Generar Enlace</button>
             <button onClick={() => setIsShareModalOpen(true)} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir Ítem</button>
-            {comensales.length > 0 && (<button onClick={handlePrint} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen</button>)}
+            {comensales.length > 0 && (<button onClick={SummaryModal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen</button>)}
             {comensales.length > 0 && (<button onClick={openClearAllComensalesModal} className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Comensales</button>)}
             <button onClick={openResetAllModal} className="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Resetear Todo</button>
         </div>
