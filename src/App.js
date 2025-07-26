@@ -183,8 +183,8 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
             <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0">
               <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
               <div className="flex justify-between text-gray-600">
-                <span>Consumo (sin propina):</span>
-                <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
+                <span>Subtotal (con descuento):</span>
+                <span>${diner.subtotalConDescuento.toLocaleString('es-CL')}</span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Propina (10%):</span>
@@ -192,7 +192,7 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
               </div>
               <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
                 <span>TOTAL A PAGAR:</span>
-                <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
+                <span>${diner.totalFinal.toLocaleString('es-CL')}</span>
               </div>
             </div>
           ))}
@@ -216,6 +216,339 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
   );
 };
 
+// --- COMPONENTES DE PASOS ---
+
+const LandingStep = ({ onStart }) => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
+        <div className="mb-8">
+            <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+        </div>
+        <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1>
+        <p className="text-lg text-gray-600 mt-4 max-w-md">
+            Divide la cuenta de cualquier restaurante de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto.
+        </p>
+        <button 
+            onClick={onStart} 
+            className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"
+        >
+            Empezar
+        </button>
+    </div>
+);
+
+const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
+        <header className="mb-12">
+            <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1>
+            <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p>
+        </header>
+        <div className="w-full max-w-sm space-y-5">
+            <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                    <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" />
+                </svg>
+                <span className="text-lg font-semibold">Escanear Recibo</span>
+                <span className="text-sm">Carga una foto</span>
+                <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} />
+            </label>
+
+            <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50">
+                Ingresar Manualmente
+            </button>
+        </div>
+        {isImageProcessing && (
+            <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Procesando imagen...</span>
+            </div>
+        )}
+        {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>}
+    </div>
+);
+
+const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, setDiscountPercentage, discountCap, setDiscountCap }) => {
+    const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
+    const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
+
+    useEffect(() => {
+        setLocalProducts(new Map(initialProducts));
+    }, [initialProducts]);
+    
+    const total = Array.from(localProducts.values()).reduce((sum, p) => {
+        const price = parseFloat(p.price) || 0;
+        const quantity = parseInt(p.quantity, 10) || 0;
+        return sum + (price * quantity);
+    }, 0);
+    const tip = total * 0.10;
+
+    const handleProductChange = (id, field, value) => {
+        setLocalProducts(prev => {
+            const newMap = new Map(prev);
+            const product = newMap.get(id);
+            if (product) {
+                newMap.set(id, { ...product, [field]: value });
+            }
+            return newMap;
+        });
+    };
+
+    const handleRemoveProduct = (id) => {
+        setLocalProducts(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(id);
+            return newMap;
+        });
+    };
+
+    const handleAddNewItem = () => {
+        if (!newItem.name.trim() || isNaN(parseFloat(newItem.price)) || isNaN(parseInt(newItem.quantity, 10))) {
+            alert('Por favor, completa los campos del nuevo ítem correctamente.');
+            return;
+        }
+        setLocalProducts(prev => {
+            const newMap = new Map(prev);
+            const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
+            newMap.set(newId, {
+                id: newId,
+                name: newItem.name.trim(),
+                price: parseFloat(newItem.price),
+                quantity: parseInt(newItem.quantity, 10),
+            });
+            return newMap;
+        });
+        setNewItem({ name: '', price: '', quantity: '1' });
+    };
+
+    return (
+        <div className="p-4 pb-48">
+            <header className="text-center mb-6">
+                <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
+                <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
+            </header>
+
+            <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
+                <h2 className="text-lg font-bold">Ítems Cargados</h2>
+                {Array.from(localProducts.values()).map(p => (
+                    <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
+                        <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" />
+                        <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" />
+                        <span className="col-span-1 text-center self-center">$</span>
+                        <input 
+                          type="number"
+                          value={p.price}
+                          onChange={e => handleProductChange(p.id, 'price', e.target.value)} 
+                          className="col-span-3 p-2 border rounded-md" 
+                        />
+                        <button onClick={() => handleRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+                ))}
+                
+                <div className="grid grid-cols-12 gap-2 items-center pt-3">
+                     <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="col-span-5 p-2 border rounded-md" />
+                     <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: e.target.value})} className="col-span-2 p-2 border rounded-md text-center" />
+                     <span className="col-span-1 text-center self-center">$</span>
+                     <input 
+                       type="number"
+                       placeholder="Precio" 
+                       value={newItem.price}
+                       onChange={e => setNewItem({...newItem, price: e.target.value})} 
+                       className="col-span-3 p-2 border rounded-md" 
+                     />
+                     <button onClick={handleAddNewItem} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                     </button>
+                </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl shadow-md mb-6">
+                <h2 className="text-lg font-bold mb-3">Aplicar Descuento</h2>
+                <div className="grid grid-cols-2 gap-4">
+                    <input 
+                        type="number" 
+                        placeholder="Descuento %" 
+                        value={discountPercentage}
+                        onChange={e => setDiscountPercentage(e.target.value)}
+                        className="p-2 border rounded-md"
+                    />
+                    <input 
+                        type="number"
+                        placeholder="Tope Descuento $" 
+                        value={discountCap}
+                        onChange={e => setDiscountCap(e.target.value)}
+                        className="p-2 border rounded-md"
+                    />
+                </div>
+                 <p className="text-xs text-gray-500 mt-2 text-center">Nota: Ingresa los montos sin puntos de miles.</p>
+            </div>
+
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
+                <div className="max-w-4xl mx-auto">
+                    <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
+                        <div className="flex justify-between text-lg">
+                            <span className="font-semibold text-gray-700">Subtotal:</span>
+                            <span className="font-bold">${total.toLocaleString('es-CL')}</span>
+                        </div>
+                        <div className="flex justify-between text-lg">
+                            <span className="font-semibold text-gray-700">Propina (10%):</span>
+                            <span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span>
+                        </div>
+                        <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200">
+                            <span>TOTAL:</span>
+                            <span>${Math.round(total + tip).toLocaleString('es-CL')}</span>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">
+                            Volver y Empezar de Nuevo
+                        </button>
+                        <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
+                            Todo Correcto, Continuar a Asignar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const AssigningStep = ({
+    availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
+    onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
+    onGoBack, onGenerateLink, onRestart, shareLink, effectiveDiscountRatio
+}) => {
+    const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
+
+    const ComensalCard = ({ comensal }) => {
+        const totalSinPropinaOriginal = comensal.selectedItems.reduce((sum, item) => sum + (item.originalBasePrice * item.quantity), 0);
+        const descuentoAplicado = totalSinPropinaOriginal * effectiveDiscountRatio;
+        const propina = totalSinPropinaOriginal * 0.10;
+
+        return (
+            <div className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full">
+                <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
+                <div className="mb-4">
+                    <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
+                    <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, parseInt(e.target.value, 10))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                        <option value="" disabled>Selecciona un producto</option>
+                        {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
+                    </select>
+                </div>
+                <div className="flex-grow min-h-[80px]">
+                    {comensal.selectedItems.length > 0 ? (
+                        <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
+                            {comensal.selectedItems.map((item, index) => (
+                                <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
+                                    <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-gray-900">${Math.round(item.price * item.quantity).toLocaleString('es-CL')}</span>
+                                        <button onClick={() => onRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                        </button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
+                </div>
+                <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
+                    <div className="flex justify-between text-sm text-gray-600">
+                        <span>Consumo:</span>
+                        <span>${Math.round(totalSinPropinaOriginal).toLocaleString('es-CL')}</span>
+                    </div>
+                     {descuentoAplicado > 0 && (
+                        <div className="flex justify-between text-sm text-green-600">
+                            <span>Descuento:</span>
+                            <span>-${Math.round(descuentoAplicado).toLocaleString('es-CL')}</span>
+                        </div>
+                     )}
+                    <div className="flex justify-between text-sm text-gray-600">
+                        <span>Propina (10%):</span>
+                        <span>${Math.round(propina).toLocaleString('es-CL')}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1">
+                        <span>TOTAL A PAGAR:</span>
+                        <span className="text-2xl">${Math.round(comensal.total).toLocaleString('es-CL')}</span>
+                    </div>
+                </div>
+                 <div className="flex gap-2 mt-4">
+                    <button onClick={() => onOpenClearComensalModal(comensal.id)} className="w-full bg-orange-100 text-orange-700 py-2 px-4 rounded-md shadow-sm hover:bg-orange-200 text-sm">Limpiar</button>
+                    <button onClick={() => onOpenRemoveComensalModal(comensal.id)} className="w-full bg-red-100 text-red-700 py-2 px-4 rounded-md shadow-sm hover:bg-red-200 text-sm">Eliminar</button>
+                 </div>
+            </div>
+        )
+    };
+    
+    return (
+        <div className="pb-24">
+            <header className="mb-6 text-center">
+                <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
+                <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p>
+                <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">
+                    &larr; Volver y Editar Ítems
+                </button>
+            </header>
+
+            <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
+                <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
+                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                    <input type="text" placeholder="Nombre del Comensal" value={newComensalName} onChange={(e) => setNewComensalName(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 w-full" />
+                    <button onClick={onAddComensal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 w-full sm:w-auto">Añadir</button>
+                </div>
+                {addComensalMessage.text && (<p className={`mt-3 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
+                <h2 className="text-xl font-bold text-blue-600 mb-4 text-center">Herramientas</h2>
+                <div className="space-y-3">
+                    <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                        <span className="font-semibold">Generar Link de Sesión</span>
+                    </button>
+                    <button onClick={onOpenShareModal} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg>
+                        <span className="font-semibold">Compartir un Ítem</span>
+                    </button>
+                    <button onClick={onRestart} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path d="M4 9a9 9 0 0114.65-4.65l-2.12 2.12a5 5 0 00-9.07 4.53" /><path d="M20 15a9 9 0 01-14.65 4.65l2.12-2.12a5 5 0 009.07-4.53" /></svg>
+                        <span className="font-semibold">Empezar de Nuevo</span>
+                    </button>
+                </div>
+                {shareLink && (
+                    <div className="mt-4 bg-green-50 p-4 rounded-lg border border-green-200">
+                        <p className="font-semibold text-green-800">¡Enlace para compartir generado!</p>
+                        <input type="text" readOnly value={shareLink} className="w-full mt-2 p-2 border rounded-md bg-white text-center text-sm" onFocus={(e) => e.target.select()} />
+                        <button onClick={() => navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado!'))} className="mt-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700">Copiar Enlace</button>
+                    </div>
+                )}
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {comensales.map(comensal => (
+                    <ComensalCard key={comensal.id} comensal={comensal} />
+                ))}
+            </div>
+
+            {comensales.length > 0 && (
+                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
+                     <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105 flex flex-col items-center">
+                        <span className="text-lg">Ver Resumen Final</span>
+                        {Math.round(remainingToAssign) > 0 && (
+                             <span className="text-xs font-normal opacity-90">
+                                Faltan ${Math.round(remainingToAssign).toLocaleString('es-CL')} por asignar
+                             </span>
+                        )}
+                    </button>
+                </div>
+            )}
+        </div>
+    )
+};
 
 // --- Componente principal de la aplicación ---
 const App = () => {
@@ -762,7 +1095,7 @@ const App = () => {
                     responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] }
                 }
             };
-            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
+            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
             if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) throw new Error("Falta la clave de API de Gemini.");
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -1005,346 +1338,5 @@ const App = () => {
       </div>
     );
 };
-
-// --- COMPONENTES DE PASOS ---
-
-const LandingStep = ({ onStart }) => (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
-        <div className="mb-8">
-            <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-        </div>
-        <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1>
-        <p className="text-lg text-gray-600 mt-4 max-w-md">
-            Divide la cuenta de cualquier restaurante de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto.
-        </p>
-        <button 
-            onClick={onStart} 
-            className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"
-        >
-            Empezar
-        </button>
-    </div>
-);
-
-const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
-        <header className="mb-12">
-            <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1>
-            <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p>
-        </header>
-        <div className="w-full max-w-sm space-y-5">
-            <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                    <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" />
-                </svg>
-                <span className="text-lg font-semibold">Escanear Recibo</span>
-                <span className="text-sm">Carga una foto</span>
-                <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} />
-            </label>
-
-            <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50">
-                Ingresar Manualmente
-            </button>
-        </div>
-        {isImageProcessing && (
-            <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Procesando imagen...</span>
-            </div>
-        )}
-        {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>}
-    </div>
-);
-
-const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, setDiscountPercentage, discountCap, setDiscountCap }) => {
-    const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
-    const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
-
-    useEffect(() => {
-        setLocalProducts(new Map(initialProducts));
-    }, [initialProducts]);
-    
-    const total = Array.from(localProducts.values()).reduce((sum, p) => {
-        const price = parseFloat(String(p.price).replace(/\./g, '')) || 0;
-        const quantity = parseInt(p.quantity, 10) || 0;
-        return sum + (price * quantity);
-    }, 0);
-    const tip = total * 0.10;
-
-    const formatNumberInput = (value) => {
-        if (!value) return '';
-        const cleanedValue = String(value).replace(/\./g, '');
-        if (isNaN(cleanedValue)) return value;
-        return Number(cleanedValue).toLocaleString('es-CL');
-    };
-
-    const handleProductChange = (id, field, value) => {
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            const product = newMap.get(id);
-            if (product) {
-                newMap.set(id, { ...product, [field]: value });
-            }
-            return newMap;
-        });
-    };
-
-    const handleRemoveProduct = (id) => {
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(id);
-            return newMap;
-        });
-    };
-
-    const handleAddNewItem = () => {
-        const cleanedPrice = String(newItem.price).replace(/\./g, '');
-        if (!newItem.name.trim() || isNaN(parseFloat(cleanedPrice)) || isNaN(parseInt(newItem.quantity, 10))) {
-            alert('Por favor, completa los campos del nuevo ítem correctamente.');
-            return;
-        }
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
-            newMap.set(newId, {
-                id: newId,
-                name: newItem.name.trim(),
-                price: parseFloat(cleanedPrice),
-                quantity: parseInt(newItem.quantity, 10),
-            });
-            return newMap;
-        });
-        setNewItem({ name: '', price: '', quantity: '1' });
-    };
-
-    return (
-        // Se añade padding inferior para que el cuadro fijo no tape el último ítem
-        <div className="p-4 pb-48">
-            <header className="text-center mb-6">
-                <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
-                <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
-            </header>
-
-            <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
-                <h2 className="text-lg font-bold">Ítems Cargados</h2>
-                {Array.from(localProducts.values()).map(p => (
-                    <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
-                        <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" />
-                        <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" />
-                        <span className="col-span-1 text-center self-center">$</span>
-                        <input 
-                          type="text" 
-                          inputMode="decimal"
-                          value={formatNumberInput(p.price)}
-                          onChange={e => handleProductChange(p.id, 'price', e.target.value.replace(/\./g, ''))} 
-                          className="col-span-3 p-2 border rounded-md" 
-                        />
-                        <button onClick={() => handleRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                    </div>
-                ))}
-                
-                <div className="grid grid-cols-12 gap-2 items-center pt-3">
-                     <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="col-span-5 p-2 border rounded-md" />
-                     <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: e.target.value})} className="col-span-2 p-2 border rounded-md text-center" />
-                     <span className="col-span-1 text-center self-center">$</span>
-                     <input 
-                       type="text" 
-                       inputMode="decimal"
-                       placeholder="Precio" 
-                       value={formatNumberInput(newItem.price)}
-                       onChange={e => setNewItem({...newItem, price: e.target.value.replace(/\./g, '')})} 
-                       className="col-span-3 p-2 border rounded-md" 
-                     />
-                     <button onClick={handleAddNewItem} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                     </button>
-                </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl shadow-md mb-6">
-                <h2 className="text-lg font-bold mb-3">Aplicar Descuento</h2>
-                <div className="grid grid-cols-2 gap-4">
-                    <input 
-                        type="number" 
-                        placeholder="Descuento %" 
-                        value={discountPercentage}
-                        onChange={e => setDiscountPercentage(e.target.value)}
-                        className="p-2 border rounded-md"
-                    />
-                    <input 
-                        type="text"
-                        inputMode="decimal" 
-                        placeholder="Tope Descuento $" 
-                        value={formatNumberInput(discountCap)}
-                        onChange={e => setDiscountCap(e.target.value.replace(/\./g, ''))}
-                        className="p-2 border rounded-md"
-                    />
-                </div>
-                 <p className="text-xs text-gray-500 mt-2 text-center">Nota: Ingresa los montos sin puntos de miles.</p>
-            </div>
-
-            {/* --- DISEÑO FIJO RESTAURADO --- */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
-                <div className="max-w-4xl mx-auto">
-                    <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
-                        <div className="flex justify-between text-lg">
-                            <span className="font-semibold text-gray-700">Subtotal:</span>
-                            <span className="font-bold">${total.toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between text-lg">
-                            <span className="font-semibold text-gray-700">Propina (10%):</span>
-                            <span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200">
-                            <span>TOTAL:</span>
-                            <span>${Math.round(total + tip).toLocaleString('es-CL')}</span>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">
-                            Volver y Empezar de Nuevo
-                        </button>
-                        <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
-                            Todo Correcto, Continuar a Asignar
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const AssigningStep = ({
-    availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
-    onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
-    onGoBack, onGenerateLink, onRestart, shareLink
-}) => {
-    const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
-
-    const ComensalCard = ({ comensal }) => {
-        const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
-        const propina = comensal.total - totalSinPropina;
-
-        return (
-            <div className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full">
-                <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
-                <div className="mb-4">
-                    <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
-                    <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, parseInt(e.target.value, 10))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
-                        <option value="" disabled>Selecciona un producto</option>
-                        {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
-                    </select>
-                </div>
-                <div className="flex-grow min-h-[80px]">
-                    {comensal.selectedItems.length > 0 ? (
-                        <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
-                            {comensal.selectedItems.map((item, index) => (
-                                <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
-                                    <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
-                                    <div className="flex items-center space-x-2">
-                                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('es-CL')}</span>
-                                        <button onClick={() => onRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                        </button>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
-                </div>
-                <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
-                    <div className="flex justify-between text-sm text-gray-600">
-                        <span>Total sin Propina:</span>
-                        <span>${Math.round(totalSinPropina).toLocaleString('es-CL')}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-gray-600">
-                        <span>Propina (10%):</span>
-                        <span>${Math.round(propina).toLocaleString('es-CL')}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1">
-                        <span>TOTAL A PAGAR:</span>
-                        <span className="text-2xl">${Math.round(comensal.total).toLocaleString('es-CL')}</span>
-                    </div>
-                </div>
-                 <div className="flex gap-2 mt-4">
-                    <button onClick={() => onOpenClearComensalModal(comensal.id)} className="w-full bg-orange-100 text-orange-700 py-2 px-4 rounded-md shadow-sm hover:bg-orange-200 text-sm">Limpiar</button>
-                    <button onClick={() => onOpenRemoveComensalModal(comensal.id)} className="w-full bg-red-100 text-red-700 py-2 px-4 rounded-md shadow-sm hover:bg-red-200 text-sm">Eliminar</button>
-                 </div>
-            </div>
-        )
-    };
-    
-    return (
-        <div className="pb-24">
-            <header className="mb-6 text-center">
-                <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
-                <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p>
-                <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">
-                    &larr; Volver y Editar Ítems
-                </button>
-            </header>
-
-            <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
-                <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
-                <div className="flex flex-col sm:flex-row gap-3 items-center">
-                    <input type="text" placeholder="Nombre del Comensal" value={newComensalName} onChange={(e) => setNewComensalName(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 w-full" />
-                    <button onClick={onAddComensal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 w-full sm:w-auto">Añadir</button>
-                </div>
-                {addComensalMessage.text && (<p className={`mt-3 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
-                <h2 className="text-xl font-bold text-blue-600 mb-4 text-center">Herramientas</h2>
-                <div className="space-y-3">
-                    <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                        <span className="font-semibold">Generar Link de Sesión</span>
-                    </button>
-                    <button onClick={onOpenShareModal} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg>
-                        <span className="font-semibold">Compartir un Ítem</span>
-                    </button>
-                    <button onClick={onRestart} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path d="M4 9a9 9 0 0114.65-4.65l-2.12 2.12a5 5 0 00-9.07 4.53" /><path d="M20 15a9 9 0 01-14.65 4.65l2.12-2.12a5 5 0 009.07-4.53" /></svg>
-                        <span className="font-semibold">Empezar de Nuevo</span>
-                    </button>
-                </div>
-                {shareLink && (
-                    <div className="mt-4 bg-green-50 p-4 rounded-lg border border-green-200">
-                        <p className="font-semibold text-green-800">¡Enlace para compartir generado!</p>
-                        <input type="text" readOnly value={shareLink} className="w-full mt-2 p-2 border rounded-md bg-white text-center text-sm" onFocus={(e) => e.target.select()} />
-                        <button onClick={() => navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado!'))} className="mt-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700">Copiar Enlace</button>
-                    </div>
-                )}
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {comensales.map(comensal => (
-                    <ComensalCard key={comensal.id} comensal={comensal} />
-                ))}
-            </div>
-
-            {comensales.length > 0 && (
-                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
-                     <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105 flex flex-col items-center">
-                        <span className="text-lg">Ver Resumen Final</span>
-                        {Math.round(remainingToAssign) > 0 && (
-                             <span className="text-xs font-normal opacity-90">
-                                Faltan ${Math.round(remainingToAssign).toLocaleString('es-CL')} por asignar
-                             </span>
-                        )}
-                    </button>
-                </div>
-            )}
-        </div>
-    )
-};
-
 
 export default App;
