@@ -1180,13 +1180,34 @@ const AssigningStep = ({
 }) => {
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
 
+    const AssigningStep = ({
+    availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
+    onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
+    onGoBack, onGenerateLink, onRestart, shareLink, effectiveDiscountRatio
+}) => {
+    const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
+
+    // --- Tarjeta del Comensal (AQUÍ ESTÁN LOS CAMBIOS) ---
     const ComensalCard = ({ comensal }) => {
-        const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
-        const propina = comensal.total - totalSinPropina;
+        
+        // --- CÁLCULOS PARA LA VISUALIZACIÓN ---
+        // 1. Calculamos el subtotal del comensal basado en los precios originales.
+        const totalSinPropinaOriginal = comensal.selectedItems.reduce((sum, item) => sum + (item.originalBasePrice * item.quantity), 0);
+        
+        // 2. Aplicamos el ratio de descuento general al subtotal de este comensal.
+        const descuentoAplicado = totalSinPropinaOriginal * effectiveDiscountRatio;
+
+        // 3. La propina se calcula SIEMPRE sobre el consumo original.
+        const propina = totalSinPropinaOriginal * 0.10;
+
+        // 4. El total final del comensal considera el descuento y la propina.
+        const totalFinalDiner = totalSinPropinaOriginal - descuentoAplicado + propina;
 
         return (
             <div className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full">
                 <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
+                
+                {/* Selector para agregar ítems (sin cambios) */}
                 <div className="mb-4">
                     <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
                     <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, parseInt(e.target.value, 10))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
@@ -1194,6 +1215,8 @@ const AssigningStep = ({
                         {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
                     </select>
                 </div>
+
+                {/* Lista de ítems del comensal (sin cambios) */}
                 <div className="flex-grow min-h-[80px]">
                     {comensal.selectedItems.length > 0 ? (
                         <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
@@ -1201,7 +1224,7 @@ const AssigningStep = ({
                                 <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
                                     <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
                                     <div className="flex items-center space-x-2">
-                                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('es-CL')}</span>
+                                        <span className="text-gray-900">${Math.round(item.originalBasePrice * item.quantity).toLocaleString('es-CL')}</span>
                                         <button onClick={() => onRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                         </button>
@@ -1211,20 +1234,35 @@ const AssigningStep = ({
                         </ul>
                     ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
                 </div>
+                
+                {/* Resumen de totales del comensal (AQUÍ ESTÁN LOS CAMBIOS) */}
                 <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
                     <div className="flex justify-between text-sm text-gray-600">
-                        <span>Total sin Propina:</span>
-                        <span>${Math.round(totalSinPropina).toLocaleString('es-CL')}</span>
+                        <span>Consumo:</span>
+                        <span>${Math.round(totalSinPropinaOriginal).toLocaleString('es-CL')}</span>
                     </div>
+
+                    {/* NUEVO: Mostramos el descuento aplicado al comensal */}
+                    {descuentoAplicado > 0 && (
+                        <div className="flex justify-between text-sm text-green-600">
+                            <span>Descuento:</span>
+                            <span>-${Math.round(descuentoAplicado).toLocaleString('es-CL')}</span>
+                        </div>
+                    )}
+
                     <div className="flex justify-between text-sm text-gray-600">
                         <span>Propina (10%):</span>
                         <span>${Math.round(propina).toLocaleString('es-CL')}</span>
                     </div>
+
+                    {/* CORREGIDO: El total final ahora considera el descuento */}
                     <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1">
                         <span>TOTAL A PAGAR:</span>
-                        <span className="text-2xl">${Math.round(comensal.total).toLocaleString('es-CL')}</span>
+                        <span className="text-2xl">${Math.round(totalFinalDiner).toLocaleString('es-CL')}</span>
                     </div>
                 </div>
+                
+                {/* Botones de acción (sin cambios) */}
                  <div className="flex gap-2 mt-4">
                     <button onClick={() => onOpenClearComensalModal(comensal.id)} className="w-full bg-orange-100 text-orange-700 py-2 px-4 rounded-md shadow-sm hover:bg-orange-200 text-sm">Limpiar</button>
                     <button onClick={() => onOpenRemoveComensalModal(comensal.id)} className="w-full bg-red-100 text-red-700 py-2 px-4 rounded-md shadow-sm hover:bg-red-200 text-sm">Eliminar</button>
