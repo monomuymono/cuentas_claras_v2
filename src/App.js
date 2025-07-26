@@ -1102,7 +1102,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
         </div>
       </div>
 
-      {/* --- SECCIÓN DE DESCUENTO MODIFICADA --- */}
+      {/* --- SECCIÓN DE DESCUENTO (CORREGIDA) --- */}
       <div className="bg-white p-4 rounded-xl shadow-md mb-6">
         <h2 className="text-lg font-bold mb-3">Aplicar Descuento</h2>
         <div className="grid grid-cols-2 gap-4">
@@ -1114,15 +1114,13 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
             className="p-2 border rounded-md"
           />
           <input 
-            type="text"
-            inputMode="decimal" 
+            type="number" // Cambiado a "number"
             placeholder="Tope Descuento $" 
-            value={formatNumberInput(discountCap)}
-            onChange={e => setDiscountCap(e.target.value.replace(/\./g, ''))}
+            value={discountCap} // Se quitó la función de formato
+            onChange={e => setDiscountCap(e.target.value)} // Se simplificó el onChange
             className="p-2 border rounded-md"
           />
         </div>
-        <p className="text-xs text-gray-500 mt-2 text-center">Nota: Ingresa los montos sin puntos de miles.</p>
       </div>
 
       {/* Resumen */}
