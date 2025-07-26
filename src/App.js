@@ -1176,31 +1176,41 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
-    onGoBack, onGenerateLink, onRestart, shareLink, effectiveDiscountRatio
+    onGoBack, onGenerateLink, onRestart, shareLink, 
+    // Pasamos los valores de descuento directamente
+    discountPercentage, discountCap 
 }) => {
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
 
-    // --- Tarjeta del Comensal (AQUÍ ESTÁN LOS CAMBIOS) ---
+    // --- Tarjeta del Comensal (LÓGICA COMPLETAMENTE REESCRITA) ---
     const ComensalCard = ({ comensal }) => {
         
-        // --- CÁLCULOS PARA LA VISUALIZACIÓN ---
-        // 1. Calculamos el subtotal del comensal basado en los precios originales.
-        const totalSinPropinaOriginal = comensal.selectedItems.reduce((sum, item) => sum + (item.originalBasePrice * item.quantity), 0);
-        
-        // 2. Aplicamos el ratio de descuento general al subtotal de este comensal.
-        const descuentoAplicado = totalSinPropinaOriginal * effectiveDiscountRatio;
+        // 1. Subtotal del comensal (consumo original)
+        const totalSinPropinaOriginal = comensal.selectedItems.reduce((sum, item) => {
+            return sum + (item.originalBasePrice * item.quantity);
+        }, 0);
 
-        // 3. La propina se calcula SIEMPRE sobre el consumo original.
+        // 2. Lógica de Descuento explícita para este comensal
+        const percentage = parseFloat(discountPercentage) || 0;
+        const cap = parseFloat(discountCap) || Infinity;
+
+        // Se calcula el descuento potencial para ESTE comensal
+        const potentialDiscount = totalSinPropinaOriginal * (percentage / 100);
+        
+        // El descuento aplicado es el menor entre el potencial y el tope GLOBAL
+        const descuentoAplicado = Math.min(potentialDiscount, cap);
+
+        // 3. La propina SIEMPRE sobre el valor original
         const propina = totalSinPropinaOriginal * 0.10;
 
-        // 4. El total final del comensal considera el descuento y la propina.
+        // 4. El total final es el consumo original, menos el descuento, más la propina.
         const totalFinalDiner = totalSinPropinaOriginal - descuentoAplicado + propina;
 
         return (
             <div className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full">
                 <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
                 
-                {/* Selector para agregar ítems (sin cambios) */}
+                {/* Selector para agregar ítems */}
                 <div className="mb-4">
                     <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
                     <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, parseInt(e.target.value, 10))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
@@ -1209,7 +1219,7 @@ const AssigningStep = ({
                     </select>
                 </div>
 
-                {/* Lista de ítems del comensal (sin cambios) */}
+                {/* Lista de ítems del comensal */}
                 <div className="flex-grow min-h-[80px]">
                     {comensal.selectedItems.length > 0 ? (
                         <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
@@ -1228,17 +1238,16 @@ const AssigningStep = ({
                     ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
                 </div>
                 
-                {/* Resumen de totales del comensal (AQUÍ ESTÁN LOS CAMBIOS) */}
+                {/* Resumen de totales del comensal */}
                 <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
                     <div className="flex justify-between text-sm text-gray-600">
                         <span>Consumo:</span>
                         <span>${Math.round(totalSinPropinaOriginal).toLocaleString('es-CL')}</span>
                     </div>
-
-                    {/* NUEVO: Mostramos el descuento aplicado al comensal */}
+                    
                     {descuentoAplicado > 0 && (
                         <div className="flex justify-between text-sm text-green-600">
-                            <span>Descuento:</span>
+                            <span>Descuento Aplicado:</span>
                             <span>-${Math.round(descuentoAplicado).toLocaleString('es-CL')}</span>
                         </div>
                     )}
@@ -1247,15 +1256,14 @@ const AssigningStep = ({
                         <span>Propina (10%):</span>
                         <span>${Math.round(propina).toLocaleString('es-CL')}</span>
                     </div>
-
-                    {/* CORREGIDO: El total final ahora considera el descuento */}
+                    
                     <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1">
                         <span>TOTAL A PAGAR:</span>
                         <span className="text-2xl">${Math.round(totalFinalDiner).toLocaleString('es-CL')}</span>
                     </div>
                 </div>
                 
-                {/* Botones de acción (sin cambios) */}
+                {/* Botones de acción */}
                  <div className="flex gap-2 mt-4">
                     <button onClick={() => onOpenClearComensalModal(comensal.id)} className="w-full bg-orange-100 text-orange-700 py-2 px-4 rounded-md shadow-sm hover:bg-orange-200 text-sm">Limpiar</button>
                     <button onClick={() => onOpenRemoveComensalModal(comensal.id)} className="w-full bg-red-100 text-red-700 py-2 px-4 rounded-md shadow-sm hover:bg-red-200 text-sm">Eliminar</button>
