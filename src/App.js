@@ -1025,6 +1025,7 @@ const App = () => {
                 onGoBack={() => setCurrentStep('reviewing')}
                 onGenerateLink={handleGenerateShareLink}
                 onRestart={() => handleResetAll(true)}
+                shareLink={shareLink} // <-- Prop añadida
               />
             );
           default:
@@ -1239,7 +1240,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
-    onGoBack, onGenerateLink, onRestart
+    onGoBack, onGenerateLink, onRestart, shareLink
 }) => {
     // **CÁLCULO CORREGIDO**
     // El monto pendiente de asignar es simplemente el valor de los ítems que aún no se han asignado a nadie.
@@ -1331,6 +1332,25 @@ const AssigningStep = ({
                     {comensales.length > 0 && (<button onClick={onOpenSummary} className="px-5 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen Final</button>)}
                     <button onClick={onRestart} className="px-5 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Empezar de Nuevo</button>
                 </div>
+                {/* Cuadro para mostrar el link generado */}
+                {shareLink && (
+                    <div className="mt-4 bg-green-50 p-4 rounded-lg border border-green-200">
+                        <p className="font-semibold text-green-800">¡Enlace para compartir generado!</p>
+                        <input
+                            type="text"
+                            readOnly
+                            value={shareLink}
+                            className="w-full mt-2 p-2 border rounded-md bg-white text-center text-sm"
+                            onFocus={(e) => e.target.select()}
+                        />
+                        <button
+                            onClick={() => navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado!'))}
+                            className="mt-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700"
+                        >
+                            Copiar Enlace
+                        </button>
+                    </div>
+                )}
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
