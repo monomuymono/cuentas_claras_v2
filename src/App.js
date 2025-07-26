@@ -1017,8 +1017,8 @@ const App = () => {
                 onOpenShareModal={() => setIsShareModalOpen(true)}
                 onOpenSummary={handleOpenSummaryModal}
                 onGoBack={() => setCurrentStep('reviewing')}
-                onGenerateLink={handleGenerateShareLink} // <-- Nueva Prop
-                onRestart={() => handleResetAll(true)}  // <-- Nueva Prop
+                onGenerateLink={handleGenerateShareLink}
+                onRestart={() => handleResetAll(true)}
               />
             );
           // Puedes añadir un caso 'summary' si quieres una pantalla final dedicada
@@ -1229,12 +1229,9 @@ const AssigningStep = ({
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
     onGoBack, onGenerateLink, onRestart
 }) => {
-    // Cálculo del total de la cuenta original (sin propina)
-    const originalTotalWithoutTip = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
-    // Cálculo de lo que ya se ha asignado a los comensales (sin propina)
-    const assignedTotalWithoutTip = comensales.reduce((totalSum, comensal) => totalSum + comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0), 0);
-    // Cálculo de lo que falta por asignar
-    const remainingToAssign = originalTotalWithoutTip - assignedTotalWithoutTip;
+    // **CÁLCULO CORREGIDO**
+    // El monto pendiente de asignar es simplemente el valor de los ítems que aún no se han asignado a nadie.
+    const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
 
     // Componente interno para la tarjeta de comensal para mantener el código limpio
     const ComensalCard = ({ comensal }) => {
@@ -1318,7 +1315,7 @@ const AssigningStep = ({
                 <h2 className="text-xl font-bold text-blue-600 mb-4">Acciones</h2>
                  <div className="flex flex-wrap justify-center gap-3">
                     <button onClick={onOpenShareModal} className="px-5 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir un Ítem</button>
-                    <button onClick={onGenerateLink} className="px-5 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Generar Link para Compartir</button>
+                    <button onClick={onGenerateLink} className="px-5 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Generar Link</button>
                     {comensales.length > 0 && (<button onClick={onOpenSummary} className="px-5 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen Final</button>)}
                     <button onClick={onRestart} className="px-5 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Empezar de Nuevo</button>
                 </div>
