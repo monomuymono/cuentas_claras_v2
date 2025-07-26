@@ -388,7 +388,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
 
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
                 <div className="max-w-4xl mx-auto">
-                    <div className="bg-blue-50 p-4 rounded-xl shadow-inner sticky bottom-4">
+                    <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
                         <div className="flex justify-between text-lg">
                             <span className="font-semibold text-gray-700">Subtotal:</span>
                             <span className="font-bold">${total.toLocaleString('es-CL')}</span>
