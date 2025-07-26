@@ -1238,7 +1238,7 @@ const AssigningStep = ({
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
     onGoBack, onGenerateLink, onRestart, shareLink
 }) => {
-    // Cálculo del monto pendiente (sin propina)
+    // El cálculo se mantiene porque se usa en el botón final
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
 
     // Componente interno para la tarjeta de comensal (sin cambios)
@@ -1306,10 +1306,7 @@ const AssigningStep = ({
                 </button>
             </header>
 
-            <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-md shadow-md mb-6" role="alert">
-                <p className="font-bold">Monto Pendiente de Asignar (sin propina):</p>
-                <p className="text-2xl">${Math.round(remainingToAssign).toLocaleString('de-DE')}</p>
-            </div>
+            {/* --- ESTE ES EL CUADRO QUE SE ELIMINÓ --- */}
 
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
@@ -1351,7 +1348,6 @@ const AssigningStep = ({
                 ))}
             </div>
 
-            {/* --- BOTÓN PRINCIPAL FIJO (MODIFICADO) --- */}
             {comensales.length > 0 && (
                 <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
                      <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105 flex flex-col items-center">
