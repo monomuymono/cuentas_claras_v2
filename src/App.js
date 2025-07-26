@@ -105,7 +105,7 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
                 <option value="" disabled>Selecciona un producto</option>
                 {sharableProducts.map(product => (
                   <option key={String(product.id)} value={product.id}>
-                    {product.name} (${Number(product.price).toLocaleString('de-DE')}) (Disp: {Number(product.quantity)})
+                    {product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})
                   </option>
                 ))}
               </select>
@@ -176,15 +176,15 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
               <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
               <div className="flex justify-between text-gray-600">
                 <span>Consumo (sin propina):</span>
-                <span>${diner.totalSinPropina.toLocaleString('de-DE')}</span>
+                <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Propina (10%):</span>
-                <span>${diner.propina.toLocaleString('de-DE')}</span>
+                <span>${diner.propina.toLocaleString('es-CL')}</span>
               </div>
               <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
                 <span>TOTAL A PAGAR:</span>
-                <span>${diner.totalConPropina.toLocaleString('de-DE')}</span>
+                <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
               </div>
             </div>
           ))}
@@ -223,29 +223,19 @@ const App = () => {
     const [comensales, setComensales] = useState([]);
     const [newComensalName, setNewComensalName] = useState('');
     const [addComensalMessage, setAddComensalMessage] = useState({ type: '', text: '' });
-    const [manualItemName, setManualItemName] = useState('');
-    const [manualItemPrice, setManualItemPrice] = useState('');
-    const [manualItemQuantity, setManualItemQuantity] = useState('');
-    const [manualItemMessage, setManualItemMessage] = useState({ type: '', text: '' });
-    const [itemToRemoveFromInventoryId, setItemToRemoveFromInventoryId] = useState('');
-    const [removeInventoryItemMessage, setRemoveInventoryItemMessage] = useState({ type: '', text: '' });
     
     // Estados de modales
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-    const [isRemoveInventoryItemModalOpen, setIsRemoveInventoryItemModalOpen] = useState(false);
     const [isClearComensalModalOpen, setIsClearComensalModalOpen] = useState(false);
     const [comensalToClearId, setComensalToClearId] = useState(null);
     const [isRemoveComensalModalOpen, setIsRemoveComensalModalOpen] = useState(false);
     const [comensalToRemoveId, setComensalToRemoveId] = useState(null);
-    const [isClearAllComensalesModalOpen, setIsClearAllComensalesModalOpen] = useState(false);
-    const [isResetAllModalOpen, setIsResetAllModalOpen] = useState(false);
     const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
     const [summaryData, setSummaryData] = useState([]);
     
     // Estados de procesamiento de imagen
     const [isImageProcessing, setIsImageProcessing] = useState(false);
     const [imageProcessingError, setImageProcessingError] = useState(null);
-    const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
     
     // Otros estados y refs
     const [activeSharedInstances, setActiveSharedInstances] = useState(new Map());
@@ -307,7 +297,7 @@ const App = () => {
 
     const handleResetAll = useCallback((isLocalOnly = false) => {
         if (!isLocalOnly) {
-          setIsResetAllModalOpen(true);
+          // Lógica de modal de reseteo no se usa actualmente, pero se mantiene
         } else {
           setAvailableProducts(new Map());
           setComensales([]);
@@ -316,7 +306,6 @@ const App = () => {
           setShareLink('');
           setCurrentStep('loading');
           
-          // **LÍNEAS AÑADIDAS PARA LIMPIAR LA URL**
           const url = new URL(window.location.href);
           url.searchParams.delete('id');
           window.history.replaceState({}, document.title, url.toString());
@@ -361,7 +350,6 @@ const App = () => {
             setComensales(data.comensales || []);
             setAvailableProducts(loadedProducts);
             setActiveSharedInstances(loadedSharedInstances);
-            // **NUEVO**: Si se cargan datos, se asume que ya se verificaron, pasar a asignar
             if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
                 setCurrentStep('assigning');
             }
@@ -386,34 +374,6 @@ const App = () => {
           }, 0);
         }
     }, [handleResetAll]);
-
-    const deleteStateFromGoogleSheets = useCallback(async (idToDelete) => {
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
-        if (!idToDelete) return;
-    
-        const callbackName = 'jsonp_callback_delete_' + Math.round(100000 * Math.random());
-        const promise = new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          window[callbackName] = (data) => {
-            if(document.body.contains(script)) document.body.removeChild(script);
-            delete window[callbackName];
-            resolve(data);
-          };
-          script.onerror = () => {
-            if(document.body.contains(script)) document.body.removeChild(script);
-            delete window[callbackName];
-            reject(new Error('Error al eliminar los datos de Google Sheets.'));
-          };
-          script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=delete&id=${idToDelete}&callback=${callbackName}`;
-          document.body.appendChild(script);
-        });
-    
-        try {
-          await promise;
-        } catch (error) {
-          console.error("Error de red al eliminar de Google Sheets (JSONP):", error);
-        }
-    }, []);
 
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
@@ -447,7 +407,7 @@ const App = () => {
     }, [authReady, userId, loadStateFromGoogleSheets]);
 
     useEffect(() => {
-        const isAnyModalOpen = isShareModalOpen || isRemoveInventoryItemModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isClearAllComensalesModalOpen || isResetAllModalOpen || isSummaryModalOpen;
+        const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
         
         if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
           return;
@@ -458,10 +418,7 @@ const App = () => {
         let pollTimer;
     
         const poll = () => {
-          if (isCancelled) {
-            return;
-          }
-    
+          if (isCancelled) { return; }
           if (!hasPendingChanges.current) {
             loadStateFromGoogleSheets(shareId).finally(() => {
               if (!isCancelled) {
@@ -474,20 +431,15 @@ const App = () => {
             }
           }
         };
-    
         pollTimer = setTimeout(poll, pollTimeout);
-    
         return () => {
           isCancelled = true;
           clearTimeout(pollTimer);
         };
-    }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isRemoveInventoryItemModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isClearAllComensalesModalOpen, isResetAllModalOpen, isSummaryModalOpen]);
+    }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
     
     useEffect(() => {
-        if (isLoadingFromServer.current) {
-            return;
-        }
-        
+        if (isLoadingFromServer.current) { return; }
         if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
     
         hasPendingChanges.current = true;
@@ -513,7 +465,7 @@ const App = () => {
     const handleAddItem = (comensalId, productId) => {
         const productInStock = availableProducts.get(productId);
         if (!productInStock || Number(productInStock.quantity) <= 0) {
-          console.error(`Producto con ID ${productId} no encontrado o sin stock. El inventario puede tener claves de tipo incorrecto.`);
+          console.error(`Producto con ID ${productId} no encontrado o sin stock.`);
           return;
         }
     
@@ -725,54 +677,9 @@ const App = () => {
         setIsRemoveComensalModalOpen(true);
     };
 
-    const confirmClearAllComensales = () => {
-        if (comensales.length === 0) {
-          setIsClearAllComensalesModalOpen(false);
-          return;
-        }
-    
-        const newProducts = new Map(availableProducts);
-        const processedInstances = new Set();
-    
-        comensales.forEach(c => {
-            c.selectedItems.forEach(item => {
-                const product = newProducts.get(item.id);
-                if (product) {
-                    if (item.type === 'full') {
-                        newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
-                    } else if (item.type === 'shared' && !processedInstances.has(item.shareInstanceId)) {
-                        newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
-                        processedInstances.add(item.shareInstanceId);
-                    }
-                }
-            });
-        });
-    
-        setAvailableProducts(newProducts);
-        setComensales([]);
-        setActiveSharedInstances(new Map());
-        setIsClearAllComensalesModalOpen(false);
-    };
-    
-    const openClearAllComensalesModal = () => setIsClearAllComensalesModalOpen(true);
-    
-    const confirmResetAll = async () => {
-        setIsResetAllModalOpen(false);
-        if (shareId && userId && !shareId.startsWith('local-')) {
-          await deleteStateFromGoogleSheets(shareId);
-        }
-        handleResetAll(true);
-        const url = new URL(window.location.href);
-        url.searchParams.delete('id');
-        window.history.replaceState({}, document.title, url.toString());
-    };
-    
-    const openResetAllModal = () => setIsResetAllModalOpen(true);
-
     const handleImageUpload = (event) => {
         const file = event.target.files[0];
         if (!file) return;
-        setUploadedImageUrl(URL.createObjectURL(file));
         setIsImageProcessing(true);
         setImageProcessingError(null);
     
@@ -784,7 +691,6 @@ const App = () => {
         reader.onerror = () => {
           setImageProcessingError("Error al cargar la imagen.");
           setIsImageProcessing(false);
-          setUploadedImageUrl(null);
         };
         reader.readAsDataURL(file);
     };
@@ -808,7 +714,6 @@ const App = () => {
             if (result.candidates && result.candidates[0].content.parts[0].text) {
                 const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
                 
-                // Limpiar estado anterior antes de cargar nuevos productos
                 setComensales([]);
                 setActiveSharedInstances(new Map());
 
@@ -817,7 +722,7 @@ const App = () => {
                 (parsedData.items || []).forEach(item => {
                     const name = item.name.trim();
                     const price = parseFloat(item.price);
-                    const quantity = parseInt(item.quantity);
+                    const quantity = parseInt(item.quantity, 10);
                     if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
                         const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
                         if (existing) {
@@ -829,7 +734,6 @@ const App = () => {
                     }
                 });
                 setAvailableProducts(newProductsMap);
-                // **NUEVO**: Avanzar al paso de revisión
                 setCurrentStep('reviewing');
             } else {
                 throw new Error("No se pudo extraer información de la imagen.");
@@ -842,63 +746,6 @@ const App = () => {
         }
     };
     
-    const handleManualAddItem = () => {
-        if (!manualItemName.trim() || isNaN(parseFloat(manualItemPrice)) || isNaN(parseInt(manualItemQuantity))) {
-            setManualItemMessage({ type: 'error', text: 'Por favor, completa todos los campos correctamente.' });
-            setTimeout(() => setManualItemMessage({ type: '', text: '' }), 3000);
-            return;
-        }
-        const price = parseFloat(manualItemPrice);
-        const quantity = parseInt(manualItemQuantity);
-        setAvailableProducts(prevMap => {
-            const newMap = new Map(prevMap);
-            const name = manualItemName.trim();
-            const existing = Array.from(newMap.values()).find(p => p.name === name && p.price === price);
-            if (existing) {
-                newMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
-            } else {
-                const newId = newMap.size > 0 ? Math.max(0, ...newMap.keys()) + 1 : 1;
-                newMap.set(newId, { id: newId, name, price, quantity });
-            }
-            return newMap;
-        });
-        setManualItemName('');
-        setManualItemPrice('');
-        setManualItemQuantity('');
-        setManualItemMessage({ type: 'success', text: 'Ítem añadido.'});
-        setTimeout(() => setManualItemMessage({type: '', text: ''}), 3000);
-    };
-
-    const handleRemoveInventoryItem = () => {
-        if (!itemToRemoveFromInventoryId) {
-            setRemoveInventoryItemMessage({ type: 'error', text: 'Por favor, selecciona un ítem.'});
-            setTimeout(() => setRemoveInventoryItemMessage({type:'', text:''}), 3000);
-            return;
-        }
-        setIsRemoveInventoryItemModalOpen(true);
-    };
-    
-    const confirmRemoveInventoryItem = () => {
-        const itemIdToDelete = parseInt(itemToRemoveFromInventoryId);
-        if(isNaN(itemIdToDelete)) return;
-        setAvailableProducts(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(itemIdToDelete);
-            return newMap;
-        });
-        const newComensales = comensales.map(comensal => {
-            const newSelectedItems = comensal.selectedItems.filter(item => item.id !== itemIdToDelete);
-            if (newSelectedItems.length < comensal.selectedItems.length) {
-                const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                return { ...comensal, selectedItems: newSelectedItems, total: newTotal };
-            }
-            return comensal;
-        });
-        setComensales(newComensales);
-        setIsRemoveInventoryItemModalOpen(false);
-        setItemToRemoveFromInventoryId('');
-    };
-
     const handleGenerateShareLink = async () => {
         if (!userId) {
           alert("La sesión no está lista. Intenta de nuevo en un momento.");
@@ -1049,33 +896,32 @@ const App = () => {
                             <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
                             <div className="flex justify-between text-gray-600">
                                 <span>Consumo (sin propina):</span>
-                                <span>${diner.totalSinPropina.toLocaleString('de-DE')}</span>
+                                <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
                             </div>
                             <div className="flex justify-between text-gray-600">
                                 <span>Propina (10%):</span>
-                                <span>${diner.propina.toLocaleString('de-DE')}</span>
+                                <span>${diner.propina.toLocaleString('es-CL')}</span>
                             </div>
                             <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
                                 <span>TOTAL A PAGAR:</span>
-                                <span>${diner.totalConPropina.toLocaleString('de-DE')}</span>
+                                <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
                             </div>
                         </div>
                     ))}
                 </div>
-                {/* Nueva sección de totales en el PDF */}
                 <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
                     <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
                      <div className="flex justify-between text-lg text-gray-700">
                         <span>Total General (sin propina):</span>
-                        <span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('de-DE')}</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span>
                     </div>
                      <div className="flex justify-between text-lg text-gray-700">
                         <span>Total Propina:</span>
-                        <span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('de-DE')}</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span>
                     </div>
                     <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300">
                         <span>GRAN TOTAL A PAGAR:</span>
-                        <span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('de-DE')}</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span>
                     </div>
                 </div>
             </div>
@@ -1084,10 +930,7 @@ const App = () => {
           <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
           <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
           <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
-          <ConfirmationModal isOpen={isClearAllComensalesModalOpen} onClose={() => setIsClearAllComensalesModalOpen(false)} onConfirm={confirmClearAllComensales} message="¿Estás seguro de que deseas eliminar a TODOS los comensales?" confirmText="Eliminar Todos" />
-          <ConfirmationModal isOpen={isResetAllModalOpen} onClose={() => setIsResetAllModalOpen(false)} onConfirm={confirmResetAll} message="¿Estás seguro de que deseas resetear toda la aplicación?" confirmText="Sí, Resetear Todo" cancelText="Cancelar" />
           <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
-          <ConfirmationModal isOpen={isRemoveInventoryItemModalOpen} onClose={() => setIsRemoveInventoryItemModalOpen(false)} onConfirm={confirmRemoveInventoryItem} message={`¿Estás seguro de que quieres eliminar "${availableProducts.get(Number(itemToRemoveFromInventoryId))?.name || 'este ítem'}" del inventario?`} confirmText="Sí, Eliminar" cancelText="No, Mantener" />
       </div>
     );
 };
@@ -1128,11 +971,19 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
 );
 
 const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
-    // **CORRECCIÓN DEFINITIVA**: El estado de los productos es local y se inicializa una sola vez.
     const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
 
-    const total = Array.from(localProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
+    useEffect(() => {
+        setLocalProducts(new Map(initialProducts));
+    }, [initialProducts]);
+    
+    // **CÁLCULO MÁS ROBUSTO**
+    const total = Array.from(localProducts.values()).reduce((sum, p) => {
+        const price = parseFloat(p.price) || 0;
+        const quantity = parseInt(p.quantity, 10) || 0;
+        return sum + (price * quantity);
+    }, 0);
     const tip = total * 0.10;
 
     const handleProductChange = (id, field, value) => {
@@ -1155,19 +1006,18 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
     };
 
     const handleAddNewItem = () => {
-        if (!newItem.name.trim() || isNaN(parseFloat(newItem.price)) || isNaN(parseInt(newItem.quantity))) {
+        if (!newItem.name.trim() || isNaN(parseFloat(newItem.price)) || isNaN(parseInt(newItem.quantity, 10))) {
             alert('Por favor, completa los campos del nuevo ítem correctamente.');
             return;
         }
         setLocalProducts(prev => {
             const newMap = new Map(prev);
-            // Asegura un ID único incluso si se borran ítems
             const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
             newMap.set(newId, {
                 id: newId,
                 name: newItem.name.trim(),
                 price: parseFloat(newItem.price),
-                quantity: parseInt(newItem.quantity),
+                quantity: parseInt(newItem.quantity, 10),
             });
             return newMap;
         });
@@ -1206,22 +1056,23 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
                 </div>
             </div>
 
-            <div className="bg-blue-50 p-4 rounded-xl shadow-inner sticky bottom-4">
+            {/* **ESTILO CORREGIDO**: Se quita la clase 'sticky' */}
+            <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-8">
                 <div className="flex justify-between text-lg">
                     <span className="font-semibold text-gray-700">Subtotal:</span>
-                    <span className="font-bold">${Math.round(total).toLocaleString('de-DE')}</span>
+                    <span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span>
                 </div>
                 <div className="flex justify-between text-lg">
                     <span className="font-semibold text-gray-700">Propina (10%):</span>
-                    <span className="font-bold">${Math.round(tip).toLocaleString('de-DE')}</span>
+                    <span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span>
                 </div>
                 <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200">
                     <span>TOTAL:</span>
-                    <span>${Math.round(total + tip).toLocaleString('de-DE')}</span>
+                    <span>${Math.round(total + tip).toLocaleString('es-CL')}</span>
                 </div>
             </div>
 
-            <div className="mt-8 flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col sm:flex-row gap-4">
                 <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">
                     Volver y Empezar de Nuevo
                 </button>
@@ -1238,10 +1089,8 @@ const AssigningStep = ({
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
     onGoBack, onGenerateLink, onRestart, shareLink
 }) => {
-    // El cálculo se mantiene porque se usa en el botón final
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
 
-    // Componente interno para la tarjeta de comensal (sin cambios)
     const ComensalCard = ({ comensal }) => {
         const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
         const propina = comensal.total - totalSinPropina;
@@ -1253,7 +1102,7 @@ const AssigningStep = ({
                     <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
                     <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, parseInt(e.target.value, 10))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
                         <option value="" disabled>Selecciona un producto</option>
-                        {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('de-DE')}) (Disp: {Number(product.quantity)})</option>))}
+                        {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
                     </select>
                 </div>
                 <div className="flex-grow min-h-[80px]">
@@ -1263,7 +1112,7 @@ const AssigningStep = ({
                                 <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
                                     <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
                                     <div className="flex items-center space-x-2">
-                                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('de-DE')}</span>
+                                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('es-CL')}</span>
                                         <button onClick={() => onRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                         </button>
@@ -1276,15 +1125,15 @@ const AssigningStep = ({
                 <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
                     <div className="flex justify-between text-sm text-gray-600">
                         <span>Total sin Propina:</span>
-                        <span>${Math.round(totalSinPropina).toLocaleString('de-DE')}</span>
+                        <span>${Math.round(totalSinPropina).toLocaleString('es-CL')}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-600">
                         <span>Propina (10%):</span>
-                        <span>${Math.round(propina).toLocaleString('de-DE')}</span>
+                        <span>${Math.round(propina).toLocaleString('es-CL')}</span>
                     </div>
                     <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1">
                         <span>TOTAL A PAGAR:</span>
-                        <span className="text-2xl">${Math.round(comensal.total).toLocaleString('de-DE')}</span>
+                        <span className="text-2xl">${Math.round(comensal.total).toLocaleString('es-CL')}</span>
                     </div>
                 </div>
                  <div className="flex gap-2 mt-4">
@@ -1296,7 +1145,6 @@ const AssigningStep = ({
     };
     
     return (
-        // Se añade padding inferior para que el botón fijo no tape contenido
         <div className="pb-24">
             <header className="mb-6 text-center">
                 <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
@@ -1305,8 +1153,6 @@ const AssigningStep = ({
                     &larr; Volver y Editar Ítems
                 </button>
             </header>
-
-            {/* --- ESTE ES EL CUADRO QUE SE ELIMINÓ --- */}
 
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
@@ -1352,10 +1198,9 @@ const AssigningStep = ({
                 <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
                      <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105 flex flex-col items-center">
                         <span className="text-lg">Ver Resumen Final</span>
-                        {/* Se muestra el monto pendiente solo si es mayor a cero */}
                         {Math.round(remainingToAssign) > 0 && (
                              <span className="text-xs font-normal opacity-90">
-                                Faltan ${Math.round(remainingToAssign).toLocaleString('de-DE')} por asignar
+                                Faltan ${Math.round(remainingToAssign).toLocaleString('es-CL')} por asignar
                              </span>
                         )}
                     </button>
