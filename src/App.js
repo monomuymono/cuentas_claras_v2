@@ -1320,7 +1320,6 @@ const AssigningStep = ({
                 {addComensalMessage.text && (<p className={`mt-3 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
             </div>
 
-            {/* --- NUEVA TARJETA DE HERRAMIENTAS --- */}
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4 text-center">Herramientas</h2>
                 <div className="space-y-3">
@@ -1352,11 +1351,17 @@ const AssigningStep = ({
                 ))}
             </div>
 
-            {/* --- NUEVO BOTÓN PRINCIPAL FIJO --- */}
+            {/* --- BOTÓN PRINCIPAL FIJO (MODIFICADO) --- */}
             {comensales.length > 0 && (
                 <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
-                     <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-4 bg-green-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105">
-                        Ver Resumen Final
+                     <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105 flex flex-col items-center">
+                        <span className="text-lg">Ver Resumen Final</span>
+                        {/* Se muestra el monto pendiente solo si es mayor a cero */}
+                        {Math.round(remainingToAssign) > 0 && (
+                             <span className="text-xs font-normal opacity-90">
+                                Faltan ${Math.round(remainingToAssign).toLocaleString('de-DE')} por asignar
+                             </span>
+                        )}
                     </button>
                 </div>
             )}
