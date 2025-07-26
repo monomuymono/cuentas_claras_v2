@@ -223,7 +223,7 @@ const App = () => {
     const [currentStep, setCurrentStep] = useState('landing');
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
     
-    // -- NUEVO: Estados para el descuento --
+    // -- Estados para el descuento --
     const [discountPercentage, setDiscountPercentage] = useState('');
     const [discountCap, setDiscountCap] = useState('');
     
@@ -317,8 +317,8 @@ const App = () => {
           setActiveSharedInstances(new Map());
           setShareId(`local-session-${Date.now()}`);
           setShareLink('');
-          setDiscountPercentage(''); // -- Limpiar descuento
-          setDiscountCap('');      // -- Limpiar descuento
+          setDiscountPercentage('');
+          setDiscountCap('');
           setCurrentStep('landing');
           
           const url = new URL(window.location.href);
@@ -517,8 +517,8 @@ const App = () => {
             } else {
               updatedComensal.selectedItems.push({
                 ...productInStock, 
-                price: finalPrice, // Precio final a pagar (con descuento y propina)
-                originalBasePrice: originalPrice, // Precio original para calcular propina
+                price: finalPrice,
+                originalBasePrice: originalPrice,
                 quantity: 1, 
                 type: 'full',
               });
@@ -598,9 +598,7 @@ const App = () => {
                 if (shareGroup.has(c.id)) {
                     const newSharerCount = shareGroup.size;
                     const effectiveDiscountRatio = getEffectiveDiscountRatio();
-
-                    const itemDefinition = availableProducts.get(originalProductId) || comensales.flatMap(c => c.selectedItems).find(i => i.id === originalProductId);
-                    const originalItemPrice = itemDefinition ? Number(itemDefinition.price) : 0;
+                    const originalItemPrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
                     
                     const newBasePricePerShare = originalItemPrice / newSharerCount;
                     const newDiscountedPricePerShare = newBasePricePerShare * (1 - effectiveDiscountRatio);
@@ -983,7 +981,7 @@ const App = () => {
                 <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
                     <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
                      <div className="flex justify-between text-lg text-gray-700">
-                        <span>Total General (sin propina):</span>
+                        <span>Total General (con descuento):</span>
                         <span>${summaryData.reduce((sum, d) => sum + d.subtotalConDescuento, 0).toLocaleString('es-CL')}</span>
                     </div>
                      <div className="flex justify-between text-lg text-gray-700">
@@ -1005,3 +1003,5 @@ const App = () => {
       </div>
     );
 };
+
+export default App; // <-- LÍNEA DE EXPORTACIÓN
