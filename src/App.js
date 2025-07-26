@@ -313,7 +313,7 @@ const App = () => {
           setActiveSharedInstances(new Map());
           setShareId(`local-session-${Date.now()}`);
           setShareLink('');
-          setCurrentStep('loading');
+          setCurrentStep('landing'); // <-- CAMBIO: Ahora dirige al landing page
           
           const url = new URL(window.location.href);
           url.searchParams.delete('id');
@@ -404,6 +404,7 @@ const App = () => {
     
             if (idFromUrl) {
                 setShareId(idFromUrl);
+                setCurrentStep('loading'); // Si hay ID en la URL, saltamos el landing
                 await loadStateFromGoogleSheets(idFromUrl);
             } else {
                 setShareId(`local-session-${Date.now()}`);
@@ -860,10 +861,7 @@ const App = () => {
                         setAvailableProducts(finalProducts);
                         setCurrentStep('assigning');
                     }}
-                    onBack={() => {
-                        handleResetAll(true);
-                        setCurrentStep('loading');
-                    }}
+                    onBack={() => handleResetAll(true)} // <-- CAMBIO: Lógica simplificada
                 />
             );
           case 'assigning':
