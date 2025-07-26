@@ -270,7 +270,6 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
 );
 
 // --- COMPONENTE ReviewStep ---
-
 const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, setDiscountPercentage, discountCap, setDiscountCap }) => {
     const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
