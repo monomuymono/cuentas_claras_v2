@@ -1025,7 +1025,7 @@ const App = () => {
                 onGoBack={() => setCurrentStep('reviewing')}
                 onGenerateLink={handleGenerateShareLink}
                 onRestart={() => handleResetAll(true)}
-                shareLink={shareLink} // <-- Prop añadida
+                shareLink={shareLink}
               />
             );
           default:
@@ -1128,15 +1128,10 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
 );
 
 const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
-    // **CORRECCIÓN**: El estado de los productos ahora es local a este componente.
-    const [localProducts, setLocalProducts] = useState(new Map(initialProducts));
+    // **CORRECCIÓN DEFINITIVA**: El estado de los productos es local y se inicializa una sola vez.
+    const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
 
-    useEffect(() => {
-        // Sincroniza el estado local si la prop inicial cambia (ej. al escanear una nueva imagen)
-        setLocalProducts(new Map(initialProducts));
-    }, [initialProducts]);
-    
     const total = Array.from(localProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
     const tip = total * 0.10;
 
@@ -1166,7 +1161,8 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
         }
         setLocalProducts(prev => {
             const newMap = new Map(prev);
-            const newId = newMap.size > 0 ? Math.max(0, ...Array.from(newMap.keys())) + 1 : 1;
+            // Asegura un ID único incluso si se borran ítems
+            const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
             newMap.set(newId, {
                 id: newId,
                 name: newItem.name.trim(),
