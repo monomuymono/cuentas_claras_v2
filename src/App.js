@@ -8,11 +8,10 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 // URL de tu Google Apps Script Web App
 const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec";
 
-// --- Componentes de la Interfaz (Modales y Pasos) ---
+// --- Componentes de la Interfaz (Modales) ---
 
 const LoadingModal = ({ isOpen, message }) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[100] print:hidden">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div>
@@ -23,23 +22,16 @@ const LoadingModal = ({ isOpen, message }) => {
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center z-50 print:hidden">
       <div className="bg-white p-6 rounded-t-2xl shadow-2xl w-full max-w-md mx-auto animate-slide-up">
         <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">Confirmar Acción</h2>
         <p className="text-gray-700 mb-6 text-center">{message}</p>
         <div className="flex flex-col sm:flex-row-reverse gap-3">
-          <button
-            onClick={onConfirm}
-            className="w-full px-5 py-3 bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-          >
+          <button onClick={onConfirm} className="w-full px-5 py-3 bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
             {confirmText || 'Confirmar'}
           </button>
-          <button
-            onClick={onClose}
-            className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-          >
+          <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">
             {cancelText || 'Cancelar'}
           </button>
         </div>
@@ -173,7 +165,6 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
 
 const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
@@ -183,16 +174,22 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
             <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0">
               <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
               <div className="flex justify-between text-gray-600">
-                <span>Consumo (sin propina):</span>
-                <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
+                <span>Consumo Original:</span>
+                <span>${diner.consumoOriginal.toLocaleString('es-CL')}</span>
               </div>
+              {diner.descuento > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>Descuento:</span>
+                  <span>-${diner.descuento.toLocaleString('es-CL')}</span>
+                </div>
+              )}
               <div className="flex justify-between text-gray-600">
                 <span>Propina (10%):</span>
                 <span>${diner.propina.toLocaleString('es-CL')}</span>
               </div>
               <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
                 <span>TOTAL A PAGAR:</span>
-                <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
+                <span>${diner.totalFinal.toLocaleString('es-CL')}</span>
               </div>
             </div>
           ))}
@@ -217,754 +214,7 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
 };
 
 
-// --- Componente principal de la aplicación ---
-const App = () => {
-    // --- ESTADOS ---
-    const [currentStep, setCurrentStep] = useState('landing'); // 'landing', 'loading', 'reviewing', 'assigning'
-    const [isGeneratingLink, setIsGeneratingLink] = useState(false);
-    
-    // Estados originales
-    const [userId, setUserId] = useState(null);
-    const [authReady, setAuthReady] = useState(false);
-    const [shareId, setShareId] = useState(null);
-    const [shareLink, setShareLink] = useState('');
-    const [availableProducts, setAvailableProducts] = useState(new Map());
-    const [comensales, setComensales] = useState([]);
-    const [newComensalName, setNewComensalName] = useState('');
-    const [addComensalMessage, setAddComensalMessage] = useState({ type: '', text: '' });
-    
-    // Estados de modales
-    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-    const [isClearComensalModalOpen, setIsClearComensalModalOpen] = useState(false);
-    const [comensalToClearId, setComensalToClearId] = useState(null);
-    const [isRemoveComensalModalOpen, setIsRemoveComensalModalOpen] = useState(false);
-    const [comensalToRemoveId, setComensalToRemoveId] = useState(null);
-    const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
-    const [summaryData, setSummaryData] = useState([]);
-    
-    // Estados de procesamiento de imagen
-    const [isImageProcessing, setIsImageProcessing] = useState(false);
-    const [imageProcessingError, setImageProcessingError] = useState(null);
-    
-    // Otros estados y refs
-    const [activeSharedInstances, setActiveSharedInstances] = useState(new Map());
-    const hasPendingChanges = useRef(false);
-    const initialLoadDone = useRef(false);
-    const isLoadingFromServer = useRef(false);
-    const justCreatedSessionId = useRef(null);
-    const MAX_COMENSALES = 20;
-
-    // --- LÓGICA DE NEGOCIO ---
-    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
-          return Promise.reject(new Error("URL de Apps Script inválida."));
-        }
-        if (!currentShareId || !userId) return Promise.resolve();
-    
-        const promiseWithTimeout = new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
-            }, 8000);
-    
-            const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
-            const script = document.createElement('script');
-    
-            const cleanup = () => {
-                clearTimeout(timeoutId);
-                if (document.body.contains(script)) {
-                    document.body.removeChild(script);
-                }
-                delete window[callbackName];
-            };
-    
-            window[callbackName] = (data) => {
-                cleanup();
-                resolve(data);
-            };
-    
-            script.onerror = () => {
-                cleanup();
-                reject(new Error('Error de red al guardar los datos en Google Sheets.'));
-            };
-    
-            const dataString = JSON.stringify(dataToSave);
-            const encodedData = encodeURIComponent(dataString);
-            script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
-            document.body.appendChild(script);
-        });
-    
-        try {
-          const result = await promiseWithTimeout;
-          if (result.status === 'error') {
-            return Promise.reject(new Error(result.message));
-          }
-          return Promise.resolve();
-        } catch (error) {
-          return Promise.reject(error);
-        }
-    }, [userId]);
-
-    const handleResetAll = useCallback((isLocalOnly = false) => {
-        if (!isLocalOnly) {
-          // Lógica de modal de reseteo no se usa actualmente, pero se mantiene
-        } else {
-          setAvailableProducts(new Map());
-          setComensales([]);
-          setActiveSharedInstances(new Map());
-          setShareId(`local-session-${Date.now()}`);
-          setShareLink('');
-          setCurrentStep('landing'); // <-- CAMBIO: Ahora dirige al landing page
-          
-          const url = new URL(window.location.href);
-          url.searchParams.delete('id');
-          window.history.replaceState({}, document.title, url.toString());
-        }
-    }, []);
-
-    const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
-        if (!idToLoad || idToLoad.startsWith('local-')) return;
-    
-        const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
-        const promise = new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          window[callbackName] = (data) => {
-            if(document.body.contains(script)) document.body.removeChild(script);
-            delete window[callbackName];
-            resolve(data);
-          };
-          script.onerror = () => {
-            if(document.body.contains(script)) document.body.removeChild(script);
-            delete window[callbackName];
-            reject(new Error('Error al cargar los datos desde Google Sheets.'));
-          };
-          script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`;
-          document.body.appendChild(script);
-        });
-    
-        try {
-          const data = await promise;
-          if (data && data.status !== "not_found") {
-            if (hasPendingChanges.current) return;
-            
-            isLoadingFromServer.current = true;
-    
-            const loadedProducts = new Map(
-              Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value])
-            );
-            const loadedSharedInstances = new Map(
-              Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])
-            );
-    
-            setComensales(data.comensales || []);
-            setAvailableProducts(loadedProducts);
-            setActiveSharedInstances(loadedSharedInstances);
-            if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
-                setCurrentStep('assigning');
-            }
-    
-          } else {
-            if (idToLoad === justCreatedSessionId.current) {
-              console.warn("La sesión recién creada aún no está disponible para lectura. Reintentando en el próximo ciclo.");
-              return; 
-            }
-    
-            alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
-            const url = new URL(window.location.href);
-            url.searchParams.delete('id');
-            window.history.replaceState({}, document.title, url.toString());
-            handleResetAll(true);
-          }
-        } catch (error) {
-          console.error("Error al cargar con JSONP:", error);
-        } finally {
-          setTimeout(() => {
-            isLoadingFromServer.current = false;
-          }, 0);
-        }
-    }, [handleResetAll]);
-
-    useEffect(() => {
-        const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
-        if (uniqueSessionUserId) setUserId(uniqueSessionUserId);
-        else {
-          const newUniqueId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-          localStorage.setItem('billSplitterUserId', newUniqueId);
-          setUserId(newUniqueId);
-        }
-        setAuthReady(true);
-    }, []);
-
-    useEffect(() => {
-        const performInitialLoad = async () => {
-            if (!authReady || !userId || initialLoadDone.current) return;
-    
-            const urlParams = new URLSearchParams(window.location.search);
-            const idFromUrl = urlParams.get('id');
-    
-            if (idFromUrl) {
-                setShareId(idFromUrl);
-                setCurrentStep('loading'); // Si hay ID en la URL, saltamos el landing
-                await loadStateFromGoogleSheets(idFromUrl);
-            } else {
-                setShareId(`local-session-${Date.now()}`);
-            }
-            
-            initialLoadDone.current = true;
-        };
-    
-        performInitialLoad();
-    }, [authReady, userId, loadStateFromGoogleSheets]);
-
-    useEffect(() => {
-        const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
-        
-        if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
-          return;
-        }
-    
-        let isCancelled = false;
-        const pollTimeout = 5000;
-        let pollTimer;
-    
-        const poll = () => {
-          if (isCancelled) { return; }
-          if (!hasPendingChanges.current) {
-            loadStateFromGoogleSheets(shareId).finally(() => {
-              if (!isCancelled) {
-                pollTimer = setTimeout(poll, pollTimeout);
-              }
-            });
-          } else {
-            if (!isCancelled) {
-              pollTimer = setTimeout(poll, pollTimeout);
-            }
-          }
-        };
-        pollTimer = setTimeout(poll, pollTimeout);
-        return () => {
-          isCancelled = true;
-          clearTimeout(pollTimer);
-        };
-    }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
-    
-    useEffect(() => {
-        if (isLoadingFromServer.current) { return; }
-        if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
-    
-        hasPendingChanges.current = true;
-        const handler = setTimeout(() => {
-          const dataToSave = {
-              comensales,
-              availableProducts: Object.fromEntries(availableProducts),
-              activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-              lastUpdated: new Date().toISOString()
-          };
-          saveStateToGoogleSheets(shareId, dataToSave)
-            .catch((e) => {
-              console.error("El guardado falló:", e.message);
-              alert(`No se pudieron guardar los últimos cambios: ${e.message}`);
-            })
-            .finally(() => {
-              hasPendingChanges.current = false;
-            });
-        }, 1000);
-        return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
-
-    // En App.js - REEMPLAZA TU FUNCIÓN ACTUAL CON ESTA
-
-    const handleAddItem = (comensalId, productId) => {
-        const productInStock = availableProducts.get(productId);
-        if (!productInStock || Number(productInStock.quantity) <= 0) {
-            return;
-        }
-    
-        const newProductsMap = new Map(availableProducts);
-        newProductsMap.set(productId, { ...productInStock, quantity: Number(productInStock.quantity) - 1 });
-    
-        const newComensales = comensales.map(comensal => {
-            if (comensal.id === comensalId) {
-                const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
-                
-                // Verificamos si el ítem ya existe para agruparlo
-                const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === 'full');
-    
-                if (existingItemIndex !== -1) {
-                    // Si ya existe, solo incrementamos la cantidad
-                    updatedComensal.selectedItems[existingItemIndex].quantity += 1;
-                } else {
-                    // Si es nuevo, lo agregamos con su precio base original
-                    updatedComensal.selectedItems.push({
-                        ...productInStock,
-                        originalBasePrice: Number(productInStock.price), // Guardamos el precio original
-                        quantity: 1,
-                        type: 'full',
-                        // NO guardamos un precio final aquí
-                    });
-                }
-                // YA NO CALCULAMOS Y GUARDAMOS EL TOTAL DEL COMENSAL AQUÍ
-                return updatedComensal;
-            }
-            return comensal;
-        });
-    
-        setAvailableProducts(newProductsMap);
-        setComensales(newComensales);
-    };
-
-    const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
-        const comensalTarget = comensales.find(c => c.id === comensalId);
-        if (!comensalTarget) return;
-    
-        const itemIndex = comensalTarget.selectedItems.findIndex(item =>
-          (item.type === 'shared' && String(item.shareInstanceId) === String(itemToRemoveIdentifier)) ||
-          (item.type === 'full' && item.id === Number(itemToRemoveIdentifier))
-        );
-        if (itemIndex === -1) return;
-    
-        const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
-    
-        if (itemToRemove.type === 'full') {
-            const newComensales = comensales.map(c => {
-                if (c.id === comensalId) {
-                    const updatedItems = [...c.selectedItems];
-                    const itemInBill = updatedItems[itemIndex];
-                    if (itemInBill.quantity > 1) {
-                        updatedItems[itemIndex] = { ...itemInBill, quantity: itemInBill.quantity - 1 };
-                    } else {
-                        updatedItems.splice(itemIndex, 1);
-                    }
-                    const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                    return { ...c, selectedItems: updatedItems, total: newTotal };
-                }
-                return c;
-            });
-            setComensales(newComensales);
-    
-            setAvailableProducts(currentProducts => {
-                const newProducts = new Map(currentProducts);
-                const product = newProducts.get(itemToRemove.id);
-                if (product) newProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-                return newProducts;
-            });
-            return;
-        }
-    
-        if (itemToRemove.type === 'shared') {
-            const { shareInstanceId, id: originalProductId } = itemToRemove;
-            const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
-            const newActiveSharedInstances = new Map(activeSharedInstances);
-            const shareGroup = newActiveSharedInstances.get(shareInstanceId);
-            if (!shareGroup) return;
-    
-            shareGroup.delete(comensalId);
-    
-            if (shareGroup.size === 0) {
-                newActiveSharedInstances.delete(shareInstanceId);
-                setAvailableProducts(currentProducts => {
-                    const newProducts = new Map(currentProducts);
-                    const product = newProducts.get(originalProductId);
-                    if (product) newProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
-                    return newProducts;
-                });
-            }
-    
-            const finalComensales = comensales.map(c => {
-                if (c.id === comensalId) {
-                    const newSelectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
-                    const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                    return { ...c, selectedItems: newSelectedItems, total: newTotal };
-                }
-                if (shareGroup.has(c.id)) {
-                    const newSharerCount = shareGroup.size;
-                    const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-                    const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
-    
-                    const newSelectedItems = c.selectedItems.map(item => {
-                        if (String(item.shareInstanceId) === String(shareInstanceId)) {
-                            return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
-                        }
-                        return item;
-                    });
-                    const newTotal = newSelectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                    return { ...c, selectedItems: newSelectedItems, total: newTotal };
-                }
-                return c;
-            });
-            setComensales(finalComensales);
-            setActiveSharedInstances(newActiveSharedInstances);
-        }
-    };
-    
-    // En App.js - REEMPLAZA TU FUNCIÓN ACTUAL CON ESTA
-
-    const handleShareItem = (productId, sharingComensalIds) => {
-        const productToShare = availableProducts.get(productId);
-        if (!productToShare || Number(productToShare.quantity) <= 0) {
-            return;
-        }
-    
-        const newProductsMap = new Map(availableProducts);
-        newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 });
-    
-        const shareInstanceId = Date.now() + Math.random();
-        const newActiveSharedInstances = new Map(activeSharedInstances);
-        newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds));
-    
-        // Calculamos el precio base por persona que comparte
-        const originalPrice = Number(productToShare.price);
-        const basePricePerShare = originalPrice / sharingComensalIds.length;
-    
-        const newComensales = comensales.map(comensal => {
-            if (sharingComensalIds.includes(comensal.id)) {
-                const updatedItems = [...comensal.selectedItems, {
-                    id: productToShare.id,
-                    name: productToShare.name,
-                    originalBasePrice: basePricePerShare, // Guardamos el precio base proporcional
-                    quantity: 1,
-                    type: 'shared',
-                    sharedByCount: sharingComensalIds.length,
-                    shareInstanceId: shareInstanceId
-                    // NO guardamos un precio final aquí
-                }];
-                // YA NO CALCULAMOS Y GUARDAMOS EL TOTAL DEL COMENSAL AQUÍ
-                return { ...comensal, selectedItems: updatedItems };
-            }
-            return comensal;
-        });
-    
-        setAvailableProducts(newProductsMap);
-        setActiveSharedInstances(newActiveSharedInstances);
-        setComensales(newComensales);
-    };
-    
-    const handleAddComensal = () => {
-        if (newComensalName.trim() === '') {
-          setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre para el nuevo comensal.' });
-          return;
-        }
-        if (comensales.length >= MAX_COMENSALES) {
-          setAddComensalMessage({ type: 'error', text: `No se pueden agregar más de ${MAX_COMENSALES} comensales.` });
-          return;
-        }
-    
-        const newComensalId = comensales.length > 0 ? Math.max(0, ...comensales.map(c => c.id)) + 1 : 1;
-        const newComensal = { id: newComensalId, name: newComensalName.trim(), selectedItems: [], total: 0 };
-        setComensales(prevComensales => [...prevComensales, newComensal]);
-        setNewComensalName('');
-        setAddComensalMessage({ type: 'success', text: `¡Comensal "${newComensal.name}" añadido con éxito!` });
-        setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
-    };
-
-    const confirmClearComensal = () => {
-        setIsClearComensalModalOpen(false);
-        const comensalToClear = comensales.find(c => c.id === comensalToClearId);
-        if (!comensalToClear) {
-          setComensalToClearId(null);
-          return;
-        }
-    
-        const itemsToRemove = [...comensalToClear.selectedItems];
-        itemsToRemove.forEach(item => {
-            handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
-        });
-    
-        setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
-        setComensalToClearId(null);
-    };
-    
-    const openClearComensalModal = (comensalId) => {
-        setComensalToClearId(comensalId);
-        setIsClearComensalModalOpen(true);
-    };
-
-    const confirmRemoveComensal = () => {
-        const idToRemove = comensalToRemoveId;
-        if (idToRemove === null) return;
-    
-        const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
-        if (comensalToRemoveData) {
-          const itemsToRemove = [...comensalToRemoveData.selectedItems];
-          itemsToRemove.forEach(item => {
-            const identifier = item.type === 'shared' ? item.shareInstanceId : item.id;
-            handleRemoveItem(idToRemove, identifier);
-          });
-        }
-    
-        setComensales(prev => prev.filter(c => c.id !== idToRemove));
-        setIsRemoveComensalModalOpen(false);
-        setComensalToRemoveId(null);
-    };
-    
-    const openRemoveComensalModal = (comensalId) => {
-        setComensalToRemoveId(comensalId);
-        setIsRemoveComensalModalOpen(true);
-    };
-
-    const handleImageUpload = (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        setIsImageProcessing(true);
-        setImageProcessingError(null);
-    
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64Image = reader.result.split(',')[1];
-          analyzeImageWithGemini(base64Image, file.type);
-        };
-        reader.onerror = () => {
-          setImageProcessingError("Error al cargar la imagen.");
-          setIsImageProcessing(false);
-        };
-        reader.readAsDataURL(file);
-    };
-
-    const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
-        try {
-            const prompt = `Analiza la imagen de recibo adjunta...`; // Prompt acortado para brevedad
-            const payload = {
-                contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] }
-                }
-            };
-            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
-            if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) throw new Error("Falta la clave de API de Gemini.");
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            const result = await response.json();
-    
-            if (result.candidates && result.candidates[0].content.parts[0].text) {
-                const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
-                
-                setComensales([]);
-                setActiveSharedInstances(new Map());
-
-                const newProductsMap = new Map();
-                let currentMaxId = 0;
-                (parsedData.items || []).forEach(item => {
-                    const name = item.name.trim();
-                    const price = parseFloat(item.price);
-                    const quantity = parseInt(item.quantity, 10);
-                    if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
-                        const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
-                        if (existing) {
-                            newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
-                        } else {
-                            currentMaxId++;
-                            newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity });
-                        }
-                    }
-                });
-                setAvailableProducts(newProductsMap);
-                setCurrentStep('reviewing');
-            } else {
-                throw new Error("No se pudo extraer información de la imagen.");
-            }
-        } catch (error) {
-            console.error("Error al analizar la imagen:", error);
-            setImageProcessingError(error.message);
-        } finally {
-            setIsImageProcessing(false);
-        }
-    };
-    
-    const handleGenerateShareLink = async () => {
-        if (!userId) {
-          alert("La sesión no está lista. Intenta de nuevo en un momento.");
-          return;
-        }
-    
-        setIsGeneratingLink(true);
-        const newShareId = `session_${Date.now()}`;
-        justCreatedSessionId.current = newShareId;
-    
-        const dataToSave = {
-          comensales,
-          availableProducts: Object.fromEntries(availableProducts),
-          activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-        };
-    
-        try {
-          await saveStateToGoogleSheets(newShareId, dataToSave);
-          const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`;
-    
-          setShareId(newShareId);
-          setShareLink(fullLink);
-          window.history.pushState({ path: fullLink }, '', fullLink);
-          
-          setTimeout(() => {
-            if (justCreatedSessionId.current === newShareId) {
-              justCreatedSessionId.current = null;
-            }
-          }, 10000);
-    
-        } catch (e) {
-          alert(`Error al generar enlace: ${e.message}`);
-          justCreatedSessionId.current = null;
-        } finally {
-          setIsGeneratingLink(false);
-        }
-    };
-
-    const handleOpenSummaryModal = () => {
-        const data = comensales.map(comensal => {
-          const totalConPropina = comensal.total || 0;
-          const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
-          const propina = totalConPropina - totalSinPropina;
-          return {
-            id: comensal.id,
-            name: comensal.name,
-            totalSinPropina: Math.round(totalSinPropina),
-            propina: Math.round(propina),
-            totalConPropina: Math.round(totalConPropina),
-          };
-        });
-        setSummaryData(data);
-        setIsSummaryModalOpen(true);
-    };
-
-    const handlePrint = () => {
-        const printContent = document.getElementById('print-source-content');
-        if (!printContent) {
-            console.error('Elemento para imprimir no encontrado.');
-            return;
-        }
-    
-        const printWindow = window.open('', '_blank', 'height=800,width=800');
-        if (!printWindow) {
-            alert('Por favor, permite las ventanas emergentes para poder imprimir.');
-            return;
-        }
-        
-        printWindow.document.write('<html><head><title>Resumen de Cuenta</title>');
-        printWindow.document.write('<script src="https://cdn.tailwindcss.com"></script>');
-        printWindow.document.write('</head><body class="p-8">');
-        printWindow.document.write(printContent.innerHTML);
-        printWindow.document.write('</body></html>');
-    
-        printWindow.document.close();
-        
-        setTimeout(() => {
-            printWindow.focus();
-            printWindow.print();
-            printWindow.close();
-        }, 500);
-    };
-    
-    // --- RENDERIZADO CONDICIONAL POR PASOS ---
-    const renderStep = () => {
-        switch (currentStep) {
-          case 'landing':
-            return <LandingStep onStart={() => setCurrentStep('loading')} />;
-          case 'loading':
-            return (
-              <LoadingStep
-                onImageUpload={handleImageUpload}
-                onManualEntry={() => setCurrentStep('reviewing')}
-                isImageProcessing={isImageProcessing}
-                imageProcessingError={imageProcessingError}
-              />
-            );
-          case 'reviewing':
-            return (
-                <ReviewStep
-                    initialProducts={availableProducts}
-                    onConfirm={(finalProducts) => {
-                        setAvailableProducts(finalProducts);
-                        setCurrentStep('assigning');
-                    }}
-                    onBack={() => handleResetAll(true)} // <-- CAMBIO: Lógica simplificada
-                />
-            );
-          case 'assigning':
-            return (
-              <AssigningStep
-                availableProducts={availableProducts}
-                comensales={comensales}
-                newComensalName={newComensalName}
-                setNewComensalName={setNewComensalName}
-                addComensalMessage={addComensalMessage}
-                onAddComensal={handleAddComensal}
-                onAddItem={handleAddItem}
-                onRemoveItem={handleRemoveItem}
-                onOpenClearComensalModal={openClearComensalModal}
-                onOpenRemoveComensalModal={openRemoveComensalModal}
-                onOpenShareModal={() => setIsShareModalOpen(true)}
-                onOpenSummary={handleOpenSummaryModal}
-                onGoBack={() => setCurrentStep('reviewing')}
-                onGenerateLink={handleGenerateShareLink}
-                onRestart={() => handleResetAll(true)}
-                shareLink={shareLink}
-                discountPercentage={discountPercentage}
-                discountCap={discountCap}
-              />
-            );
-          default:
-            return <p>Cargando...</p>;
-        }
-    };
-
-    return (
-        <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-          <LoadingModal isOpen={isGeneratingLink} message="Generando enlace..." />
-          
-          <div className="max-w-4xl mx-auto p-4">
-              {renderStep()}
-          </div>
-  
-          {/* Modales y elementos ocultos */}
-          <div style={{ display: 'none' }}>
-            <div id="print-source-content">
-                <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
-                <div className="space-y-6">
-                    {summaryData.map(diner => (
-                        <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
-                            <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
-                            <div className="flex justify-between text-gray-600">
-                                <span>Consumo (sin propina):</span>
-                                <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
-                            </div>
-                            <div className="flex justify-between text-gray-600">
-                                <span>Propina (10%):</span>
-                                <span>${diner.propina.toLocaleString('es-CL')}</span>
-                            </div>
-                            <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
-                                <span>TOTAL A PAGAR:</span>
-                                <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-                <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
-                    <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
-                     <div className="flex justify-between text-lg text-gray-700">
-                        <span>Total General (sin propina):</span>
-                        <span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span>
-                    </div>
-                     <div className="flex justify-between text-lg text-gray-700">
-                        <span>Total Propina:</span>
-                        <span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span>
-                    </div>
-                    <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300">
-                        <span>GRAN TOTAL A PAGAR:</span>
-                        <span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span>
-                    </div>
-                </div>
-            </div>
-          </div>
-  
-          <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
-          <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
-          <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
-          <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
-      </div>
-    );
-};
-
-// --- COMPONENTES DE PASOS ---
+// --- Componentes de Pasos ---
 
 const LandingStep = ({ onStart }) => (
     <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
@@ -1025,7 +275,6 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
     setLocalProducts(new Map(initialProducts));
   }, [initialProducts]);
 
-  // --- LÓGICA DE CÁLCULO CON PORCENTAJE Y TOPE ---
   const total = Array.from(localProducts.values()).reduce((sum, p) => {
     const price = parseFloat(p.price) || 0;
     const quantity = parseInt(p.quantity, 10) || 0;
@@ -1033,20 +282,12 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
   }, 0);
 
   const percentage = parseFloat(discountPercentage) || 0;
-  const cap = parseFloat(String(discountCap).replace(/\./g, '')) || Infinity;
+  const cap = parseFloat(discountCap) || Infinity;
   const potentialDiscount = total * (percentage / 100);
-  const discountAmount = Math.min(potentialDiscount, cap); // El descuento real aplicado
+  const discountAmount = Math.min(potentialDiscount, cap);
   
   const totalAfterDiscount = total - discountAmount;
-  const tip = totalAfterDiscount * 0.10;
-
-  // --- HELPERS Y HANDLERS ---
-  const formatNumberInput = (value) => {
-    if (!value) return '';
-    const cleanedValue = String(value).replace(/\./g, '');
-    if (isNaN(cleanedValue)) return value;
-    return Number(cleanedValue).toLocaleString('es-CL');
-  };
+  const tip = total * 0.10; // Propina SIEMPRE sobre el subtotal original
 
   const handleProductChange = (id, field, value) => {
     setLocalProducts(prev => {
@@ -1093,7 +334,6 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
         <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
       </header>
 
-      {/* Ítems Cargados */}
       <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
         <h2 className="text-lg font-bold">Ítems Cargados</h2>
         {Array.from(localProducts.values()).map(p => (
@@ -1107,7 +347,6 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
              </button>
           </div>
         ))}
-        {/* Agregar Nuevo Ítem */}
         <div className="grid grid-cols-12 gap-2 items-center pt-3">
            <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="col-span-5 p-2 border rounded-md" />
            <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="col-span-2 p-2 border rounded-md text-center" />
@@ -1119,7 +358,6 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
         </div>
       </div>
 
-      {/* --- SECCIÓN DE DESCUENTO (CORREGIDA) --- */}
       <div className="bg-white p-4 rounded-xl shadow-md mb-6">
         <h2 className="text-lg font-bold mb-3">Aplicar Descuento</h2>
         <div className="grid grid-cols-2 gap-4">
@@ -1131,16 +369,15 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
             className="p-2 border rounded-md"
           />
           <input 
-            type="number" // Cambiado a "number"
+            type="number"
             placeholder="Tope Descuento $" 
-            value={discountCap} // Se quitó la función de formato
-            onChange={e => setDiscountCap(e.target.value)} // Se simplificó el onChange
+            value={discountCap}
+            onChange={e => setDiscountCap(e.target.value)}
             className="p-2 border rounded-md"
           />
         </div>
       </div>
 
-      {/* Resumen */}
       <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-6">
         <div className="flex justify-between text-lg">
           <span className="font-semibold text-gray-700">Subtotal:</span>
@@ -1162,7 +399,6 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
         </div>
       </div>
 
-      {/* Botones de Acción */}
       <div className="flex flex-col sm:flex-row gap-4">
         <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">
           Volver y Empezar de Nuevo
@@ -1276,12 +512,12 @@ const AssigningStep = ({
                 <h2 className="text-xl font-bold text-blue-600 mb-4 text-center">Herramientas</h2>
                 <div className="space-y-3">
                     <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                        <span className="font-semibold">Generar Link de Sesión</span>
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                         <span className="font-semibold">Generar Link de Sesión</span>
                     </button>
                     <button onClick={onOpenShareModal} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg>
-                        <span className="font-semibold">Compartir un Ítem</span>
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg>
+                         <span className="font-semibold">Compartir un Ítem</span>
                     </button>
                     <button onClick={onRestart} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path d="M4 9a9 9 0 0114.65-4.65l-2.12 2.12a5 5 0 00-9.07 4.53" /><path d="M20 15a9 9 0 01-14.65 4.65l2.12-2.12a5 5 0 009.07-4.53" /></svg>
@@ -1306,12 +542,12 @@ const AssigningStep = ({
             {comensales.length > 0 && (
                 <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
                      <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105 flex flex-col items-center">
-                        <span className="text-lg">Ver Resumen Final</span>
-                        {Math.round(remainingToAssign) > 0 && (
+                         <span className="text-lg">Ver Resumen Final</span>
+                         {Math.round(remainingToAssign) > 0 && (
                              <span className="text-xs font-normal opacity-90">
-                                Faltan ${Math.round(remainingToAssign).toLocaleString('es-CL')} por asignar
+                                 Faltan ${Math.round(remainingToAssign).toLocaleString('es-CL')} por asignar
                              </span>
-                        )}
+                         )}
                     </button>
                 </div>
             )}
