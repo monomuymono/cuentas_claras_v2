@@ -216,7 +216,7 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
   );
 };
 
-// --- AHORA SE DEFINEN LOS COMPONENTES DE PASOS AQUÍ ---
+// --- COMPONENTES DE PASOS ---
 
 const LandingStep = ({ onStart }) => (
     <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
@@ -278,11 +278,18 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
     }, [initialProducts]);
     
     const total = Array.from(localProducts.values()).reduce((sum, p) => {
-        const price = parseFloat(p.price) || 0;
+        const price = parseFloat(String(p.price).replace(/\./g, '')) || 0;
         const quantity = parseInt(p.quantity, 10) || 0;
         return sum + (price * quantity);
     }, 0);
     const tip = total * 0.10;
+
+    const formatNumberInput = (value) => {
+        if (!value) return '';
+        const cleanedValue = String(value).replace(/\./g, '');
+        if (isNaN(cleanedValue)) return value;
+        return Number(cleanedValue).toLocaleString('es-CL');
+    };
 
     const handleProductChange = (id, field, value) => {
         setLocalProducts(prev => {
@@ -304,7 +311,8 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
     };
 
     const handleAddNewItem = () => {
-        if (!newItem.name.trim() || isNaN(parseFloat(newItem.price)) || isNaN(parseInt(newItem.quantity, 10))) {
+        const cleanedPrice = String(newItem.price).replace(/\./g, '');
+        if (!newItem.name.trim() || isNaN(parseFloat(cleanedPrice)) || isNaN(parseInt(newItem.quantity, 10))) {
             alert('Por favor, completa los campos del nuevo ítem correctamente.');
             return;
         }
@@ -314,7 +322,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
             newMap.set(newId, {
                 id: newId,
                 name: newItem.name.trim(),
-                price: parseFloat(newItem.price),
+                price: parseFloat(cleanedPrice),
                 quantity: parseInt(newItem.quantity, 10),
             });
             return newMap;
@@ -323,7 +331,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
     };
 
     return (
-        <div className="p-4 pb-40">
+        <div className="p-4 pb-48">
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
@@ -336,7 +344,13 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
                         <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" />
                         <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" />
                         <span className="col-span-1 text-center self-center">$</span>
-                        <input type="number" value={p.price} onChange={e => handleProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" />
+                        <input 
+                          type="text" 
+                          inputMode="decimal"
+                          value={formatNumberInput(p.price)}
+                          onChange={e => handleProductChange(p.id, 'price', e.target.value.replace(/\./g, ''))} 
+                          className="col-span-3 p-2 border rounded-md" 
+                        />
                         <button onClick={() => handleRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
@@ -347,7 +361,14 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
                      <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="col-span-5 p-2 border rounded-md" />
                      <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: e.target.value})} className="col-span-2 p-2 border rounded-md text-center" />
                      <span className="col-span-1 text-center self-center">$</span>
-                     <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} className="col-span-3 p-2 border rounded-md" />
+                     <input 
+                       type="text" 
+                       inputMode="decimal"
+                       placeholder="Precio" 
+                       value={formatNumberInput(newItem.price)}
+                       onChange={e => setNewItem({...newItem, price: e.target.value.replace(/\./g, '')})} 
+                       className="col-span-3 p-2 border rounded-md" 
+                     />
                      <button onClick={handleAddNewItem} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                      </button>
@@ -365,10 +386,11 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
                         className="p-2 border rounded-md"
                     />
                     <input 
-                        type="number" 
+                        type="text"
+                        inputMode="decimal" 
                         placeholder="Tope Descuento $" 
-                        value={discountCap}
-                        onChange={e => setDiscountCap(e.target.value)}
+                        value={formatNumberInput(discountCap)}
+                        onChange={e => setDiscountCap(e.target.value.replace(/\./g, ''))}
                         className="p-2 border rounded-md"
                     />
                 </div>
@@ -379,7 +401,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
                     <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
                         <div className="flex justify-between text-lg">
                             <span className="font-semibold text-gray-700">Subtotal:</span>
-                            <span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span>
+                            <span className="font-bold">${total.toLocaleString('es-CL')}</span>
                         </div>
                         <div className="flex justify-between text-lg">
                             <span className="font-semibold text-gray-700">Propina (10%):</span>
@@ -415,7 +437,6 @@ const AssigningStep = ({
     const ComensalCard = ({ comensal }) => {
         const totalSinPropinaOriginal = comensal.selectedItems.reduce((sum, item) => sum + (item.originalBasePrice * item.quantity), 0);
         const descuentoAplicado = totalSinPropinaOriginal * effectiveDiscountRatio;
-        const subtotalConDescuento = totalSinPropinaOriginal - descuentoAplicado;
         const propina = totalSinPropinaOriginal * 0.10;
 
         return (
@@ -538,7 +559,6 @@ const AssigningStep = ({
         </div>
     )
 };
-
 
 // --- Componente principal de la aplicación ---
 const App = () => {
