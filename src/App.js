@@ -472,33 +472,41 @@ const App = () => {
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
+    // En App.js - REEMPLAZA TU FUNCIÓN ACTUAL CON ESTA
+
     const handleAddItem = (comensalId, productId) => {
         const productInStock = availableProducts.get(productId);
         if (!productInStock || Number(productInStock.quantity) <= 0) {
-          console.error(`Producto con ID ${productId} no encontrado o sin stock.`);
-          return;
+            return;
         }
     
         const newProductsMap = new Map(availableProducts);
         newProductsMap.set(productId, { ...productInStock, quantity: Number(productInStock.quantity) - 1 });
     
         const newComensales = comensales.map(comensal => {
-          if (comensal.id === comensalId) {
-            const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
-            const priceWithTip = Number(productInStock.price) * 1.10;
-            const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === 'full');
+            if (comensal.id === comensalId) {
+                const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
+                
+                // Verificamos si el ítem ya existe para agruparlo
+                const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === 'full');
     
-            if (existingItemIndex !== -1) {
-              updatedComensal.selectedItems[existingItemIndex].quantity += 1;
-            } else {
-              updatedComensal.selectedItems.push({
-                ...productInStock, price: priceWithTip, originalBasePrice: Number(productInStock.price), quantity: 1, type: 'full',
-              });
+                if (existingItemIndex !== -1) {
+                    // Si ya existe, solo incrementamos la cantidad
+                    updatedComensal.selectedItems[existingItemIndex].quantity += 1;
+                } else {
+                    // Si es nuevo, lo agregamos con su precio base original
+                    updatedComensal.selectedItems.push({
+                        ...productInStock,
+                        originalBasePrice: Number(productInStock.price), // Guardamos el precio original
+                        quantity: 1,
+                        type: 'full',
+                        // NO guardamos un precio final aquí
+                    });
+                }
+                // YA NO CALCULAMOS Y GUARDAMOS EL TOTAL DEL COMENSAL AQUÍ
+                return updatedComensal;
             }
-            updatedComensal.total = updatedComensal.selectedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
-            return updatedComensal;
-          }
-          return comensal;
+            return comensal;
         });
     
         setAvailableProducts(newProductsMap);
@@ -589,11 +597,12 @@ const App = () => {
         }
     };
     
+    // En App.js - REEMPLAZA TU FUNCIÓN ACTUAL CON ESTA
+
     const handleShareItem = (productId, sharingComensalIds) => {
         const productToShare = availableProducts.get(productId);
         if (!productToShare || Number(productToShare.quantity) <= 0) {
-          alert('Producto no disponible para compartir.');
-          return;
+            return;
         }
     
         const newProductsMap = new Map(availableProducts);
@@ -603,20 +612,26 @@ const App = () => {
         const newActiveSharedInstances = new Map(activeSharedInstances);
         newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds));
     
-        const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
-        const priceWithTipPerShare = basePricePerShare * 1.10;
+        // Calculamos el precio base por persona que comparte
+        const originalPrice = Number(productToShare.price);
+        const basePricePerShare = originalPrice / sharingComensalIds.length;
     
         const newComensales = comensales.map(comensal => {
-          if (sharingComensalIds.includes(comensal.id)) {
-            const updatedItems = [...comensal.selectedItems, {
-                id: productToShare.id, name: productToShare.name, price: priceWithTipPerShare,
-                originalBasePrice: basePricePerShare, quantity: 1, type: 'shared',
-                sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId
-            }];
-            const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
-            return { ...comensal, selectedItems: updatedItems, total: newTotal };
-          }
-          return comensal;
+            if (sharingComensalIds.includes(comensal.id)) {
+                const updatedItems = [...comensal.selectedItems, {
+                    id: productToShare.id,
+                    name: productToShare.name,
+                    originalBasePrice: basePricePerShare, // Guardamos el precio base proporcional
+                    quantity: 1,
+                    type: 'shared',
+                    sharedByCount: sharingComensalIds.length,
+                    shareInstanceId: shareInstanceId
+                    // NO guardamos un precio final aquí
+                }];
+                // YA NO CALCULAMOS Y GUARDAMOS EL TOTAL DEL COMENSAL AQUÍ
+                return { ...comensal, selectedItems: updatedItems };
+            }
+            return comensal;
         });
     
         setAvailableProducts(newProductsMap);
