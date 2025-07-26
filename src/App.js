@@ -1059,7 +1059,7 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 
-const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
+const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, setDiscountPercentage, discountCap, setDiscountCap }) => {
     const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
 
@@ -1068,11 +1068,18 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
     }, [initialProducts]);
     
     const total = Array.from(localProducts.values()).reduce((sum, p) => {
-        const price = parseFloat(p.price) || 0;
+        const price = parseFloat(String(p.price).replace(/\./g, '')) || 0;
         const quantity = parseInt(p.quantity, 10) || 0;
         return sum + (price * quantity);
     }, 0);
     const tip = total * 0.10;
+
+    const formatNumberInput = (value) => {
+        if (!value) return '';
+        const cleanedValue = String(value).replace(/\./g, '');
+        if (isNaN(cleanedValue)) return value;
+        return Number(cleanedValue).toLocaleString('es-CL');
+    };
 
     const handleProductChange = (id, field, value) => {
         setLocalProducts(prev => {
@@ -1094,7 +1101,8 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
     };
 
     const handleAddNewItem = () => {
-        if (!newItem.name.trim() || isNaN(parseFloat(newItem.price)) || isNaN(parseInt(newItem.quantity, 10))) {
+        const cleanedPrice = String(newItem.price).replace(/\./g, '');
+        if (!newItem.name.trim() || isNaN(parseFloat(cleanedPrice)) || isNaN(parseInt(newItem.quantity, 10))) {
             alert('Por favor, completa los campos del nuevo ítem correctamente.');
             return;
         }
@@ -1104,7 +1112,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
             newMap.set(newId, {
                 id: newId,
                 name: newItem.name.trim(),
-                price: parseFloat(newItem.price),
+                price: parseFloat(cleanedPrice),
                 quantity: parseInt(newItem.quantity, 10),
             });
             return newMap;
@@ -1113,7 +1121,8 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
     };
 
     return (
-        <div className="p-4 pb-40">
+        // Se añade padding inferior para que el cuadro fijo no tape el último ítem
+        <div className="p-4 pb-48">
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
@@ -1126,7 +1135,13 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
                         <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" />
                         <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" />
                         <span className="col-span-1 text-center self-center">$</span>
-                        <input type="number" value={p.price} onChange={e => handleProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" />
+                        <input 
+                          type="text" 
+                          inputMode="decimal"
+                          value={formatNumberInput(p.price)}
+                          onChange={e => handleProductChange(p.id, 'price', e.target.value.replace(/\./g, ''))} 
+                          className="col-span-3 p-2 border rounded-md" 
+                        />
                         <button onClick={() => handleRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
@@ -1137,19 +1152,49 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
                      <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="col-span-5 p-2 border rounded-md" />
                      <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: e.target.value})} className="col-span-2 p-2 border rounded-md text-center" />
                      <span className="col-span-1 text-center self-center">$</span>
-                     <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} className="col-span-3 p-2 border rounded-md" />
+                     <input 
+                       type="text" 
+                       inputMode="decimal"
+                       placeholder="Precio" 
+                       value={formatNumberInput(newItem.price)}
+                       onChange={e => setNewItem({...newItem, price: e.target.value.replace(/\./g, '')})} 
+                       className="col-span-3 p-2 border rounded-md" 
+                     />
                      <button onClick={handleAddNewItem} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                      </button>
                 </div>
             </div>
 
+            <div className="bg-white p-4 rounded-xl shadow-md mb-6">
+                <h2 className="text-lg font-bold mb-3">Aplicar Descuento</h2>
+                <div className="grid grid-cols-2 gap-4">
+                    <input 
+                        type="number" 
+                        placeholder="Descuento %" 
+                        value={discountPercentage}
+                        onChange={e => setDiscountPercentage(e.target.value)}
+                        className="p-2 border rounded-md"
+                    />
+                    <input 
+                        type="text"
+                        inputMode="decimal" 
+                        placeholder="Tope Descuento $" 
+                        value={formatNumberInput(discountCap)}
+                        onChange={e => setDiscountCap(e.target.value.replace(/\./g, ''))}
+                        className="p-2 border rounded-md"
+                    />
+                </div>
+                 <p className="text-xs text-gray-500 mt-2 text-center">Nota: Ingresa los montos sin puntos de miles.</p>
+            </div>
+
+            {/* --- DISEÑO FIJO RESTAURADO --- */}
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
                 <div className="max-w-4xl mx-auto">
                     <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
                         <div className="flex justify-between text-lg">
                             <span className="font-semibold text-gray-700">Subtotal:</span>
-                            <span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span>
+                            <span className="font-bold">${total.toLocaleString('es-CL')}</span>
                         </div>
                         <div className="flex justify-between text-lg">
                             <span className="font-semibold text-gray-700">Propina (10%):</span>
