@@ -957,61 +957,6 @@ const App = () => {
     );
 };
 
-    return (
-        <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-          <div className="max-w-4xl mx-auto p-4">
-              {renderStep()}
-          </div>
-  
-          {/* Modales y elementos ocultos */}
-          <div style={{ display: 'none' }}>
-            <div id="print-source-content">
-                <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
-                <div className="space-y-6">
-                    {summaryData.map(diner => (
-                        <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
-                            <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
-                            <div className="flex justify-between text-gray-600">
-                                <span>Consumo (sin propina):</span>
-                                <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
-                            </div>
-                            <div className="flex justify-between text-gray-600">
-                                <span>Propina (10%):</span>
-                                <span>${diner.propina.toLocaleString('es-CL')}</span>
-                            </div>
-                            <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
-                                <span>TOTAL A PAGAR:</span>
-                                <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-                <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
-                    <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
-                     <div className="flex justify-between text-lg text-gray-700">
-                        <span>Total General (sin propina):</span>
-                        <span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span>
-                    </div>
-                     <div className="flex justify-between text-lg text-gray-700">
-                        <span>Total Propina:</span>
-                        <span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span>
-                    </div>
-                    <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300">
-                        <span>GRAN TOTAL A PAGAR:</span>
-                        <span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span>
-                    </div>
-                </div>
-            </div>
-          </div>
-  
-          <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
-          <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
-          <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
-          <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
-      </div>
-    );
-};
-
 // --- COMPONENTES DE PASOS ---
 
 const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => (
