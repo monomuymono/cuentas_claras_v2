@@ -992,9 +992,11 @@ const App = () => {
           case 'reviewing':
             return (
                 <ReviewStep
-                    products={availableProducts}
-                    setProducts={setAvailableProducts}
-                    onConfirm={() => setCurrentStep('assigning')}
+                    initialProducts={availableProducts}
+                    onConfirm={(finalProducts) => {
+                        setAvailableProducts(finalProducts);
+                        setCurrentStep('assigning');
+                    }}
                     onBack={() => {
                         handleResetAll(true);
                         setCurrentStep('loading');
@@ -1021,7 +1023,6 @@ const App = () => {
                 onRestart={() => handleResetAll(true)}
               />
             );
-          // Puedes añadir un caso 'summary' si quieres una pantalla final dedicada
           default:
             return <p>Cargando...</p>;
         }
@@ -1121,14 +1122,21 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 
-const ReviewStep = ({ products, setProducts, onConfirm, onBack }) => {
+const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
+    // **CORRECCIÓN**: El estado de los productos ahora es local a este componente.
+    const [localProducts, setLocalProducts] = useState(new Map(initialProducts));
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
 
-    const total = Array.from(products.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
+    useEffect(() => {
+        // Sincroniza el estado local si la prop inicial cambia (ej. al escanear una nueva imagen)
+        setLocalProducts(new Map(initialProducts));
+    }, [initialProducts]);
+    
+    const total = Array.from(localProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
     const tip = total * 0.10;
 
     const handleProductChange = (id, field, value) => {
-        setProducts(prev => {
+        setLocalProducts(prev => {
             const newMap = new Map(prev);
             const product = newMap.get(id);
             if (product) {
@@ -1139,7 +1147,7 @@ const ReviewStep = ({ products, setProducts, onConfirm, onBack }) => {
     };
 
     const handleRemoveProduct = (id) => {
-        setProducts(prev => {
+        setLocalProducts(prev => {
             const newMap = new Map(prev);
             newMap.delete(id);
             return newMap;
@@ -1151,9 +1159,9 @@ const ReviewStep = ({ products, setProducts, onConfirm, onBack }) => {
             alert('Por favor, completa los campos del nuevo ítem correctamente.');
             return;
         }
-        setProducts(prev => {
+        setLocalProducts(prev => {
             const newMap = new Map(prev);
-            const newId = newMap.size > 0 ? Math.max(0, ...newMap.keys()) + 1 : 1;
+            const newId = newMap.size > 0 ? Math.max(0, ...Array.from(newMap.keys())) + 1 : 1;
             newMap.set(newId, {
                 id: newId,
                 name: newItem.name.trim(),
@@ -1174,7 +1182,7 @@ const ReviewStep = ({ products, setProducts, onConfirm, onBack }) => {
 
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
                 <h2 className="text-lg font-bold">Ítems Cargados</h2>
-                {Array.from(products.values()).map(p => (
+                {Array.from(localProducts.values()).map(p => (
                     <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
                         <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" />
                         <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" />
@@ -1216,7 +1224,7 @@ const ReviewStep = ({ products, setProducts, onConfirm, onBack }) => {
                 <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">
                     Volver y Empezar de Nuevo
                 </button>
-                <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
+                <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
                     Todo Correcto, Continuar a Asignar
                 </button>
             </div>
