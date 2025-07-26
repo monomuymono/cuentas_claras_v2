@@ -331,10 +331,9 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
     };
 
     return (
-        // -- CORRECCIÓN ESTRUCTURAL: Se usa un Fragment <> para separar el contenido del cuadro fijo --
+        // --- LA CORRECCIÓN CLAVE ESTÁ AQUÍ: SE USA <> PARA ENVOLVER TODO ---
         <>
-            {/* -- Contenido que se desplaza (scroll) -- */}
-            <div className="p-4 pb-48">
+            <div className="p-4 pb-48"> {/* Este div ahora solo contiene el contenido que se desplaza */}
                 <header className="text-center mb-6">
                     <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                     <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
@@ -401,7 +400,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, se
                 </div>
             </div>
 
-            {/* -- Cuadro de totales y botones, ahora FIJO y fuera del contenido principal -- */}
+            {/* Este es el cuadro que ahora está separado y se mantendrá fijo */}
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
                 <div className="max-w-4xl mx-auto">
                     <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
