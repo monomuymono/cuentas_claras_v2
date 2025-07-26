@@ -358,7 +358,7 @@ const App = () => {
             setAvailableProducts(loadedProducts);
             setActiveSharedInstances(loadedSharedInstances);
             // **NUEVO**: Si se cargan datos, se asume que ya se verificaron, pasar a asignar
-            if (loadedProducts.size > 0 || data.comensales.length > 0) {
+            if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
                 setCurrentStep('assigning');
             }
     
@@ -977,16 +977,6 @@ const App = () => {
         }, 500);
     };
     
-    // --- CÁLCULOS PARA LA VISTA ---
-    const totalBillValue = [...availableProducts.values()].reduce((sum, p) => sum + ((p.price || 0) * (p.quantity || 0)), 0) +
-                           [...comensales].reduce((sum, c) => sum + (c.selectedItems || []).reduce((iSum, i) => iSum + ((i.originalBasePrice || 0) * (i.quantity || 1)), 0), 0);
-    const propinaSugerida = totalBillValue * 0.10;
-    const currentTotalComensales = comensales.reduce((sum, comensal) => sum + (comensal.total || 0), 0);
-    const totalBillWithReceiptTip = totalBillValue + propinaSugerida;
-    const remainingAmount = totalBillWithReceiptTip - currentTotalComensales;
-    const totalPerItemTipsCollected = comensales.reduce((sum, comensal) => sum + (comensal.selectedItems || []).reduce((itemSum, item) => itemSum + (((item.price || 0) * (item.quantity || 1)) - ((item.originalBasePrice || 0) * (item.quantity || 1))), 0), 0);
-    const remainingPropinaDisplay = propinaSugerida - totalPerItemTipsCollected;
-
     // --- RENDERIZADO CONDICIONAL POR PASOS ---
     const renderStep = () => {
         switch (currentStep) {
@@ -1026,11 +1016,7 @@ const App = () => {
                 onOpenRemoveComensalModal={openRemoveComensalModal}
                 onOpenShareModal={() => setIsShareModalOpen(true)}
                 onOpenSummary={handleOpenSummaryModal}
-                totalBillValue={totalBillValue}
-                propinaSugerida={propinaSugerida}
-                currentTotalComensales={currentTotalComensales}
-                remainingAmount={remainingAmount}
-                onReset={openResetAllModal}
+                onGoBack={() => setCurrentStep('reviewing')} // <-- Nueva Prop
               />
             );
           // Puedes añadir un caso 'summary' si quieres una pantalla final dedicada
@@ -1223,70 +1209,97 @@ const ReviewStep = ({ products, setProducts, onConfirm, onBack }) => {
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
-    totalBillValue, propinaSugerida, currentTotalComensales, remainingAmount, onReset
-}) => (
-    <div>
-        <header className="mb-6 text-center">
-            <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
-            <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p>
-        </header>
+    onGoBack
+}) => {
+    // Componente interno para la tarjeta de comensal para mantener el código limpio
+    const ComensalCard = ({ comensal }) => {
+        const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
+        const propina = comensal.total - totalSinPropina;
 
-        <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
-            <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
-            <div className="flex flex-col sm:flex-row gap-3 items-center">
-                <input type="text" placeholder="Nombre del Comensal" value={newComensalName} onChange={(e) => setNewComensalName(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 w-full" />
-                <button onClick={onAddComensal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 w-full sm:w-auto">Añadir</button>
-            </div>
-            {addComensalMessage.text && (<p className={`mt-3 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {comensales.map(comensal => (
-                <div key={String(comensal.id)} className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full">
-                    <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
-                    <div className="mb-4">
-                        <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
-                        <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, parseInt(e.target.value, 10))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
-                            <option value="" disabled>Selecciona un producto</option>
-                            {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('de-DE')}) (Disp: {Number(product.quantity)})</option>))}
-                        </select>
-                    </div>
-                    <div className="flex-grow min-h-[80px]">
-                        {comensal.selectedItems.length > 0 ? (
-                            <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
-                                {comensal.selectedItems.map((item, index) => (
-                                    <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
-                                        <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
-                                        <div className="flex items-center space-x-2">
-                                            <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('de-DE')}</span>
-                                            <button onClick={() => onRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                            </button>
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
-                    </div>
-                    <div className="mt-auto pt-4 border-t border-gray-200 flex justify-between items-center">
-                        <span className="text-lg font-semibold text-gray-800">Total:</span>
-                        <span className="text-2xl font-extrabold text-blue-700">${comensal.total.toLocaleString('de-DE')}</span>
-                    </div>
-                     <div className="flex gap-2 mt-4">
-                        <button onClick={() => onOpenClearComensalModal(comensal.id)} className="w-full bg-orange-100 text-orange-700 py-2 px-4 rounded-md shadow-sm hover:bg-orange-200 text-sm">Limpiar</button>
-                        <button onClick={() => onOpenRemoveComensalModal(comensal.id)} className="w-full bg-red-100 text-red-700 py-2 px-4 rounded-md shadow-sm hover:bg-red-200 text-sm">Eliminar</button>
-                     </div>
+        return (
+            <div className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full">
+                <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
+                <div className="mb-4">
+                    <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
+                    <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, parseInt(e.target.value, 10))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                        <option value="" disabled>Selecciona un producto</option>
+                        {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('de-DE')}) (Disp: {Number(product.quantity)})</option>))}
+                    </select>
                 </div>
-            ))}
-        </div>
+                <div className="flex-grow min-h-[80px]">
+                    {comensal.selectedItems.length > 0 ? (
+                        <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
+                            {comensal.selectedItems.map((item, index) => (
+                                <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
+                                    <span className="font-medium text-gray-700">{item.type === 'shared' ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-gray-900">${(Number(item.price) * Number(item.quantity)).toLocaleString('de-DE')}</span>
+                                        <button onClick={() => onRemoveItem(comensal.id, item.type === 'shared' ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                        </button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
+                </div>
+                <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
+                    <div className="flex justify-between text-sm text-gray-600">
+                        <span>Total sin Propina:</span>
+                        <span>${Math.round(totalSinPropina).toLocaleString('de-DE')}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-600">
+                        <span>Propina (10%):</span>
+                        <span>${Math.round(propina).toLocaleString('de-DE')}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1">
+                        <span>TOTAL A PAGAR:</span>
+                        <span className="text-2xl">${Math.round(comensal.total).toLocaleString('de-DE')}</span>
+                    </div>
+                </div>
+                 <div className="flex gap-2 mt-4">
+                    <button onClick={() => onOpenClearComensalModal(comensal.id)} className="w-full bg-orange-100 text-orange-700 py-2 px-4 rounded-md shadow-sm hover:bg-orange-200 text-sm">Limpiar</button>
+                    <button onClick={() => onOpenRemoveComensalModal(comensal.id)} className="w-full bg-red-100 text-red-700 py-2 px-4 rounded-md shadow-sm hover:bg-red-200 text-sm">Eliminar</button>
+                 </div>
+            </div>
+        )
+    };
+    
+    return (
+        <div>
+            <header className="mb-6 text-center">
+                <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
+                <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p>
+                <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">
+                    &larr; Volver y Editar Ítems
+                </button>
+            </header>
 
-        <div className="mt-8 text-center flex flex-wrap justify-center gap-3">
-            <button onClick={onOpenShareModal} className="px-5 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir Ítem</button>
-            {comensales.length > 0 && (<button onClick={onOpenSummary} className="px-5 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen Final</button>)}
-            <button onClick={onReset} className="px-5 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Resetear Todo</button>
+            <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
+                <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
+                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                    <input type="text" placeholder="Nombre del Comensal" value={newComensalName} onChange={(e) => setNewComensalName(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 w-full" />
+                    <button onClick={onAddComensal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 w-full sm:w-auto">Añadir</button>
+                </div>
+                {addComensalMessage.text && (<p className={`mt-3 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-lg mb-6 text-center">
+                <h2 className="text-xl font-bold text-blue-600 mb-4">Acciones Principales</h2>
+                 <div className="flex flex-wrap justify-center gap-3">
+                    <button onClick={onOpenShareModal} className="px-5 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir un Ítem</button>
+                    {comensales.length > 0 && (<button onClick={onOpenSummary} className="px-5 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen Final</button>)}
+                </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {comensales.map(comensal => (
+                    <ComensalCard key={comensal.id} comensal={comensal} />
+                ))}
+            </div>
         </div>
-    </div>
-);
+    )
+};
 
 
 export default App;
