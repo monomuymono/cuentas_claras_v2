@@ -314,8 +314,12 @@ const App = () => {
           setActiveSharedInstances(new Map());
           setShareId(`local-session-${Date.now()}`);
           setShareLink('');
-          // **NUEVO**: Resetear el flujo al paso inicial
           setCurrentStep('loading');
+          
+          // **LÍNEAS AÑADIDAS PARA LIMPIAR LA URL**
+          const url = new URL(window.location.href);
+          url.searchParams.delete('id');
+          window.history.replaceState({}, document.title, url.toString());
         }
     }, []);
 
