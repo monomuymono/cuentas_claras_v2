@@ -1237,12 +1237,15 @@ const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
     onGoBack, onGenerateLink, onRestart, shareLink
+}) => {const AssigningStep = ({
+    availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
+    onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
+    onGoBack, onGenerateLink, onRestart, shareLink
 }) => {
-    // **CÁLCULO CORREGIDO**
-    // El monto pendiente de asignar es simplemente el valor de los ítems que aún no se han asignado a nadie.
+    // Cálculo del monto pendiente (sin propina)
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
 
-    // Componente interno para la tarjeta de comensal para mantener el código limpio
+    // Componente interno para la tarjeta de comensal (sin cambios)
     const ComensalCard = ({ comensal }) => {
         const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
         const propina = comensal.total - totalSinPropina;
@@ -1297,7 +1300,8 @@ const AssigningStep = ({
     };
     
     return (
-        <div>
+        // Se añade padding inferior para que el botón fijo no tape contenido
+        <div className="pb-24">
             <header className="mb-6 text-center">
                 <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
                 <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p>
@@ -1320,31 +1324,28 @@ const AssigningStep = ({
                 {addComensalMessage.text && (<p className={`mt-3 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-lg mb-6 text-center">
-                <h2 className="text-xl font-bold text-blue-600 mb-4">Acciones</h2>
-                 <div className="flex flex-wrap justify-center gap-3">
-                    <button onClick={onOpenShareModal} className="px-5 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir un Ítem</button>
-                    <button onClick={onGenerateLink} className="px-5 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Generar Link</button>
-                    {comensales.length > 0 && (<button onClick={onOpenSummary} className="px-5 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen Final</button>)}
-                    <button onClick={onRestart} className="px-5 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Empezar de Nuevo</button>
+            {/* --- NUEVA TARJETA DE HERRAMIENTAS --- */}
+            <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
+                <h2 className="text-xl font-bold text-blue-600 mb-4 text-center">Herramientas</h2>
+                <div className="space-y-3">
+                    <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                        <span className="font-semibold">Generar Link de Sesión</span>
+                    </button>
+                    <button onClick={onOpenShareModal} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg>
+                        <span className="font-semibold">Compartir un Ítem</span>
+                    </button>
+                    <button onClick={onRestart} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path d="M4 9a9 9 0 0114.65-4.65l-2.12 2.12a5 5 0 00-9.07 4.53" /><path d="M20 15a9 9 0 01-14.65 4.65l2.12-2.12a5 5 0 009.07-4.53" /></svg>
+                        <span className="font-semibold">Empezar de Nuevo</span>
+                    </button>
                 </div>
-                {/* Cuadro para mostrar el link generado */}
                 {shareLink && (
                     <div className="mt-4 bg-green-50 p-4 rounded-lg border border-green-200">
                         <p className="font-semibold text-green-800">¡Enlace para compartir generado!</p>
-                        <input
-                            type="text"
-                            readOnly
-                            value={shareLink}
-                            className="w-full mt-2 p-2 border rounded-md bg-white text-center text-sm"
-                            onFocus={(e) => e.target.select()}
-                        />
-                        <button
-                            onClick={() => navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado!'))}
-                            className="mt-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700"
-                        >
-                            Copiar Enlace
-                        </button>
+                        <input type="text" readOnly value={shareLink} className="w-full mt-2 p-2 border rounded-md bg-white text-center text-sm" onFocus={(e) => e.target.select()} />
+                        <button onClick={() => navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado!'))} className="mt-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700">Copiar Enlace</button>
                     </div>
                 )}
             </div>
@@ -1354,6 +1355,15 @@ const AssigningStep = ({
                     <ComensalCard key={comensal.id} comensal={comensal} />
                 ))}
             </div>
+
+            {/* --- NUEVO BOTÓN PRINCIPAL FIJO --- */}
+            {comensales.length > 0 && (
+                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
+                     <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-4 bg-green-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105">
+                        Ver Resumen Final
+                    </button>
+                </div>
+            )}
         </div>
     )
 };
