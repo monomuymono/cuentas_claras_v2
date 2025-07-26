@@ -563,8 +563,12 @@ const AssigningStep = ({
 // --- Componente principal de la aplicación ---
 const App = () => {
     // --- ESTADOS ---
-    const [currentStep, setCurrentStep] = useState('landing'); // 'landing', 'loading', 'reviewing', 'assigning'
+    const [currentStep, setCurrentStep] = useState('landing');
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+    
+    // -- Estados para el descuento --
+    const [discountPercentage, setDiscountPercentage] = useState('');
+    const [discountCap, setDiscountCap] = useState('');
     
     // Estados originales
     const [userId, setUserId] = useState(null);
@@ -649,14 +653,15 @@ const App = () => {
 
     const handleResetAll = useCallback((isLocalOnly = false) => {
         if (!isLocalOnly) {
-          // Lógica de modal de reseteo no se usa actualmente, pero se mantiene
         } else {
           setAvailableProducts(new Map());
           setComensales([]);
           setActiveSharedInstances(new Map());
           setShareId(`local-session-${Date.now()}`);
           setShareLink('');
-          setCurrentStep('landing'); // <-- CAMBIO: Ahora dirige al landing page
+          setDiscountPercentage('');
+          setDiscountCap('');
+          setCurrentStep('landing');
           
           const url = new URL(window.location.href);
           url.searchParams.delete('id');
@@ -708,7 +713,7 @@ const App = () => {
     
           } else {
             if (idToLoad === justCreatedSessionId.current) {
-              console.warn("La sesión recién creada aún no está disponible para lectura. Reintentando en el próximo ciclo.");
+              console.warn("La sesión recién creada aún no está disponible para lectura.");
               return; 
             }
     
@@ -747,7 +752,7 @@ const App = () => {
     
             if (idFromUrl) {
                 setShareId(idFromUrl);
-                setCurrentStep('loading'); // Si hay ID en la URL, saltamos el landing
+                setCurrentStep('loading');
                 await loadStateFromGoogleSheets(idFromUrl);
             } else {
                 setShareId(`local-session-${Date.now()}`);
@@ -815,6 +820,19 @@ const App = () => {
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
+    const getEffectiveDiscountRatio = useCallback(() => {
+        const totalBillWithoutTip = Array.from(availableProducts.values()).reduce((sum, p) => sum + (p.price * p.quantity), 0);
+        if (totalBillWithoutTip === 0 || !discountPercentage) return 0;
+        
+        const percentage = parseFloat(discountPercentage) || 0;
+        const cap = parseFloat(String(discountCap).replace(/\./g, '')) || Infinity;
+
+        const potentialDiscount = totalBillWithoutTip * (percentage / 100);
+        const actualTotalDiscount = Math.min(potentialDiscount, cap);
+
+        return actualTotalDiscount / totalBillWithoutTip;
+    }, [availableProducts, discountPercentage, discountCap]);
+
     const handleAddItem = (comensalId, productId) => {
         const productInStock = availableProducts.get(productId);
         if (!productInStock || Number(productInStock.quantity) <= 0) {
@@ -828,14 +846,23 @@ const App = () => {
         const newComensales = comensales.map(comensal => {
           if (comensal.id === comensalId) {
             const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
-            const priceWithTip = Number(productInStock.price) * 1.10;
+            const effectiveDiscountRatio = getEffectiveDiscountRatio();
+            const originalPrice = Number(productInStock.price);
+            const discountedPrice = originalPrice * (1 - effectiveDiscountRatio);
+            const tip = originalPrice * 0.10;
+            const finalPrice = discountedPrice + tip;
+
             const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === 'full');
     
             if (existingItemIndex !== -1) {
               updatedComensal.selectedItems[existingItemIndex].quantity += 1;
             } else {
               updatedComensal.selectedItems.push({
-                ...productInStock, price: priceWithTip, originalBasePrice: Number(productInStock.price), quantity: 1, type: 'full',
+                ...productInStock, 
+                price: finalPrice,
+                originalBasePrice: originalPrice,
+                quantity: 1, 
+                type: 'full',
               });
             }
             updatedComensal.total = updatedComensal.selectedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
@@ -888,7 +915,6 @@ const App = () => {
     
         if (itemToRemove.type === 'shared') {
             const { shareInstanceId, id: originalProductId } = itemToRemove;
-            const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
             const newActiveSharedInstances = new Map(activeSharedInstances);
             const shareGroup = newActiveSharedInstances.get(shareInstanceId);
             if (!shareGroup) return;
@@ -913,12 +939,22 @@ const App = () => {
                 }
                 if (shareGroup.has(c.id)) {
                     const newSharerCount = shareGroup.size;
-                    const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-                    const newPriceWithTipPerShare = newBasePricePerShare * 1.10;
-    
+                    const effectiveDiscountRatio = getEffectiveDiscountRatio();
+                    const originalItemPrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
+                    
+                    const newBasePricePerShare = originalItemPrice / newSharerCount;
+                    const newDiscountedPricePerShare = newBasePricePerShare * (1 - effectiveDiscountRatio);
+                    const newTipPerShare = newBasePricePerShare * 0.10;
+                    const newFinalPricePerShare = newDiscountedPricePerShare + newTipPerShare;
+
                     const newSelectedItems = c.selectedItems.map(item => {
                         if (String(item.shareInstanceId) === String(shareInstanceId)) {
-                            return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
+                            return { 
+                                ...item, 
+                                price: newFinalPricePerShare, 
+                                originalBasePrice: newBasePricePerShare, 
+                                sharedByCount: newSharerCount 
+                            };
                         }
                         return item;
                     });
@@ -946,15 +982,25 @@ const App = () => {
         const newActiveSharedInstances = new Map(activeSharedInstances);
         newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds));
     
-        const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
-        const priceWithTipPerShare = basePricePerShare * 1.10;
+        const effectiveDiscountRatio = getEffectiveDiscountRatio();
+        const originalPrice = Number(productToShare.price);
+        
+        const basePricePerShare = originalPrice / sharingComensalIds.length;
+        const discountedPricePerShare = basePricePerShare * (1 - effectiveDiscountRatio);
+        const tipPerShare = basePricePerShare * 0.10;
+        const finalPricePerShare = discountedPricePerShare + tipPerShare;
     
         const newComensales = comensales.map(comensal => {
           if (sharingComensalIds.includes(comensal.id)) {
             const updatedItems = [...comensal.selectedItems, {
-                id: productToShare.id, name: productToShare.name, price: priceWithTipPerShare,
-                originalBasePrice: basePricePerShare, quantity: 1, type: 'shared',
-                sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId
+                id: productToShare.id, 
+                name: productToShare.name, 
+                price: finalPricePerShare,
+                originalBasePrice: basePricePerShare, 
+                quantity: 1, 
+                type: 'shared',
+                sharedByCount: sharingComensalIds.length, 
+                shareInstanceId: shareInstanceId
             }];
             const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
             return { ...comensal, selectedItems: updatedItems, total: newTotal };
@@ -969,11 +1015,11 @@ const App = () => {
     
     const handleAddComensal = () => {
         if (newComensalName.trim() === '') {
-          setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre para el nuevo comensal.' });
+          setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' });
           return;
         }
         if (comensales.length >= MAX_COMENSALES) {
-          setAddComensalMessage({ type: 'error', text: `No se pueden agregar más de ${MAX_COMENSALES} comensales.` });
+          setAddComensalMessage({ type: 'error', text: `Máximo ${MAX_COMENSALES} comensales.` });
           return;
         }
     
@@ -981,7 +1027,7 @@ const App = () => {
         const newComensal = { id: newComensalId, name: newComensalName.trim(), selectedItems: [], total: 0 };
         setComensales(prevComensales => [...prevComensales, newComensal]);
         setNewComensalName('');
-        setAddComensalMessage({ type: 'success', text: `¡Comensal "${newComensal.name}" añadido con éxito!` });
+        setAddComensalMessage({ type: 'success', text: `¡"${newComensal.name}" añadido!` });
         setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
     };
 
@@ -1050,7 +1096,8 @@ const App = () => {
 
     const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
         try {
-            const prompt = `Analiza la imagen de recibo adjunta...`; // Prompt acortado para brevedad
+            // -- PROMPT MEJORADO --
+            const prompt = `Analiza la imagen de un recibo chileno. Extrae los ítems con su cantidad y precio unitario. IMPORTANTE: En Chile, el punto '.' es un separador de miles y la coma ',' es decimal. En tu respuesta JSON, la propiedad 'price' DEBE ser un NÚMERO ENTERO (integer) sin decimales, ignorando todos los puntos y comas. Por ejemplo, si un precio es '$3.500', el valor en el JSON debe ser el NÚMERO 3500.`;
             const payload = {
                 contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
                 generationConfig: {
@@ -1058,7 +1105,7 @@ const App = () => {
                     responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] }
                 }
             };
-            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
+            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
             if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) throw new Error("Falta la clave de API de Gemini.");
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -1074,8 +1121,10 @@ const App = () => {
                 let currentMaxId = 0;
                 (parsedData.items || []).forEach(item => {
                     const name = item.name.trim();
-                    const price = parseFloat(item.price);
-                    const quantity = parseInt(item.quantity, 10);
+                    // -- PARSEO MÁS SEGURO --
+                    const price = Number(item.price);
+                    const quantity = Number(item.quantity);
+
                     if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
                         const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
                         if (existing) {
@@ -1138,17 +1187,22 @@ const App = () => {
     };
 
     const handleOpenSummaryModal = () => {
+        const effectiveDiscountRatio = getEffectiveDiscountRatio();
+
         const data = comensales.map(comensal => {
-          const totalConPropina = comensal.total || 0;
-          const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
-          const propina = totalConPropina - totalSinPropina;
-          return {
-            id: comensal.id,
-            name: comensal.name,
-            totalSinPropina: Math.round(totalSinPropina),
-            propina: Math.round(propina),
-            totalConPropina: Math.round(totalConPropina),
-          };
+            const totalSinPropinaOriginal = comensal.selectedItems.reduce((sum, item) => sum + (item.originalBasePrice * item.quantity), 0);
+            const descuentoAplicado = totalSinPropinaOriginal * effectiveDiscountRatio;
+            const subtotalConDescuento = totalSinPropinaOriginal - descuentoAplicado;
+            const propina = totalSinPropinaOriginal * 0.10;
+            const totalFinal = subtotalConDescuento + propina;
+
+            return {
+                id: comensal.id,
+                name: comensal.name,
+                subtotalConDescuento: Math.round(subtotalConDescuento),
+                propina: Math.round(propina),
+                totalFinal: Math.round(totalFinal),
+            };
         });
         setSummaryData(data);
         setIsSummaryModalOpen(true);
@@ -1181,6 +1235,122 @@ const App = () => {
             printWindow.close();
         }, 500);
     };
+    
+    // --- RENDERIZADO CONDICIONAL POR PASOS ---
+    const renderStep = () => {
+        switch (currentStep) {
+          case 'landing':
+            return <LandingStep onStart={() => setCurrentStep('loading')} />;
+          case 'loading':
+            return (
+              <LoadingStep
+                onImageUpload={handleImageUpload}
+                onManualEntry={() => setCurrentStep('reviewing')}
+                isImageProcessing={isImageProcessing}
+                imageProcessingError={imageProcessingError}
+              />
+            );
+          case 'reviewing':
+            return (
+                <ReviewStep
+                    initialProducts={availableProducts}
+                    onConfirm={(finalProducts) => {
+                        setAvailableProducts(finalProducts);
+                        setCurrentStep('assigning');
+                    }}
+                    onBack={() => handleResetAll(true)}
+                    discountPercentage={discountPercentage}
+                    setDiscountPercentage={setDiscountPercentage}
+                    discountCap={discountCap}
+                    setDiscountCap={setDiscountCap}
+                />
+            );
+          case 'assigning':
+            return (
+              <AssigningStep
+                availableProducts={availableProducts}
+                comensales={comensales}
+                newComensalName={newComensalName}
+                setNewComensalName={setNewComensalName}
+                addComensalMessage={addComensalMessage}
+                onAddComensal={handleAddComensal}
+                onAddItem={handleAddItem}
+                onRemoveItem={handleRemoveItem}
+                onOpenClearComensalModal={openClearComensalModal}
+                onOpenRemoveComensalModal={openRemoveComensalModal}
+                onOpenShareModal={() => setIsShareModalOpen(true)}
+                onOpenSummary={handleOpenSummaryModal}
+                onGoBack={() => setCurrentStep('reviewing')}
+                onGenerateLink={handleGenerateShareLink}
+                onRestart={() => handleResetAll(true)}
+                shareLink={shareLink}
+                effectiveDiscountRatio={getEffectiveDiscountRatio()}
+              />
+            );
+          default:
+            return <p>Cargando...</p>;
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
+          <LoadingModal isOpen={isGeneratingLink} message="Generando enlace..." />
+          
+          <div className="max-w-4xl mx-auto p-4">
+              {renderStep()}
+          </div>
+  
+          {/* Modales y elementos ocultos */}
+          <div style={{ display: 'none' }}>
+            <div id="print-source-content">
+                <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
+                <div className="space-y-6">
+                    {summaryData.map(diner => (
+                        <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
+                            <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
+                            <div className="flex justify-between text-gray-600">
+                                <span>Subtotal (con descuento):</span>
+                                <span>${diner.subtotalConDescuento.toLocaleString('es-CL')}</span>
+                            </div>
+                            <div className="flex justify-between text-gray-600">
+                                <span>Propina (10%):</span>
+                                <span>${diner.propina.toLocaleString('es-CL')}</span>
+                            </div>
+                            <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
+                                <span>TOTAL A PAGAR:</span>
+                                <span>${diner.totalFinal.toLocaleString('es-CL')}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
+                     <div className="flex justify-between text-lg text-gray-700">
+                        <span>Total General (con descuento):</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.subtotalConDescuento, 0).toLocaleString('es-CL')}</span>
+                    </div>
+                     <div className="flex justify-between text-lg text-gray-700">
+                        <span>Total Propina:</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span>
+                    </div>
+                    <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300">
+                        <span>GRAN TOTAL A PAGAR:</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.totalFinal, 0).toLocaleString('es-CL')}</span>
+                    </div>
+                </div>
+            </div>
+          </div>
+  
+          <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
+          <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
+          <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
+          <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
+      </div>
+    );
+};
+
+
+export default App;
     
     // --- RENDERIZADO CONDICIONAL POR PASOS ---
     const renderStep = () => {
