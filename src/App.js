@@ -194,7 +194,7 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
               onClick={onPrint}
               className="w-full px-5 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              Imprimir
+              Generar PDF
             </button>
             <button
               onClick={onClose}
@@ -1016,7 +1016,9 @@ const App = () => {
                 onOpenRemoveComensalModal={openRemoveComensalModal}
                 onOpenShareModal={() => setIsShareModalOpen(true)}
                 onOpenSummary={handleOpenSummaryModal}
-                onGoBack={() => setCurrentStep('reviewing')} // <-- Nueva Prop
+                onGoBack={() => setCurrentStep('reviewing')}
+                onGenerateLink={handleGenerateShareLink} // <-- Nueva Prop
+                onRestart={() => handleResetAll(true)}  // <-- Nueva Prop
               />
             );
           // Puedes añadir un caso 'summary' si quieres una pantalla final dedicada
@@ -1033,28 +1035,44 @@ const App = () => {
   
           {/* Modales y elementos ocultos */}
           <div style={{ display: 'none' }}>
-              <div id="print-source-content">
-                  <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
-                  <div className="space-y-6">
-                      {summaryData.map(diner => (
-                          <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
-                              <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
-                              <div className="flex justify-between text-gray-600">
-                                  <span>Consumo (sin propina):</span>
-                                  <span>${diner.totalSinPropina.toLocaleString('de-DE')}</span>
-                              </div>
-                              <div className="flex justify-between text-gray-600">
-                                  <span>Propina (10%):</span>
-                                  <span>${diner.propina.toLocaleString('de-DE')}</span>
-                              </div>
-                              <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
-                                  <span>TOTAL A PAGAR:</span>
-                                  <span>${diner.totalConPropina.toLocaleString('de-DE')}</span>
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-              </div>
+            <div id="print-source-content">
+                <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
+                <div className="space-y-6">
+                    {summaryData.map(diner => (
+                        <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
+                            <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
+                            <div className="flex justify-between text-gray-600">
+                                <span>Consumo (sin propina):</span>
+                                <span>${diner.totalSinPropina.toLocaleString('de-DE')}</span>
+                            </div>
+                            <div className="flex justify-between text-gray-600">
+                                <span>Propina (10%):</span>
+                                <span>${diner.propina.toLocaleString('de-DE')}</span>
+                            </div>
+                            <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
+                                <span>TOTAL A PAGAR:</span>
+                                <span>${diner.totalConPropina.toLocaleString('de-DE')}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                {/* Nueva sección de totales en el PDF */}
+                <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
+                     <div className="flex justify-between text-lg text-gray-700">
+                        <span>Total General (sin propina):</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('de-DE')}</span>
+                    </div>
+                     <div className="flex justify-between text-lg text-gray-700">
+                        <span>Total Propina:</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('de-DE')}</span>
+                    </div>
+                    <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300">
+                        <span>GRAN TOTAL A PAGAR:</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('de-DE')}</span>
+                    </div>
+                </div>
+            </div>
           </div>
   
           <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
@@ -1209,8 +1227,15 @@ const ReviewStep = ({ products, setProducts, onConfirm, onBack }) => {
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
-    onGoBack
+    onGoBack, onGenerateLink, onRestart
 }) => {
+    // Cálculo del total de la cuenta original (sin propina)
+    const originalTotalWithoutTip = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
+    // Cálculo de lo que ya se ha asignado a los comensales (sin propina)
+    const assignedTotalWithoutTip = comensales.reduce((totalSum, comensal) => totalSum + comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0), 0);
+    // Cálculo de lo que falta por asignar
+    const remainingToAssign = originalTotalWithoutTip - assignedTotalWithoutTip;
+
     // Componente interno para la tarjeta de comensal para mantener el código limpio
     const ComensalCard = ({ comensal }) => {
         const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
@@ -1275,6 +1300,11 @@ const AssigningStep = ({
                 </button>
             </header>
 
+            <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-md shadow-md mb-6" role="alert">
+                <p className="font-bold">Monto Pendiente de Asignar (sin propina):</p>
+                <p className="text-2xl">${Math.round(remainingToAssign).toLocaleString('de-DE')}</p>
+            </div>
+
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
                 <div className="flex flex-col sm:flex-row gap-3 items-center">
@@ -1285,10 +1315,12 @@ const AssigningStep = ({
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6 text-center">
-                <h2 className="text-xl font-bold text-blue-600 mb-4">Acciones Principales</h2>
+                <h2 className="text-xl font-bold text-blue-600 mb-4">Acciones</h2>
                  <div className="flex flex-wrap justify-center gap-3">
                     <button onClick={onOpenShareModal} className="px-5 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Compartir un Ítem</button>
+                    <button onClick={onGenerateLink} className="px-5 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Generar Link para Compartir</button>
                     {comensales.length > 0 && (<button onClick={onOpenSummary} className="px-5 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Ver Resumen Final</button>)}
+                    <button onClick={onRestart} className="px-5 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">Empezar de Nuevo</button>
                 </div>
             </div>
             
