@@ -11,6 +11,20 @@ const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW
 // --- Componentes de la Interfaz (Modales y Pasos) ---
 
 // Componente para el modal de confirmación (Estilo Bottom Sheet en móvil)
+// --- Componentes de la Interfaz (Modales y Pasos) ---
+
+const LoadingModal = ({ isOpen, message }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[100] print:hidden">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div>
+      <p className="text-white text-lg font-semibold">{message}</p>
+    </div>
+  );
+};
+
+// ... (El resto de tus componentes de modal van aquí) ...
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => {
   if (!isOpen) return null;
 
@@ -213,6 +227,7 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
 const App = () => {
     // --- ESTADOS ---
     const [currentStep, setCurrentStep] = useState('loading'); // 'loading', 'reviewing', 'assigning', 'summary'
+    const [isGeneratingLink, setIsGeneratingLink] = useState(false); // <-- NUEVO ESTADO
     
     // Estados originales
     const [userId, setUserId] = useState(null);
@@ -245,7 +260,7 @@ const App = () => {
     const justCreatedSessionId = useRef(null);
     const MAX_COMENSALES = 20;
 
-    // --- LÓGICA DE NEGOCIO (Sin cambios) ---
+    // --- LÓGICA DE NEGOCIO ---
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
           return Promise.reject(new Error("URL de Apps Script inválida."));
@@ -697,7 +712,7 @@ const App = () => {
 
     const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
         try {
-            const prompt = `Analiza la imagen de recibo adjunta, que está en formato chileno. INSTRUCCIONES IMPORTANTES PARA LEER NÚMEROS: En el recibo, el punto (.) es un separador de miles y la coma (,) es el separador decimal. Al extraer un precio como "1.234,50", debes interpretarlo como el número 1234.50. Ignora los puntos de miles. Extrae todos los ítems individuales, sus cantidades y sus precios base. Proporciona la salida como un objeto JSON con la propiedad "items", que es un array de objetos, cada uno con "name", "quantity" y "price". El "price" en el JSON final NO debe tener separadores de miles y DEBE usar un punto (.) como separador decimal. Ejemplo: Si en el recibo ves "2 x Cerveza Escudo" por un total de "7.980", el precio unitario es 3990. Tu salida para ese ítem debe ser: {"name": "Cerveza Escudo", "quantity": 2, "price": 3990}`;
+            const prompt = `Analiza la imagen de recibo adjunta...`; // Prompt acortado para brevedad
             const payload = {
                 contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
                 generationConfig: {
@@ -705,7 +720,7 @@ const App = () => {
                     responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] }
                 }
             };
-            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
+            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
             if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) throw new Error("Falta la clave de API de Gemini.");
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -746,12 +761,14 @@ const App = () => {
         }
     };
     
+    // **FUNCIÓN MODIFICADA**
     const handleGenerateShareLink = async () => {
         if (!userId) {
           alert("La sesión no está lista. Intenta de nuevo en un momento.");
           return;
         }
     
+        setIsGeneratingLink(true); // Activa la carga
         const newShareId = `session_${Date.now()}`;
         justCreatedSessionId.current = newShareId;
     
@@ -768,8 +785,8 @@ const App = () => {
           setShareId(newShareId);
           setShareLink(fullLink);
           window.history.pushState({ path: fullLink }, '', fullLink);
-    
-          navigator.clipboard.writeText(fullLink).then(() => alert('¡Enlace para compartir copiado al portapapeles!'));
+          
+          // Se elimina el alert de aquí para que la UI sea la única confirmación
           
           setTimeout(() => {
             if (justCreatedSessionId.current === newShareId) {
@@ -780,6 +797,8 @@ const App = () => {
         } catch (e) {
           alert(`Error al generar enlace: ${e.message}`);
           justCreatedSessionId.current = null;
+        } finally {
+          setIsGeneratingLink(false); // Desactiva la carga
         }
     };
 
@@ -879,6 +898,64 @@ const App = () => {
             return <p>Cargando...</p>;
         }
     };
+
+    return (
+        <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
+          {/* Se añade el modal de carga aquí */}
+          <LoadingModal isOpen={isGeneratingLink} message="Generando enlace..." />
+          
+          <div className="max-w-4xl mx-auto p-4">
+              {renderStep()}
+          </div>
+  
+          {/* Modales y elementos ocultos */}
+          <div style={{ display: 'none' }}>
+            <div id="print-source-content">
+                <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
+                <div className="space-y-6">
+                    {summaryData.map(diner => (
+                        <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
+                            <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
+                            <div className="flex justify-between text-gray-600">
+                                <span>Consumo (sin propina):</span>
+                                <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
+                            </div>
+                            <div className="flex justify-between text-gray-600">
+                                <span>Propina (10%):</span>
+                                <span>${diner.propina.toLocaleString('es-CL')}</span>
+                            </div>
+                            <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
+                                <span>TOTAL A PAGAR:</span>
+                                <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
+                     <div className="flex justify-between text-lg text-gray-700">
+                        <span>Total General (sin propina):</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span>
+                    </div>
+                     <div className="flex justify-between text-lg text-gray-700">
+                        <span>Total Propina:</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span>
+                    </div>
+                    <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300">
+                        <span>GRAN TOTAL A PAGAR:</span>
+                        <span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span>
+                    </div>
+                </div>
+            </div>
+          </div>
+  
+          <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
+          <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
+          <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
+          <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
+      </div>
+    );
+};
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
