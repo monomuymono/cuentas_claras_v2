@@ -166,7 +166,7 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
 
   return (
     <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50">
-      <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg mx-4">
+      <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
         <div className="space-y-6">
           {summaryData.map(diner => (
