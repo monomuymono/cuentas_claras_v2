@@ -898,6 +898,8 @@ const App = () => {
                 onGenerateLink={handleGenerateShareLink}
                 onRestart={() => handleResetAll(true)}
                 shareLink={shareLink}
+                discountPercentage={discountPercentage}
+                discountCap={discountCap}
               />
             );
           default:
@@ -1181,6 +1183,8 @@ const AssigningStep = ({
     discountPercentage, discountCap 
 }) => {
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
+    const [discountPercentage, setDiscountPercentage] = useState('');
+    const [discountCap, setDiscountCap] = useState('');
 
     // --- Tarjeta del Comensal (LÓGICA COMPLETAMENTE REESCRITA) ---
     const ComensalCard = ({ comensal }) => {
