@@ -10,9 +10,6 @@ const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW
 
 // --- Componentes de la Interfaz (Modales y Pasos) ---
 
-// Componente para el modal de confirmación (Estilo Bottom Sheet en móvil)
-// --- Componentes de la Interfaz (Modales y Pasos) ---
-
 const LoadingModal = ({ isOpen, message }) => {
   if (!isOpen) return null;
 
@@ -24,7 +21,6 @@ const LoadingModal = ({ isOpen, message }) => {
   );
 };
 
-// ... (El resto de tus componentes de modal van aquí) ...
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => {
   if (!isOpen) return null;
 
@@ -52,7 +48,6 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, c
   );
 };
 
-// Componente para el modal de compartir ítems (Estilo Bottom Sheet en móvil)
 const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShareConfirm }) => {
   const [selectedProductToShare, setSelectedProductToShare] = useState('');
   const [selectedComensalesForShare, setSelectedComensalesForShare] = useState([]);
@@ -176,7 +171,6 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
   );
 };
 
-// Componente para el modal de resumen
 const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
   if (!isOpen) return null;
 
@@ -226,8 +220,8 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
 // --- Componente principal de la aplicación ---
 const App = () => {
     // --- ESTADOS ---
-    const [currentStep, setCurrentStep] = useState('loading'); // 'loading', 'reviewing', 'assigning', 'summary'
-    const [isGeneratingLink, setIsGeneratingLink] = useState(false); // <-- NUEVO ESTADO
+    const [currentStep, setCurrentStep] = useState('landing'); // 'landing', 'loading', 'reviewing', 'assigning'
+    const [isGeneratingLink, setIsGeneratingLink] = useState(false);
     
     // Estados originales
     const [userId, setUserId] = useState(null);
@@ -761,14 +755,13 @@ const App = () => {
         }
     };
     
-    // **FUNCIÓN MODIFICADA**
     const handleGenerateShareLink = async () => {
         if (!userId) {
           alert("La sesión no está lista. Intenta de nuevo en un momento.");
           return;
         }
     
-        setIsGeneratingLink(true); // Activa la carga
+        setIsGeneratingLink(true);
         const newShareId = `session_${Date.now()}`;
         justCreatedSessionId.current = newShareId;
     
@@ -786,8 +779,6 @@ const App = () => {
           setShareLink(fullLink);
           window.history.pushState({ path: fullLink }, '', fullLink);
           
-          // Se elimina el alert de aquí para que la UI sea la única confirmación
-          
           setTimeout(() => {
             if (justCreatedSessionId.current === newShareId) {
               justCreatedSessionId.current = null;
@@ -798,7 +789,7 @@ const App = () => {
           alert(`Error al generar enlace: ${e.message}`);
           justCreatedSessionId.current = null;
         } finally {
-          setIsGeneratingLink(false); // Desactiva la carga
+          setIsGeneratingLink(false);
         }
     };
 
@@ -850,6 +841,8 @@ const App = () => {
     // --- RENDERIZADO CONDICIONAL POR PASOS ---
     const renderStep = () => {
         switch (currentStep) {
+          case 'landing':
+            return <LandingStep onStart={() => setCurrentStep('loading')} />;
           case 'loading':
             return (
               <LoadingStep
@@ -901,7 +894,6 @@ const App = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-          {/* Se añade el modal de carga aquí */}
           <LoadingModal isOpen={isGeneratingLink} message="Generando enlace..." />
           
           <div className="max-w-4xl mx-auto p-4">
@@ -959,11 +951,29 @@ const App = () => {
 
 // --- COMPONENTES DE PASOS ---
 
+const LandingStep = ({ onStart }) => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
+        <div className="mb-8">
+            <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+        </div>
+        <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1>
+        <p className="text-lg text-gray-600 mt-4 max-w-md">
+            Divide la cuenta de cualquier restaurante de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto.
+        </p>
+        <button 
+            onClick={onStart} 
+            className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"
+        >
+            Empezar
+        </button>
+    </div>
+);
+
 const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => (
     <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
         <header className="mb-12">
-            <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Calculadora de Cuentas</h1>
-            <p className="text-lg text-gray-600">Para empezar, carga los ítems de la cuenta.</p>
+            <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1>
+            <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p>
         </header>
         <div className="w-full max-w-sm space-y-5">
             <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -1000,7 +1010,6 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
         setLocalProducts(new Map(initialProducts));
     }, [initialProducts]);
     
-    // **CÁLCULO MÁS ROBUSTO**
     const total = Array.from(localProducts.values()).reduce((sum, p) => {
         const price = parseFloat(p.price) || 0;
         const quantity = parseInt(p.quantity, 10) || 0;
@@ -1047,7 +1056,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
     };
 
     return (
-        <div className="p-4">
+        <div className="p-4 pb-40">
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
@@ -1078,29 +1087,32 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
                 </div>
             </div>
 
-            {/* **ESTILO CORREGIDO**: Se quita la clase 'sticky' */}
-            <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-8">
-                <div className="flex justify-between text-lg">
-                    <span className="font-semibold text-gray-700">Subtotal:</span>
-                    <span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span>
-                </div>
-                <div className="flex justify-between text-lg">
-                    <span className="font-semibold text-gray-700">Propina (10%):</span>
-                    <span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span>
-                </div>
-                <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200">
-                    <span>TOTAL:</span>
-                    <span>${Math.round(total + tip).toLocaleString('es-CL')}</span>
-                </div>
-            </div>
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
+                <div className="max-w-4xl mx-auto">
+                    <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
+                        <div className="flex justify-between text-lg">
+                            <span className="font-semibold text-gray-700">Subtotal:</span>
+                            <span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span>
+                        </div>
+                        <div className="flex justify-between text-lg">
+                            <span className="font-semibold text-gray-700">Propina (10%):</span>
+                            <span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span>
+                        </div>
+                        <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200">
+                            <span>TOTAL:</span>
+                            <span>${Math.round(total + tip).toLocaleString('es-CL')}</span>
+                        </div>
+                    </div>
 
-            <div className="flex flex-col sm:flex-row gap-4">
-                <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">
-                    Volver y Empezar de Nuevo
-                </button>
-                <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
-                    Todo Correcto, Continuar a Asignar
-                </button>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">
+                            Volver y Empezar de Nuevo
+                        </button>
+                        <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
+                            Todo Correcto, Continuar a Asignar
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );
