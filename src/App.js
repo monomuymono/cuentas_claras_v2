@@ -302,7 +302,6 @@ function billReducer(state, action) {
                 availableProducts: action.payload,
                 currentStep: 'assigning'
             };
-        // --- NUEVA ACCIÓN: Limpia solo los datos de la cuenta, no la sesión ---
         case 'CLEAR_BILL_DATA':
             return {
                 ...state,
@@ -524,7 +523,6 @@ const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
     const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
 
-    // ... (El resto de los useState y useRef no cambian) ...
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
     const [authReady, setAuthReady] = useState(false);
     const [newComensalName, setNewComensalName] = useState('');
@@ -542,6 +540,8 @@ const App = () => {
     const initialLoadDone = useRef(false);
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
+    // --- NUEVO REF para controlar el polling ---
+    const pollTimer = useRef(null);
 
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { return Promise.reject(new Error("URL de Apps Script inválida.")); }
@@ -579,6 +579,41 @@ const App = () => {
         } catch (error) { console.error("Error al cargar con JSONP:", error);
         } finally { setTimeout(() => { isLoadingFromServer.current = false; }, 0); }
     }, [handleResetAll]);
+    
+    // --- LÓGICA DE POLLING MODIFICADA ---
+    const startPolling = useCallback(() => {
+        stopPolling(); // Asegura que no haya timers duplicados
+        
+        const poll = () => {
+            if (hasPendingChanges.current) {
+                // Si hay cambios pendientes, reintenta en lugar de cargar
+                pollTimer.current = setTimeout(poll, 5000);
+                return;
+            }
+            loadStateFromGoogleSheets(shareId).finally(() => {
+                pollTimer.current = setTimeout(poll, 5000);
+            });
+        };
+
+        pollTimer.current = setTimeout(poll, 5000);
+    }, [shareId, loadStateFromGoogleSheets]);
+
+    const stopPolling = () => {
+        if (pollTimer.current) {
+            clearTimeout(pollTimer.current);
+        }
+    };
+
+    useEffect(() => {
+        const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
+        if (shareId && !shareId.startsWith('local-') && !isAnyModalOpen) {
+            startPolling();
+        } else {
+            stopPolling();
+        }
+        return stopPolling; // Limpia el timer al desmontar o cuando cambien las dependencias
+    }, [shareId, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen, startPolling]);
+
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
         if (uniqueSessionUserId) { dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
@@ -603,30 +638,28 @@ const App = () => {
         };
         performInitialLoad();
     }, [authReady, userId, loadStateFromGoogleSheets]);
+    
+    // --- EFECTO DE AUTOGUARDADO MODIFICADO ---
     useEffect(() => {
-        const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
-        if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) return;
-        let isCancelled = false; const pollTimeout = 5000; let pollTimer;
-        const poll = () => {
-            if (isCancelled) return;
-            if (!hasPendingChanges.current) { loadStateFromGoogleSheets(shareId).finally(() => { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); });
-            } else { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); }
-        };
-        pollTimer = setTimeout(poll, pollTimeout);
-        return () => { isCancelled = true; clearTimeout(pollTimer); };
-    }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
-    useEffect(() => {
-        if (isLoadingFromServer.current) return;
-        if ((!initialLoadDone.current && currentStep !== 'landing') || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
+        if (isLoadingFromServer.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) {
+            return;
+        }
+
         hasPendingChanges.current = true;
+        stopPolling(); // Detiene el polling en cuanto hay un cambio
+
         const handler = setTimeout(() => {
             const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: new Date().toISOString() };
             saveStateToGoogleSheets(shareId, dataToSave)
                 .catch((e) => { console.error("El guardado falló:", e.message); alert(`No se pudieron guardar los últimos cambios: ${e.message}`); })
-                .finally(() => { hasPendingChanges.current = false; });
-        }, 1000);
+                .finally(() => {
+                    hasPendingChanges.current = false;
+                    startPolling(); // Reanuda el polling después de guardar
+                });
+        }, 1200); // Aumentamos ligeramente el debounce para evitar guardados muy seguidos
         return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, currentStep]);
+    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, startPolling]);
+    
     const handleStartNewSession = async () => {
         if (!userId) {
             alert("La sesión de usuario no está lista. Inténtalo de nuevo en un momento.");
@@ -665,7 +698,6 @@ const App = () => {
     const confirmRemoveComensal = () => { if (comensalToRemoveId !== null) { dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId }); dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId }); } setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
-    // --- FUNCIÓN MODIFICADA: Usa CLEAR_BILL_DATA en lugar de RESET_SESSION ---
     const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); let currentMaxId = 0; (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); } } }); 
     dispatch({ type: 'CLEAR_BILL_DATA' }); 
     dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
@@ -677,7 +709,7 @@ const App = () => {
             case 'landing': return <LandingStep onStart={handleStartNewSession} />;
             case 'loading_session': return <LoadingSessionStep />;
             case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
-            case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts })} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
+            case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => { stopPolling(); dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts }); }} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
             case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
             default: return <p>Cargando...</p>;
         }
