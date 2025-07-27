@@ -261,6 +261,7 @@ const initialState = {
     userId: null,
     shareId: null,
     shareLink: '',
+    masterProductList: new Map()
     availableProducts: new Map(),
     comensales: [],
     activeSharedInstances: new Map(),
@@ -285,6 +286,37 @@ function billReducer(state, action) {
                 discountPercentage: parseFloat(percentage) || 0,
                 discountCap: parseFloat(cap) || 0,
             };
+        case 'SET_PRODUCTS_AND_ADVANCE':
+            return {
+                ...state,
+                // Guarda la lista de productos original como la "lista maestra"
+                masterProductList: new Map(action.payload), 
+                availableProducts: new Map(action.payload), // Esta es la copia de trabajo
+                currentStep: 'assigning'
+            };
+
+        case 'SYNC_STATE': {
+            const serverStateData = action.payload;
+            const localState = state;
+
+            // --- 1. Fusionar Comensales (Esta lógica se mantiene igual) ---
+            const serverComensalesMap = new Map((serverStateData.comensales || []).map(c => [c.id, c]));
+            const localComensalesMap = new Map(localState.comensales.map(c => [c.id, c]));
+            const reconciledComensales = [];
+            const allDinerIds = new Set([...serverComensalesMap.keys(), ...localComensalesMap.keys()]);
+
+            allDinerIds.forEach(id => {
+                const serverDiner = serverComensalesMap.get(id);
+                const localDiner = localComensalesMap.get(id);
+
+                if (serverDiner && !localDiner) {
+                    reconciledComensales.push(serverDiner);
+                } else if (!serverDiner && localDiner) {
+                    reconciledComensales.push(localDiner);
+                } else if (serverDiner && localDiner) {
+                    reconciledComensales.push(serverDiner);
+                }
+            });
         
         }
         // --- ACCIÓN MODIFICADA: ya no fuerza el cambio de pantalla ---
