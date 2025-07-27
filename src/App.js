@@ -731,7 +731,7 @@ const App = () => {
                 let currentMaxId = 0;
                 (parsedData.items || []).forEach(item => {
                     const name = item.name.trim();
-                    const price = parseFloat(item.price);
+                    const price = parseFloat(String(item.price).replace(/\./g, ''));
                     const quantity = parseInt(item.quantity, 10);
                     if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
                         const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
