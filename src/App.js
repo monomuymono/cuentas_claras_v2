@@ -376,7 +376,6 @@ function billReducer(state, action) {
             
             return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances };
         }
-        // --- SECCIÓN CORREGIDA: Lógica de REMOVE_ITEM_FROM_COMENSAL ---
         case 'REMOVE_ITEM_FROM_COMENSAL': {
             const { comensalId, itemIdentifier } = action.payload;
             const comensalTarget = state.comensales.find(c => c.id === comensalId);
@@ -391,8 +390,6 @@ function billReducer(state, action) {
             const itemToRemove = comensalTarget.selectedItems[itemIndex];
             let updatedProducts = new Map(state.availableProducts);
             let updatedSharedInstances = new Map(state.activeSharedInstances);
-
-            // Se procesa de forma inmutable para ambos casos (FULL y SHARED)
             let updatedComensales = state.comensales.map(comensal => {
                 if (comensal.id === comensalId) {
                     const items = [...comensal.selectedItems];
@@ -400,7 +397,6 @@ function billReducer(state, action) {
 
                     if (itemToUpdate.type === ITEM_TYPES.FULL) {
                         if (itemToUpdate.quantity > 1) {
-                            // Crea un nuevo objeto de item en lugar de mutar el anterior
                             const updatedItem = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 };
                             items[itemIndex] = updatedItem;
                         } else {
@@ -522,7 +518,6 @@ function billReducer(state, action) {
     }
 }
 
-
 // --- Componente principal de la aplicación ---
 const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
@@ -545,7 +540,6 @@ const App = () => {
     const initialLoadDone = useRef(false);
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
-    // --- NUEVO REF para controlar el polling ---
     const pollTimer = useRef(null);
 
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
@@ -556,6 +550,8 @@ const App = () => {
         } catch (error) { return Promise.reject(error); }
     }, [userId]);
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
+    
+    // --- FUNCIÓN MODIFICADA: Lógica de carga con protección contra cambios locales ---
     const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
         if (!idToLoad || idToLoad.startsWith('local-')) return;
@@ -564,7 +560,11 @@ const App = () => {
         try {
             const data = await promise;
             if (data && data.status !== "not_found") {
-                if (hasPendingChanges.current && !initialLoadDone.current) return;
+                // --- LÍNEA CORREGIDA: Verifica si hay cambios locales antes de sobrescribir ---
+                if (hasPendingChanges.current) {
+                    console.warn("Polling detectó cambios locales pendientes. Se aborta la actualización desde el servidor para proteger los datos del usuario.");
+                    return;
+                }
                 isLoadingFromServer.current = true;
                 const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value]));
                 const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
@@ -583,15 +583,12 @@ const App = () => {
             }
         } catch (error) { console.error("Error al cargar con JSONP:", error);
         } finally { setTimeout(() => { isLoadingFromServer.current = false; }, 0); }
-    }, [handleResetAll]);
+    }, [handleResetAll]); // hasPendingChanges.current no necesita ser dependencia
     
-    // --- LÓGICA DE POLLING MODIFICADA ---
     const startPolling = useCallback(() => {
-        stopPolling(); // Asegura que no haya timers duplicados
-        
+        stopPolling();
         const poll = () => {
             if (hasPendingChanges.current) {
-                // Si hay cambios pendientes, reintenta en lugar de cargar
                 pollTimer.current = setTimeout(poll, 5000);
                 return;
             }
@@ -599,7 +596,6 @@ const App = () => {
                 pollTimer.current = setTimeout(poll, 5000);
             });
         };
-
         pollTimer.current = setTimeout(poll, 5000);
     }, [shareId, loadStateFromGoogleSheets]);
 
@@ -616,9 +612,9 @@ const App = () => {
         } else {
             stopPolling();
         }
-        return stopPolling; // Limpia el timer al desmontar o cuando cambien las dependencias
+        return stopPolling;
     }, [shareId, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen, startPolling]);
-
+    
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
         if (uniqueSessionUserId) { dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
@@ -629,6 +625,7 @@ const App = () => {
         }
         setAuthReady(true);
     }, []);
+
     useEffect(() => {
         const performInitialLoad = async () => {
             if (!authReady || !userId || initialLoadDone.current) return;
@@ -636,64 +633,30 @@ const App = () => {
             const idFromUrl = urlParams.get('id');
             if (idFromUrl) {
                 await loadStateFromGoogleSheets(idFromUrl);
-            } else { 
-                dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` }); 
             }
             initialLoadDone.current = true;
         };
         performInitialLoad();
     }, [authReady, userId, loadStateFromGoogleSheets]);
     
-    // --- EFECTO DE AUTOGUARDADO MODIFICADO ---
     useEffect(() => {
         if (isLoadingFromServer.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) {
             return;
         }
-
         hasPendingChanges.current = true;
-        stopPolling(); // Detiene el polling en cuanto hay un cambio
-
         const handler = setTimeout(() => {
             const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: new Date().toISOString() };
             saveStateToGoogleSheets(shareId, dataToSave)
                 .catch((e) => { console.error("El guardado falló:", e.message); alert(`No se pudieron guardar los últimos cambios: ${e.message}`); })
                 .finally(() => {
                     hasPendingChanges.current = false;
-                    startPolling(); // Reanuda el polling después de guardar
                 });
-        }, 1200); // Aumentamos ligeramente el debounce para evitar guardados muy seguidos
+        }, 1200);
         return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, startPolling]);
+    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
     
-    const handleStartNewSession = async () => {
-        if (!userId) {
-            alert("La sesión de usuario no está lista. Inténtalo de nuevo en un momento.");
-            return;
-        }
-        setIsGeneratingLink(true);
-        const newShareId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        const initialData = { comensales: [], availableProducts: {}, activeSharedInstances: {} };
-
-        try {
-            await saveStateToGoogleSheets(newShareId, initialData);
-            const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`;
-            dispatch({ type: 'SET_SHARE_ID', payload: newShareId });
-            dispatch({ type: 'SET_STEP', payload: 'loading' });
-            window.history.pushState({ path: fullLink }, '', fullLink);
-        } catch (e) {
-            alert(`Error al crear la sesión: ${e.message}`);
-        } finally {
-            setIsGeneratingLink(false);
-        }
-    };
-    const handleGenerateShareLink = () => {
-        if (shareId && !shareId.startsWith('local-')) {
-            const fullLink = `${window.location.origin}${window.location.pathname}?id=${shareId}`;
-            dispatch({ type: 'SET_SHARE_LINK', payload: fullLink });
-        } else {
-            alert("Error: No hay una sesión compartida activa para generar un enlace.");
-        }
-    };
+    const handleStartNewSession = async () => { if (!userId) { alert("La sesión de usuario no está lista."); return; } setIsGeneratingLink(true); const newShareId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`; const initialData = { comensales: [], availableProducts: {}, activeSharedInstances: {} }; try { await saveStateToGoogleSheets(newShareId, initialData); const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`; dispatch({ type: 'SET_SHARE_ID', payload: newShareId }); dispatch({ type: 'SET_STEP', payload: 'loading' }); window.history.pushState({ path: fullLink }, '', fullLink); } catch (e) { alert(`Error al crear la sesión: ${e.message}`); } finally { setIsGeneratingLink(false); } };
+    const handleGenerateShareLink = () => { if (shareId && !shareId.startsWith('local-')) { const fullLink = `${window.location.origin}${window.location.pathname}?id=${shareId}`; dispatch({ type: 'SET_SHARE_LINK', payload: fullLink }); } else { alert("Error: No hay una sesión compartida activa para generar un enlace."); } };
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
     const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
@@ -703,9 +666,7 @@ const App = () => {
     const confirmRemoveComensal = () => { if (comensalToRemoveId !== null) { dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId }); dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId }); } setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
-    const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); let currentMaxId = 0; (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); } } }); 
-    dispatch({ type: 'CLEAR_BILL_DATA' }); 
-    dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
+    const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); let currentMaxId = 0; (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); } } }); dispatch({ type: 'CLEAR_BILL_DATA' }); dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
     const handleOpenSummaryModal = () => { const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0); const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity); const data = comensales.map(comensal => { const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0); const propina = totalSinPropina * TIP_PERCENTAGE; const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0; const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal; const totalConPropina = totalSinPropina + propina - descuentoAplicado; return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina) }; }); setSummaryData(data); setIsSummaryModalOpen(true); };
     const handlePrint = () => { const printContent = document.getElementById('print-source-content'); if (!printContent) return; const printWindow = window.open('', '_blank', 'height=800,width=800'); if (!printWindow) { alert('Permite las ventanas emergentes.'); return; } printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500); };
 
@@ -714,7 +675,7 @@ const App = () => {
             case 'landing': return <LandingStep onStart={handleStartNewSession} />;
             case 'loading_session': return <LoadingSessionStep />;
             case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
-            case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => { stopPolling(); dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts }); }} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
+            case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts })} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
             case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
             default: return <p>Cargando...</p>;
         }
