@@ -1001,119 +1001,258 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
 );
 
 const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
-    const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
-    const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
+  const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
+  const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
+  const [discount, setDiscount] = useState(0); // State for discount
+  const [discountError, setDiscountError] = useState(''); // State for discount error message
 
-    useEffect(() => {
-        setLocalProducts(new Map(initialProducts));
-    }, [initialProducts]);
-    
-    const total = Array.from(localProducts.values()).reduce((sum, p) => {
-        const price = parseFloat(p.price) || 0;
-        const quantity = parseInt(p.quantity, 10) || 0;
-        return sum + (price * quantity);
-    }, 0);
-    const tip = total * 0.10;
+  useEffect(() => {
+    setLocalProducts(new Map(initialProducts));
+  }, [initialProducts]);
 
-    const handleProductChange = (id, field, value) => {
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            const product = newMap.get(id);
-            if (product) {
-                newMap.set(id, { ...product, [field]: value });
-            }
-            return newMap;
-        });
-    };
+  const total = Array.from(localProducts.values()).reduce((sum, p) => {
+    const price = parseFloat(p.price) || 0;
+    const quantity = parseInt(p.quantity, 10) || 0;
+    return sum + price * quantity;
+  }, 0);
+  const discountAmount = parseFloat(discount) || 0;
+  const totalAfterDiscount = Math.max(0, total - discountAmount); // Prevent negative total
+  const tip = totalAfterDiscount * 0.10;
 
-    const handleRemoveProduct = (id) => {
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(id);
-            return newMap;
-        });
-    };
+  const handleProductChange = (id, field, value) => {
+    setLocalProducts(prev => {
+      const newMap = new Map(prev);
+      const product = newMap.get(id);
+      if (product) {
+        newMap.set(id, { ...product, [field]: value });
+      }
+      return newMap;
+    });
+  };
 
-    const handleAddNewItem = () => {
-        if (!newItem.name.trim() || isNaN(parseFloat(newItem.price)) || isNaN(parseInt(newItem.quantity, 10))) {
-            alert('Por favor, completa los campos del nuevo ítem correctamente.');
-            return;
-        }
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
-            newMap.set(newId, {
-                id: newId,
-                name: newItem.name.trim(),
-                price: parseFloat(newItem.price),
-                quantity: parseInt(newItem.quantity, 10),
-            });
-            return newMap;
-        });
-        setNewItem({ name: '', price: '', quantity: '1' });
-    };
+  const handleRemoveProduct = (id) => {
+    setLocalProducts(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(id);
+      return newMap;
+    });
+  };
 
-    return (
-        <div className="p-4 pb-40">
-            <header className="text-center mb-6">
-                <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
-                <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
-            </header>
+  const handleAddNewItem = () => {
+    if (!newItem.name.trim()) {
+      alert('Por favor, ingresa un nombre válido para el ítem.');
+      return;
+    }
+    const price = parseFloat(newItem.price);
+    const quantity = parseInt(newItem.quantity, 10);
+    if (isNaN(price) || price <= 0) {
+      alert('El precio debe ser un número positivo.');
+      return;
+    }
+    if (isNaN(quantity) || quantity <= 0) {
+      alert('La cantidad debe ser un número entero positivo.');
+      return;
+    }
+    setLocalProducts(prev => {
+      const newMap = new Map(prev);
+      const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
+      newMap.set(newId, {
+        id: newId,
+        name: newItem.name.trim(),
+        price: price,
+        quantity: quantity,
+      });
+      return newMap;
+    });
+    setNewItem({ name: '', price: '', quantity: '1' });
+  };
 
-            <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
-                <h2 className="text-lg font-bold">Ítems Cargados</h2>
-                {Array.from(localProducts.values()).map(p => (
-                    <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
-                        <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" />
-                        <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" />
-                        <span className="col-span-1 text-center self-center">$</span>
-                        <input type="number" value={p.price} onChange={e => handleProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" />
-                        <button onClick={() => handleRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                    </div>
-                ))}
-                
-                <div className="grid grid-cols-12 gap-2 items-center pt-3">
-                     <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="col-span-5 p-2 border rounded-md" />
-                     <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: e.target.value})} className="col-span-2 p-2 border rounded-md text-center" />
-                     <span className="col-span-1 text-center self-center">$</span>
-                     <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} className="col-span-3 p-2 border rounded-md" />
-                     <button onClick={handleAddNewItem} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                     </button>
-                </div>
-            </div>
+  const handleApplyDiscount = () => {
+    const discountValue = parseFloat(discount);
+    if (isNaN(discountValue) || discountValue < 0) {
+      setDiscountError('Por favor, ingresa un descuento válido (número no negativo).');
+      return;
+    }
+    if (discountValue > total) {
+      setDiscountError('El descuento no puede ser mayor que el subtotal.');
+      return;
+    }
+    setDiscountError('');
+    // Discount is already reflected in totalAfterDiscount
+  };
 
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
-                <div className="max-w-4xl mx-auto">
-                    <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
-                        <div className="flex justify-between text-lg">
-                            <span className="font-semibold text-gray-700">Subtotal:</span>
-                            <span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between text-lg">
-                            <span className="font-semibold text-gray-700">Propina (10%):</span>
-                            <span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200">
-                            <span>TOTAL:</span>
-                            <span>${Math.round(total + tip).toLocaleString('es-CL')}</span>
-                        </div>
-                    </div>
+  return (
+    <div className="p-4 pb-20">
+      <header className="text-center mb-6">
+        <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
+        <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
+      </header>
 
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">
-                            Volver y Empezar de Nuevo
-                        </button>
-                        <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
-                            Todo Correcto, Continuar a Asignar
-                        </button>
-                    </div>
-                </div>
-            </div>
+      <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
+        <h2 className="text-lg font-bold">Ítems Cargados</h2>
+        {Array.from(localProducts.values()).map(p => (
+          <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
+            <input
+              type="text"
+              value={p.name}
+              onChange={e => handleProductChange(p.id, 'name', e.target.value)}
+              className="col-span-5 p-2 border rounded-md"
+              aria-label="Nombre del ítem"
+            />
+            <input
+              type="number"
+              value={p.quantity}
+              onChange={e => handleProductChange(p.id, 'quantity', e.target.value)}
+              className="col-span-2 p-2 border rounded-md text-center"
+              aria-label="Cantidad del ítem"
+              min="1"
+            />
+            <span className="col-span-1 text-center self-center">$</span>
+            <input
+              type="number"
+              value={p.price}
+              onChange={e => handleProductChange(p.id, 'price', e.target.value)}
+              className="col-span-3 p-2 border rounded-md"
+              aria-label="Precio del ítem"
+              min="0"
+              step="0.01"
+            />
+            <button
+              onClick={() => handleRemoveProduct(p.id)}
+              className="col-span-1 text-red-500 hover:text-red-700"
+              aria-label={`Eliminar ítem ${p.name}`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6 mx-auto"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
+
+        <div className="grid grid-cols-12 gap-2 items-center pt-3">
+          <input
+            type="text"
+            placeholder="Nombre ítem"
+            value={newItem.name}
+            onChange={e => setNewItem({ ...newItem, name: e.target.value })}
+            className="col-span-5 p-2 border rounded-md"
+            aria-label="Nombre del nuevo ítem"
+          />
+          <input
+            type="number"
+            placeholder="Cant."
+            value={newItem.quantity}
+            onChange={e => setNewItem({ ...newItem, quantity: e.target.value })}
+            className="col-span-2 p-2 border rounded-md text-center"
+            aria-label="Cantidad del nuevo ítem"
+            min="1"
+          />
+          <span className="col-span-1 text-center self-center">$</span>
+          <input
+            type="number"
+            placeholder="Precio"
+            value={newItem.price}
+            onChange={e => setNewItem({ ...newItem, price: e.target.value })}
+            className="col-span-3 p-2 border rounded-md"
+            aria-label="Precio del nuevo ítem"
+            min="0"
+            step="0.01"
+          />
+          <button
+            onClick={handleAddNewItem}
+            className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center"
+            aria-label="Agregar nuevo ítem"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
         </div>
-    );
+      </div>
+
+      {/* Aplicar Descuento Section */}
+      <div className="bg-white p-4 rounded-xl shadow-md mb-6">
+        <h2 className="text-lg font-bold text-blue-600 mb-4">Aplicar Descuento</h2>
+        <div className="flex flex-col sm:flex-row gap-3 items-center">
+          <input
+            type="number"
+            placeholder="Monto del descuento"
+            value={discount}
+            onChange={e => {
+              setDiscount(e.target.value);
+              setDiscountError('');
+            }}
+            className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            min="0"
+            step="0.01"
+            aria-label="Monto del descuento"
+          />
+          <button
+            onClick={handleApplyDiscount}
+            className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 w-full sm:w-auto"
+            aria-label="Aplicar descuento"
+          >
+            Aplicar Descuento
+          </button>
+        </div>
+        {discountError && (
+          <p className="mt-3 text-red-600 text-sm">{discountError}</p>
+        )}
+      </div>
+
+      {/* Summary Section */}
+      <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-6">
+        <div className="flex justify-between text-lg">
+          <span className="font-semibold text-gray-700">Subtotal:</span>
+          <span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span>
+        </div>
+        {discountAmount > 0 && (
+          <div className="flex justify-between text-lg">
+            <span className="font-semibold text-gray-700">Descuento:</span>
+            <span className="font-bold">-${Math.round(discountAmount).toLocaleString('es-CL')}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-lg">
+          <span className="font-semibold text-gray-700">Propina (10%):</span>
+          <span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span>
+        </div>
+        <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200">
+          <span>TOTAL:</span>
+          <span>${Math.round(totalAfterDiscount + tip).toLocaleString('es-CL')}</span>
+        </div>
+      </div>
+
+      {/* Buttons */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <button
+          onClick={onBack}
+          className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300"
+          aria-label="Volver y empezar de nuevo"
+        >
+          Volver y Empezar de Nuevo
+        </button>
+        <button
+          onClick={() => onConfirm(localProducts)}
+          className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700"
+          aria-label="Confirmar y continuar a asignar"
+        >
+          Todo Correcto, Continuar a Asignar
+        </button>
+      </div>
+    </div>
+  );
 };
 
 const AssigningStep = ({
