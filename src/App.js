@@ -744,7 +744,6 @@ const App = () => {
         if (idFromUrl) {
             // Si hay un ID en la URL, se salta el 'landing' y va directo a 'loading'
             setShareId(idFromUrl);
-            setCurrentStep('loading'); // <--- ESTA LÍNEA SE SALTA EL INICIO
             await loadStateFromGoogleSheets(idFromUrl);
         }
         // ...
