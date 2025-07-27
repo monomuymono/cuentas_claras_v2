@@ -15,9 +15,44 @@ const ITEM_TYPES = {
 };
 
 // --- COMPONENTES DE LA INTERFAZ ---
-const LoadingSessionStep = () => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div> <p className="text-blue-700 text-lg font-semibold">Cargando sesión compartida...</p> </div> );
-const LoadingModal = ({ isOpen, message }) => { if (!isOpen) return null; return ( <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[100] print:hidden"> <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div> <p className="text-white text-lg font-semibold">{message}</p> </div> ); };
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => { if (!isOpen) return null; return ( <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center z-50 print:hidden"> <div className="bg-white p-6 rounded-t-2xl shadow-2xl w-full max-w-md mx-auto animate-slide-up"> <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">Confirmar Acción</h2> <p className="text-gray-700 mb-6 text-center">{message}</p> <div className="flex flex-col sm:flex-row-reverse gap-3"> <button onClick={onConfirm} className="w-full px-5 py-3 bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"> {confirmText || 'Confirmar'} </button> <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"> {cancelText || 'Cancelar'} </button> </div> </div> </div> ); };
+
+const LoadingSessionStep = () => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div>
+      <p className="text-blue-700 text-lg font-semibold">Cargando sesión compartida...</p>
+    </div>
+);
+
+const LoadingModal = ({ isOpen, message }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[100] print:hidden">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div>
+      <p className="text-white text-lg font-semibold">{message}</p>
+    </div>
+  );
+};
+
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center z-50 print:hidden">
+      <div className="bg-white p-6 rounded-t-2xl shadow-2xl w-full max-w-md mx-auto animate-slide-up">
+        <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">Confirmar Acción</h2>
+        <p className="text-gray-700 mb-6 text-center">{message}</p>
+        <div className="flex flex-col sm:flex-row-reverse gap-3">
+          <button onClick={onConfirm} className="w-full px-5 py-3 bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+            {confirmText || 'Confirmar'}
+          </button>
+          <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">
+            {cancelText || 'Cancelar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShareConfirm }) => {
   const [selectedProductToShare, setSelectedProductToShare] = useState(''); const [selectedComensalesForShare, setSelectedComensalesForShare] = useState([]); const [isShareWarningModalOpen, setIsShareWarningModalOpen] = useState(false); const [tempShareProductId, setTempShareProductId] = useState(null); const [tempSharingComensalIds, setTempSharingComensalIds] = useState([]);
   useEffect(() => { if (isOpen) { setSelectedProductToShare(''); setSelectedComensalesForShare([]); } }, [isOpen]);
@@ -32,7 +67,6 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
   if (!isOpen) return null;
   return ( <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50"> <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col"> <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2> <div className="space-y-6 overflow-y-auto flex-grow"> {summaryData.map(diner => ( <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0"> <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3> <div className="flex justify-between text-gray-600"><span>Consumo (sin propina):</span><span>${diner.totalSinPropina.toLocaleString('es-CL')}</span></div> {diner.descuentoAplicado > 0 && (<div className="flex justify-between text-green-600"><span>Descuento:</span><span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span></div>)} <div className="flex justify-between text-gray-600"><span>Propina (10%):</span><span>${diner.propina.toLocaleString('es-CL')}</span></div> <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200"><span>TOTAL A PAGAR:</span><span>${diner.totalConPropina.toLocaleString('es-CL')}</span></div> </div> ))} </div> <div className="flex flex-col sm:flex-row-reverse gap-4 mt-8"> <button onClick={onPrint} className="w-full px-5 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Generar PDF</button> <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">Cerrar</button> </div> </div> </div> );
 };
-
 
 // --- LÓGICA DE ESTADO CENTRALIZADA (REDUCER) ---
 const getInitialStep = () => { if (typeof window !== 'undefined') { const urlParams = new URLSearchParams(window.location.search); if (urlParams.has('id')) { return 'loading_session'; } } return 'landing'; };
@@ -50,10 +84,25 @@ function billReducer(state, action) {
         case 'SET_PRODUCTS_FOR_REVIEW': return { ...state, availableProducts: action.payload, discountPercentage: 0, discountCap: 0, currentStep: 'reviewing', lastUpdated: newTimestamp };
         case 'SET_PRODUCTS_AND_ADVANCE': return { ...state, availableProducts: action.payload, currentStep: 'assigning', lastUpdated: newTimestamp };
         case 'CLEAR_BILL_DATA': return { ...state, availableProducts: new Map(), comensales: [], activeSharedInstances: new Map(), discountPercentage: 0, discountCap: 0, lastUpdated: newTimestamp };
-        case 'ADD_COMENSAL': { if (state.comensales.length >= MAX_COMENSALES) return state; const newComensalId = state.comensales.length > 0 ? Math.max(0, ...state.comensales.map(c => c.id)) + 1 : 1; const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 }; return { ...state, comensales: [...state.comensales, newComensal], lastUpdated: newTimestamp }; }
+        case 'ADD_COMENSAL': { 
+            if (state.comensales.length >= MAX_COMENSALES) return state;
+            // --- CAMBIO: Se usa crypto.randomUUID() para generar un ID aleatorio ---
+            const newComensalId = crypto.randomUUID(); 
+            const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 }; 
+            return { ...state, comensales: [...state.comensales, newComensal], lastUpdated: newTimestamp }; 
+        }
         case 'ADD_ITEM': { const { comensalId, productId } = action.payload; const productInStock = state.availableProducts.get(productId); if (!productInStock || Number(productInStock.quantity) <= 0) return state; const newProductsMap = new Map(state.availableProducts); newProductsMap.set(productId, { ...productInStock, quantity: Number(productInStock.quantity) - 1 }); const newComensales = state.comensales.map(comensal => { if (comensal.id === comensalId) { const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] }; const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL); if (existingItemIndex !== -1) { updatedComensal.selectedItems[existingItemIndex].quantity += 1; } else { updatedComensal.selectedItems.push({ id: productInStock.id, name: productInStock.name, originalBasePrice: Number(productInStock.price), quantity: 1, type: ITEM_TYPES.FULL, }); } return updatedComensal; } return comensal; }); return { ...state, availableProducts: newProductsMap, comensales: newComensales, lastUpdated: newTimestamp }; }
         case 'SHARE_ITEM': { const { productId, sharingComensalIds } = action.payload; const productToShare = state.availableProducts.get(productId); if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || Number(productToShare.quantity) <= 0) return state; const newProductsMap = new Map(state.availableProducts); newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 }); const shareInstanceId = Date.now() + Math.random(); const newActiveSharedInstances = new Map(state.activeSharedInstances); newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds)); const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length); const newComensales = state.comensales.map(comensal => { if (sharingComensalIds.includes(comensal.id)) { const updatedItems = [...comensal.selectedItems, { id: productToShare.id, name: productToShare.name, originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED, sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId }]; return { ...comensal, selectedItems: updatedItems }; } return comensal; }); return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances, lastUpdated: newTimestamp }; }
-        case 'REMOVE_ITEM_FROM_COMENSAL': { const { comensalId, itemIdentifier } = action.payload; const comensalTarget = state.comensales.find(c => c.id === comensalId); if (!comensalTarget) return state; const itemIndex = comensalTarget.selectedItems.findIndex(item => (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || (item.type === ITEM_TYPES.FULL && item.id === Number(itemIdentifier))); if (itemIndex === -1) return state; const itemToRemove = comensalTarget.selectedItems[itemIndex]; let updatedProducts = new Map(state.availableProducts); let updatedSharedInstances = new Map(state.activeSharedInstances); let updatedComensales = state.comensales.map(comensal => { if (comensal.id === comensalId) { const items = [...comensal.selectedItems]; const itemToUpdate = items[itemIndex]; if (itemToUpdate.type === ITEM_TYPES.FULL) { if (itemToUpdate.quantity > 1) { const updatedItem = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 }; items[itemIndex] = updatedItem; } else { items.splice(itemIndex, 1); } const product = updatedProducts.get(itemToRemove.id); if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 }); } return { ...comensal, selectedItems: items }; } return comensal; }); if (itemToRemove.type === ITEM_TYPES.SHARED) { const { shareInstanceId, id: originalProductId } = itemToRemove; const shareGroup = updatedSharedInstances.get(shareInstanceId); if (shareGroup) { shareGroup.delete(comensalId); if (shareGroup.size === 0) { updatedSharedInstances.delete(shareInstanceId); const product = updatedProducts.get(originalProductId); if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 }); } updatedComensales = updatedComensales.map(c => { let comensalToUpdate = { ...c }; if (c.id === comensalId) { comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId)); } if (shareGroup.size > 0 && shareGroup.has(c.id)) { const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount; const newSharerCount = shareGroup.size; const newBasePricePerShare = totalItemBasePrice / newSharerCount; comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => { if (String(item.shareInstanceId) === String(shareInstanceId)) { return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount }; } return item; }); } return comensalToUpdate; }); } } return { ...state, comensales: updatedComensales, availableProducts: updatedProducts, activeSharedInstances: updatedSharedInstances, lastUpdated: newTimestamp }; }
+        case 'REMOVE_ITEM_FROM_COMENSAL': { 
+            const { comensalId, itemIdentifier } = action.payload; 
+            const comensalTarget = state.comensales.find(c => c.id === comensalId); 
+            if (!comensalTarget) return state; 
+            // --- CAMBIO: La comparación de ID ahora es segura para strings (UUIDs) y números ---
+            const itemIndex = comensalTarget.selectedItems.findIndex(item => 
+                (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) ||
+                (item.type === ITEM_TYPES.FULL && String(item.id) === String(itemIdentifier))
+            ); 
+            if (itemIndex === -1) return state; const itemToRemove = comensalTarget.selectedItems[itemIndex]; let updatedProducts = new Map(state.availableProducts); let updatedSharedInstances = new Map(state.activeSharedInstances); let updatedComensales = state.comensales.map(comensal => { if (comensal.id === comensalId) { const items = [...comensal.selectedItems]; const itemToUpdate = items[itemIndex]; if (itemToUpdate.type === ITEM_TYPES.FULL) { if (itemToUpdate.quantity > 1) { const updatedItem = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 }; items[itemIndex] = updatedItem; } else { items.splice(itemIndex, 1); } const product = updatedProducts.get(itemToRemove.id); if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 }); } return { ...comensal, selectedItems: items }; } return comensal; }); if (itemToRemove.type === ITEM_TYPES.SHARED) { const { shareInstanceId, id: originalProductId } = itemToRemove; const shareGroup = updatedSharedInstances.get(shareInstanceId); if (shareGroup) { shareGroup.delete(comensalId); if (shareGroup.size === 0) { updatedSharedInstances.delete(shareInstanceId); const product = updatedProducts.get(originalProductId); if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 }); } updatedComensales = updatedComensales.map(c => { let comensalToUpdate = { ...c }; if (c.id === comensalId) { comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId)); } if (shareGroup.size > 0 && shareGroup.has(c.id)) { const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount; const newSharerCount = shareGroup.size; const newBasePricePerShare = totalItemBasePrice / newSharerCount; comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => { if (String(item.shareInstanceId) === String(shareInstanceId)) { return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount }; } return item; }); } return comensalToUpdate; }); } } return { ...state, comensales: updatedComensales, availableProducts: updatedProducts, activeSharedInstances: updatedSharedInstances, lastUpdated: newTimestamp }; }
         case 'CLEAR_COMENSAL_ITEMS': { const comensalIdToClear = action.payload; const comensalToClear = state.comensales.find(c => c.id === comensalIdToClear); if (!comensalToClear || comensalToClear.selectedItems.length === 0) return state; const newProducts = new Map(state.availableProducts); const newSharedInstances = new Map(state.activeSharedInstances); const sharedGroupsToUpdate = new Map(); comensalToClear.selectedItems.forEach(item => { if (item.type === ITEM_TYPES.FULL) { const product = newProducts.get(item.id); if (product) newProducts.set(item.id, { ...product, quantity: item.quantity + (product.quantity || 0) }); } else if (item.type === ITEM_TYPES.SHARED) { const shareGroup = newSharedInstances.get(item.shareInstanceId); if (!shareGroup) return; shareGroup.delete(comensalIdToClear); if (shareGroup.size === 0) { newSharedInstances.delete(item.shareInstanceId); const product = newProducts.get(item.id); if (product) newProducts.set(item.id, { ...product, quantity: product.quantity + 1 }); } else { sharedGroupsToUpdate.set(item.shareInstanceId, { totalBasePrice: item.originalBasePrice * item.sharedByCount, newSharerCount: shareGroup.size }); } } }); const finalComensales = state.comensales.map(comensal => { if (comensal.id === comensalIdToClear) { return { ...comensal, selectedItems: [], total: 0 }; } let needsRecalculation = false; const updatedItems = comensal.selectedItems.map(item => { if (item.type === ITEM_TYPES.SHARED && sharedGroupsToUpdate.has(item.shareInstanceId)) { needsRecalculation = true; const updateInfo = sharedGroupsToUpdate.get(item.shareInstanceId); const newBasePricePerShare = updateInfo.totalBasePrice / updateInfo.newSharerCount; return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: updateInfo.newSharerCount }; } return item; }); if (needsRecalculation) { return { ...comensal, selectedItems: updatedItems }; } return comensal; }); return { ...state, comensales: finalComensales, availableProducts: newProducts, activeSharedInstances: newSharedInstances, lastUpdated: newTimestamp }; }
         case 'REMOVE_COMENSAL': { const comensalIdToRemove = action.payload; const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove); return { ...state, comensales: newComensales, lastUpdated: newTimestamp }; }
         case 'RESET_SESSION': { const url = new URL(window.location.href); url.searchParams.delete('id'); window.history.replaceState({}, document.title, url.toString()); return { ...initialState, currentStep: 'landing', userId: state.userId, shareId: `local-session-${Date.now()}` }; }
@@ -65,7 +114,6 @@ function billReducer(state, action) {
 const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
     const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap, lastUpdated } = state;
-
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
     const [authReady, setAuthReady] = useState(false);
     const [newComensalName, setNewComensalName] = useState('');
@@ -79,15 +127,12 @@ const App = () => {
     const [summaryData, setSummaryData] = useState([]);
     const [isImageProcessing, setIsImageProcessing] = useState(false);
     const [imageProcessingError, setImageProcessingError] = useState(null);
-    
     const initialLoadDone = useRef(false);
     const isLoadingFromServer = useRef(false);
     const pollTimer = useRef(null);
     const lastUpdatedRef = useRef(lastUpdated);
 
-    useEffect(() => {
-        lastUpdatedRef.current = lastUpdated;
-    }, [lastUpdated]);
+    useEffect(() => { lastUpdatedRef.current = lastUpdated; }, [lastUpdated]);
 
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
         if (!currentShareId || !userId) return Promise.resolve();
@@ -98,7 +143,6 @@ const App = () => {
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
     
-    // --- LÓGICA DE CARGA MODIFICADA: Ahora compara timestamps ---
     const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
         if (!idToLoad || idToLoad.startsWith('local-')) return;
         const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
@@ -108,7 +152,6 @@ const App = () => {
             if (data && data.status !== "not_found" && data.lastUpdated) {
                 const serverTimestamp = new Date(data.lastUpdated);
                 const localTimestamp = lastUpdatedRef.current ? new Date(lastUpdatedRef.current) : null;
-                
                 if (!localTimestamp || serverTimestamp > localTimestamp) {
                     console.log("Datos del servidor son más recientes. Actualizando estado local.");
                     isLoadingFromServer.current = true;
@@ -122,8 +165,6 @@ const App = () => {
                             dispatch({ type: 'SET_STEP', payload: 'reviewing' });
                         }
                     }
-                } else {
-                    console.log("Datos locales son iguales o más recientes. Ignorando actualización del servidor.");
                 }
             } else if (data && data.status === "not_found") {
                 alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
@@ -134,11 +175,7 @@ const App = () => {
     }, [handleResetAll]);
     
     const stopPolling = useCallback(() => { if (pollTimer.current) { clearTimeout(pollTimer.current); } }, []);
-    const startPolling = useCallback(() => {
-        stopPolling();
-        const poll = () => { loadStateFromGoogleSheets(shareId).finally(() => { pollTimer.current = setTimeout(poll, 5000); }); };
-        pollTimer.current = setTimeout(poll, 5000);
-    }, [shareId, loadStateFromGoogleSheets, stopPolling]);
+    const startPolling = useCallback(() => { stopPolling(); const poll = () => { loadStateFromGoogleSheets(shareId).finally(() => { pollTimer.current = setTimeout(poll, 5000); }); }; pollTimer.current = setTimeout(poll, 5000); }, [shareId, loadStateFromGoogleSheets, stopPolling]);
 
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
@@ -171,11 +208,8 @@ const App = () => {
     }, [authReady, userId, loadStateFromGoogleSheets]);
     
     useEffect(() => {
-        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) {
-            return;
-        }
+        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) { return; }
         const handler = setTimeout(() => {
-            console.log("Autoguardando cambios...");
             const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: lastUpdated };
             saveStateToGoogleSheets(shareId, dataToSave).catch((e) => { console.error("El guardado automático falló:", e.message); });
         }, 1500);
@@ -244,7 +278,6 @@ const App = () => {
 };
 
 // --- COMPONENTES DE PASOS ---
-// ... (El resto de los componentes de pasos no cambian y se omiten por brevedad)
 const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
 const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
 const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, discountCap, dispatch }) => {
@@ -269,7 +302,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
         setLocalProducts(prev => {
             const newMap = new Map(prev);
-            const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
+            const newId = crypto.randomUUID();
             newMap.set(newId, { id: newId, name: newItem.name.trim(), price: price, quantity: quantity });
             return newMap;
         });
