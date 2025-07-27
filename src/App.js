@@ -273,17 +273,14 @@ function billReducer(state, action) {
                 currentStep: step,
             };
         }
-        // --- NUEVA ACCIÓN ---
-        // Esta acción carga los productos y se detiene en la pantalla de revisión.
         case 'SET_PRODUCTS_FOR_REVIEW':
             return {
                 ...state,
                 availableProducts: action.payload,
-                discountPercentage: 0, // Resetea el descuento al escanear una nueva cuenta
+                discountPercentage: 0,
                 discountCap: 0,
                 currentStep: 'reviewing'
             };
-        // Esta acción se usa al confirmar la pantalla de revisión para avanzar
         case 'SET_PRODUCTS_AND_ADVANCE':
             return {
                 ...state,
@@ -523,6 +520,7 @@ const App = () => {
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
 
+    // ... (El resto de las funciones de App.js no cambian) ...
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { return Promise.reject(new Error("URL de Apps Script inválida.")); }
         if (!currentShareId || !userId) return Promise.resolve();
@@ -540,9 +538,7 @@ const App = () => {
         try { const result = await promiseWithTimeout; if (result.status === 'error') return Promise.reject(new Error(result.message)); return Promise.resolve();
         } catch (error) { return Promise.reject(error); }
     }, [userId]);
-    
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
-
     const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
         if (!idToLoad || idToLoad.startsWith('local-')) return;
@@ -570,7 +566,6 @@ const App = () => {
         } catch (error) { console.error("Error al cargar con JSONP:", error);
         } finally { setTimeout(() => { isLoadingFromServer.current = false; }, 0); }
     }, [handleResetAll]);
-
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
         if (uniqueSessionUserId) { dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
@@ -581,7 +576,6 @@ const App = () => {
         }
         setAuthReady(true);
     }, []);
-
     useEffect(() => {
         const performInitialLoad = async () => {
             if (!authReady || !userId || initialLoadDone.current) return;
@@ -596,7 +590,6 @@ const App = () => {
         };
         performInitialLoad();
     }, [authReady, userId, loadStateFromGoogleSheets]);
-    
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
         if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) return;
@@ -609,7 +602,6 @@ const App = () => {
         pollTimer = setTimeout(poll, pollTimeout);
         return () => { isCancelled = true; clearTimeout(pollTimer); };
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
-    
     useEffect(() => {
         if (isLoadingFromServer.current) return;
         if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
@@ -622,28 +614,16 @@ const App = () => {
         }, 1000);
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
-
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
     const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
-    const handleAddComensal = () => {
-        if (newComensalName.trim() === '') { setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' }); return; }
-        if (comensales.length >= MAX_COMENSALES) { setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` }); return; }
-        dispatch({ type: 'ADD_COMENSAL', payload: newComensalName });
-        setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
-        setNewComensalName('');
-        setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
-    };
+    const handleAddComensal = () => { if (newComensalName.trim() === '') { setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' }); return; } if (comensales.length >= MAX_COMENSALES) { setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` }); return; } dispatch({ type: 'ADD_COMENSAL', payload: newComensalName }); setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` }); setNewComensalName(''); setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000); };
     const confirmClearComensal = () => { if (comensalToClearId !== null) dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToClearId }); setIsClearComensalModalOpen(false); setComensalToClearId(null); };
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
     const confirmRemoveComensal = () => { if (comensalToRemoveId !== null) { dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId }); dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId }); } setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
-    const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante. Extrae cada ítem consumido con su nombre, cantidad y precio unitario. El formato de salida debe ser estrictamente un objeto JSON con una única clave "items", que es un array de objetos. Cada objeto debe tener las claves "name" (string), "quantity" (integer) y "price" (number, sin puntos de miles ni símbolos de moneda). Si un ítem no tiene cantidad explícita, asume que es 1. Ignora totales, subtotales, propinas o descuentos; solo extrae los ítems individuales.`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); let currentMaxId = 0; (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); 
-    // --- LÍNEA CORREGIDA ---
-    // Despacha la nueva acción para ir a la pantalla de revisión
-    dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
-    } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
+    const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); let currentMaxId = 0; (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
     const handleGenerateShareLink = async () => { if (!userId) { alert("La sesión no está lista."); return; } setIsGeneratingLink(true); const newShareId = `session_${Date.now()}`; justCreatedSessionId.current = newShareId; const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])) }; try { await saveStateToGoogleSheets(newShareId, dataToSave); const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`; dispatch({ type: 'SET_SHARE_ID', payload: newShareId }); dispatch({ type: 'SET_SHARE_LINK', payload: fullLink }); window.history.pushState({ path: fullLink }, '', fullLink); setTimeout(() => { if (justCreatedSessionId.current === newShareId) justCreatedSessionId.current = null; }, 10000); } catch (e) { alert(`Error al generar enlace: ${e.message}`); justCreatedSessionId.current = null; } finally { setIsGeneratingLink(false); } };
     const handleOpenSummaryModal = () => { const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0); const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity); const data = comensales.map(comensal => { const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0); const propina = totalSinPropina * TIP_PERCENTAGE; const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0; const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal; const totalConPropina = totalSinPropina + propina - descuentoAplicado; return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina) }; }); setSummaryData(data); setIsSummaryModalOpen(true); };
     const handlePrint = () => { const printContent = document.getElementById('print-source-content'); if (!printContent) return; const printWindow = window.open('', '_blank', 'height=800,width=800'); if (!printWindow) { alert('Permite las ventanas emergentes.'); return; } printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500); };
@@ -662,7 +642,6 @@ const App = () => {
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
             <LoadingModal isOpen={isGeneratingLink} message="Generando enlace..." />
             <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
-            
             <div style={{ display: 'none' }}>
                 <div id="print-source-content">
                     <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
@@ -670,49 +649,22 @@ const App = () => {
                         {summaryData.map(diner => (
                             <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
                                 <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
-                                <div className="flex justify-between text-gray-600">
-                                    <span>Consumo (sin propina):</span>
-                                    <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
-                                </div>
-                                {diner.descuentoAplicado > 0 && (
-                                    <div className="flex justify-between text-green-600">
-                                        <span>Descuento:</span>
-                                        <span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between text-gray-600">
-                                    <span>Propina (10%):</span>
-                                    <span>${diner.propina.toLocaleString('es-CL')}</span>
-                                </div>
-                                <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
-                                    <span>TOTAL A PAGAR:</span>
-                                    <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
-                                </div>
+                                <div className="flex justify-between text-gray-600"><span>Consumo (sin propina):</span><span>${diner.totalSinPropina.toLocaleString('es-CL')}</span></div>
+                                {diner.descuentoAplicado > 0 && (<div className="flex justify-between text-green-600"><span>Descuento:</span><span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span></div>)}
+                                <div className="flex justify-between text-gray-600"><span>Propina (10%):</span><span>${diner.propina.toLocaleString('es-CL')}</span></div>
+                                <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200"><span>TOTAL A PAGAR:</span><span>${diner.totalConPropina.toLocaleString('es-CL')}</span></div>
                             </div>
                         ))}
                     </div>
                     <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
                         <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
-                        <div className="flex justify-between text-lg text-gray-700">
-                            <span>Total Consumo (sin propina):</span>
-                            <span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between text-lg text-green-600">
-                            <span>Total Descuento:</span>
-                            <span>-${summaryData.reduce((sum, d) => sum + d.descuentoAplicado, 0).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between text-lg text-gray-700">
-                            <span>Total Propina:</span>
-                            <span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300">
-                            <span>GRAN TOTAL A PAGAR:</span>
-                            <span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span>
-                        </div>
+                        <div className="flex justify-between text-lg text-gray-700"><span>Total Consumo (sin propina):</span><span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span></div>
+                        <div className="flex justify-between text-lg text-green-600"><span>Total Descuento:</span><span>-${summaryData.reduce((sum, d) => sum + d.descuentoAplicado, 0).toLocaleString('es-CL')}</span></div>
+                        <div className="flex justify-between text-lg text-gray-700"><span>Total Propina:</span><span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span></div>
+                        <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300"><span>GRAN TOTAL A PAGAR:</span><span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span></div>
                     </div>
                 </div>
             </div>
-
             <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
             <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Seguro que deseas limpiar el consumo de este comensal?" confirmText="Limpiar" />
             <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Seguro que deseas eliminar a este comensal?" confirmText="Eliminar" />
@@ -728,9 +680,6 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
 const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, discountCap, dispatch }) => {
     const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
-    const [localPercentage, setLocalPercentage] = useState(discountPercentage || '');
-    const [localCap, setLocalCap] = useState(discountCap || '');
-    const [discountError, setDiscountError] = useState('');
 
     useEffect(() => { setLocalProducts(new Map(initialProducts)); }, [initialProducts]);
     
@@ -756,15 +705,24 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
         });
         setNewItem({ name: '', price: '', quantity: '1' });
     };
-    
-    const handleApplyDiscount = () => {
-        const perc = parseFloat(localPercentage); const cap = parseFloat(localCap);
-        if (isNaN(perc) || perc < 0 || perc > 100) { setDiscountError('El porcentaje debe ser entre 0 y 100.'); return; }
-        if (isNaN(cap) || cap < 0) { setDiscountError('El tope debe ser un número no negativo.'); return; }
-        setDiscountError('');
-        dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: localPercentage, cap: localCap } });
-    };
 
+    // --- SECCIÓN MODIFICADA: Lógica de descuento automático ---
+    const handleDiscountChange = (e) => {
+        const { name, value } = e.target;
+        // Determina los nuevos valores para porcentaje y tope
+        const newPercentage = name === 'percentage' ? value : discountPercentage;
+        const newCap = name === 'cap' ? value : discountCap;
+
+        // Despacha la acción en cada cambio
+        dispatch({
+            type: 'APPLY_DISCOUNT',
+            payload: {
+                percentage: newPercentage,
+                cap: newCap
+            }
+        });
+    };
+    
     return (
         <div className="p-4 pb-20">
             <header className="text-center mb-6"> <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1> <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p> </header>
@@ -789,12 +747,11 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
             </div>
             <div className="bg-white p-4 rounded-xl shadow-md mb-6">
                 <h2 className="text-lg font-bold text-blue-600 mb-4">Aplicar Descuento</h2>
+                {/* --- SECCIÓN MODIFICADA: Se quita el botón y se enlaza el valor y onChange --- */}
                 <div className="flex flex-col sm:flex-row gap-3">
-                    <input type="number" placeholder="% de Descuento" value={localPercentage} onChange={e => setLocalPercentage(e.target.value)} className="flex-grow p-3 border rounded-md" min="0" max="100" aria-label="Porcentaje descuento"/>
-                    <input type="number" placeholder="Tope de Descuento ($)" value={localCap} onChange={e => setLocalCap(e.target.value)} className="flex-grow p-3 border rounded-md" min="0" aria-label="Tope descuento"/>
-                    <button onClick={handleApplyDiscount} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Aplicar</button>
+                    <input type="number" name="percentage" placeholder="% de Descuento" value={discountPercentage || ''} onChange={handleDiscountChange} className="flex-grow p-3 border rounded-md" min="0" max="100" aria-label="Porcentaje descuento"/>
+                    <input type="number" name="cap" placeholder="Tope de Descuento ($)" value={discountCap || ''} onChange={handleDiscountChange} className="flex-grow p-3 border rounded-md" min="0" aria-label="Tope descuento"/>
                 </div>
-                {discountError && (<p className="mt-3 text-red-600 text-sm">{discountError}</p>)}
             </div>
             <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-6">
                 <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
