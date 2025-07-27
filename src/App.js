@@ -597,20 +597,220 @@ const App = () => {
 
   // Lógica de negocio (funciones de guardado, carga, etc. - acortadas para brevedad)
   const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
-    // ... implementación existente ...
-  }, [userId]);
+        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+          return Promise.reject(new Error("URL de Apps Script inválida."));
+        }
+        if (!currentShareId || !userId) return Promise.resolve();
+    
+        const promiseWithTimeout = new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
+            }, 8000);
+    
+            const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
+            const script = document.createElement('script');
+    
+            const cleanup = () => {
+                clearTimeout(timeoutId);
+                if (document.body.contains(script)) {
+                    document.body.removeChild(script);
+                }
+                delete window[callbackName];
+            };
+    
+            window[callbackName] = (data) => {
+                cleanup();
+                resolve(data);
+            };
+    
+            script.onerror = () => {
+                cleanup();
+                reject(new Error('Error de red al guardar los datos en Google Sheets.'));
+            };
+    
+            const dataString = JSON.stringify(dataToSave);
+            const encodedData = encodeURIComponent(dataString);
+            script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
+            document.body.appendChild(script);
+        });
+    
+        try {
+          const result = await promiseWithTimeout;
+          if (result.status === 'error') {
+            return Promise.reject(new Error(result.message));
+          }
+          return Promise.resolve();
+        } catch (error) {
+          return Promise.reject(error);
+        }
+    }, [userId]);
   const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
-    // ... implementación existente ...
-  }, []);
-  const handleResetAll = useCallback(() => {
-    // ... implementación existente ...
-  }, []);
+        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
+        if (!idToLoad || idToLoad.startsWith('local-')) return;
+    
+        const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
+        const promise = new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          window[callbackName] = (data) => {
+            if(document.body.contains(script)) document.body.removeChild(script);
+            delete window[callbackName];
+            resolve(data);
+          };
+          script.onerror = () => {
+            if(document.body.contains(script)) document.body.removeChild(script);
+            delete window[callbackName];
+            reject(new Error('Error al cargar los datos desde Google Sheets.'));
+          };
+          script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`;
+          document.body.appendChild(script);
+        });
+    
+        try {
+          const data = await promise;
+          if (data && data.status !== "not_found") {
+            if (hasPendingChanges.current) return;
+            
+            isLoadingFromServer.current = true;
+    
+            const loadedProducts = new Map(
+              Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value])
+            );
+            const loadedSharedInstances = new Map(
+              Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])
+            );
+    
+            setComensales(data.comensales || []);
+            setAvailableProducts(loadedProducts);
+            setActiveSharedInstances(loadedSharedInstances);
+            if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
+                setCurrentStep('assigning');
+            }
+    
+          } else {
+            if (idToLoad === justCreatedSessionId.current) {
+              console.warn("La sesión recién creada aún no está disponible para lectura. Reintentando en el próximo ciclo.");
+              return; 
+            }
+    
+            alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
+            const url = new URL(window.location.href);
+            url.searchParams.delete('id');
+            window.history.replaceState({}, document.title, url.toString());
+            handleResetAll(true);
+          }
+        } catch (error) {
+          console.error("Error al cargar con JSONP:", error);
+        } finally {
+          setTimeout(() => {
+            isLoadingFromServer.current = false;
+          }, 0);
+        }
+    }, [handleResetAll]);
+  const handleResetAll = useCallback((isLocalOnly = false) => {
+        if (!isLocalOnly) {
+          // Lógica de modal de reseteo no se usa actualmente, pero se mantiene
+        } else {
+          setAvailableProducts(new Map());
+          setComensales([]);
+          setActiveSharedInstances(new Map());
+          setShareId(`local-session-${Date.now()}`);
+          setShareLink('');
+          setCurrentStep('landing'); // <-- CAMBIO: Ahora dirige al landing page
+          
+          const url = new URL(window.location.href);
+          url.searchParams.delete('id');
+          window.history.replaceState({}, document.title, url.toString());
+        }
+    }, []);
 
   // UseEffects para autenticación, carga inicial y polling (acortados para brevedad)
-  useEffect(() => { /* ... autenticación ... */ }, []);
-  useEffect(() => { /* ... carga inicial ... */ }, [authReady, userId, loadStateFromGoogleSheets]);
-  useEffect(() => { /* ... polling ... */ }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
-  useEffect(() => { /* ... guardado automático ... */ }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
+  useEffect(() => {
+        const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
+        if (uniqueSessionUserId) setUserId(uniqueSessionUserId);
+        else {
+          const newUniqueId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+          localStorage.setItem('billSplitterUserId', newUniqueId);
+          setUserId(newUniqueId);
+        }
+        setAuthReady(true);
+    }, []);
+
+    useEffect(() => {
+        const performInitialLoad = async () => {
+            if (!authReady || !userId || initialLoadDone.current) return;
+    
+            const urlParams = new URLSearchParams(window.location.search);
+            const idFromUrl = urlParams.get('id');
+    
+            if (idFromUrl) {
+                setShareId(idFromUrl);
+                setCurrentStep('loading'); // Si hay ID en la URL, saltamos el landing
+                await loadStateFromGoogleSheets(idFromUrl);
+            } else {
+                setShareId(`local-session-${Date.now()}`);
+            }
+            
+            initialLoadDone.current = true;
+        };
+    
+        performInitialLoad();
+    }, [authReady, userId, loadStateFromGoogleSheets]);
+
+    useEffect(() => {
+        const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
+        
+        if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
+          return;
+        }
+    
+        let isCancelled = false;
+        const pollTimeout = 5000;
+        let pollTimer;
+    
+        const poll = () => {
+          if (isCancelled) { return; }
+          if (!hasPendingChanges.current) {
+            loadStateFromGoogleSheets(shareId).finally(() => {
+              if (!isCancelled) {
+                pollTimer = setTimeout(poll, pollTimeout);
+              }
+            });
+          } else {
+            if (!isCancelled) {
+              pollTimer = setTimeout(poll, pollTimeout);
+            }
+          }
+        };
+        pollTimer = setTimeout(poll, pollTimeout);
+        return () => {
+          isCancelled = true;
+          clearTimeout(pollTimer);
+        };
+    }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
+    
+    useEffect(() => {
+        if (isLoadingFromServer.current) { return; }
+        if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
+    
+        hasPendingChanges.current = true;
+        const handler = setTimeout(() => {
+          const dataToSave = {
+              comensales,
+              availableProducts: Object.fromEntries(availableProducts),
+              activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+              lastUpdated: new Date().toISOString()
+          };
+          saveStateToGoogleSheets(shareId, dataToSave)
+            .catch((e) => {
+              console.error("El guardado falló:", e.message);
+              alert(`No se pudieron guardar los últimos cambios: ${e.message}`);
+            })
+            .finally(() => {
+              hasPendingChanges.current = false;
+            });
+        }, 1000);
+        return () => clearTimeout(handler);
+    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
   // --- Handlers Corregidos ---
 
@@ -773,15 +973,220 @@ const App = () => {
   };
   
   // Resto de handlers (handleAddComensal, etc.)
-  const handleAddComensal = () => { /* ... implementación existente ... */ };
-  const confirmClearComensal = () => { /* ... implementación existente ... */ };
-  const openClearComensalModal = (id) => { /* ... implementación existente ... */ };
-  const confirmRemoveComensal = () => { /* ... implementación existente ... */ };
-  const openRemoveComensalModal = (id) => { /* ... implementación existente ... */ };
-  const handleImageUpload = (e) => { /* ... implementación existente ... */ };
-  const analyzeImageWithGemini = async (img, mime) => { /* ... implementación existente ... */ };
-  const handleGenerateShareLink = async () => { /* ... implementación existente ... */ };
-  const handlePrint = () => { /* ... implementación existente ... */ };
+  const handleAddComensal = () => {
+        if (newComensalName.trim() === '') {
+          setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre para el nuevo comensal.' });
+          return;
+        }
+        if (comensales.length >= MAX_COMENSALES) {
+          setAddComensalMessage({ type: 'error', text: `No se pueden agregar más de ${MAX_COMENSALES} comensales.` });
+          return;
+        }
+    
+        const newComensalId = comensales.length > 0 ? Math.max(0, ...comensales.map(c => c.id)) + 1 : 1;
+        const newComensal = { id: newComensalId, name: newComensalName.trim(), selectedItems: [], total: 0 };
+        setComensales(prevComensales => [...prevComensales, newComensal]);
+        setNewComensalName('');
+        setAddComensalMessage({ type: 'success', text: `¡Comensal "${newComensal.name}" añadido con éxito!` });
+        setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
+    };
+  
+  const confirmClearComensal = () => {
+        setIsClearComensalModalOpen(false);
+        const comensalToClear = comensales.find(c => c.id === comensalToClearId);
+        if (!comensalToClear) {
+          setComensalToClearId(null);
+          return;
+        }
+    
+        const itemsToRemove = [...comensalToClear.selectedItems];
+        itemsToRemove.forEach(item => {
+            handleRemoveItem(comensalToClear.id, item.type === 'shared' ? item.shareInstanceId : item.id);
+        });
+    
+        setComensales(prev => prev.map(c => c.id === comensalToClearId ? { ...c, selectedItems: [], total: 0 } : c));
+        setComensalToClearId(null);
+    };
+  
+  const openClearComensalModal = (comensalId) => {
+        setComensalToClearId(comensalId);
+        setIsClearComensalModalOpen(true);
+    };
+
+    const confirmRemoveComensal = () => {
+        const idToRemove = comensalToRemoveId;
+        if (idToRemove === null) return;
+    
+        const comensalToRemoveData = comensales.find(c => c.id === idToRemove);
+        if (comensalToRemoveData) {
+          const itemsToRemove = [...comensalToRemoveData.selectedItems];
+          itemsToRemove.forEach(item => {
+            const identifier = item.type === 'shared' ? item.shareInstanceId : item.id;
+            handleRemoveItem(idToRemove, identifier);
+          });
+        }
+    
+        setComensales(prev => prev.filter(c => c.id !== idToRemove));
+        setIsRemoveComensalModalOpen(false);
+        setComensalToRemoveId(null);
+    };
+    
+    const openRemoveComensalModal = (comensalId) => {
+        setComensalToRemoveId(comensalId);
+        setIsRemoveComensalModalOpen(true);
+    };
+
+    const handleImageUpload = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        setIsImageProcessing(true);
+        setImageProcessingError(null);
+    
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Image = reader.result.split(',')[1];
+          analyzeImageWithGemini(base64Image, file.type);
+        };
+        reader.onerror = () => {
+          setImageProcessingError("Error al cargar la imagen.");
+          setIsImageProcessing(false);
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
+        try {
+            const prompt = `Analiza la imagen de recibo adjunta...`; // Prompt acortado para brevedad
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] }
+                }
+            };
+            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
+            if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) throw new Error("Falta la clave de API de Gemini.");
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const result = await response.json();
+    
+            if (result.candidates && result.candidates[0].content.parts[0].text) {
+                const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
+                
+                setComensales([]);
+                setActiveSharedInstances(new Map());
+
+                const newProductsMap = new Map();
+                let currentMaxId = 0;
+                (parsedData.items || []).forEach(item => {
+                    const name = item.name.trim();
+                    const price = parseFloat(item.price);
+                    const quantity = parseInt(item.quantity, 10);
+                    if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
+                        const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
+                        if (existing) {
+                            newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
+                        } else {
+                            currentMaxId++;
+                            newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity });
+                        }
+                    }
+                });
+                setAvailableProducts(newProductsMap);
+                setCurrentStep('reviewing');
+            } else {
+                throw new Error("No se pudo extraer información de la imagen.");
+            }
+        } catch (error) {
+            console.error("Error al analizar la imagen:", error);
+            setImageProcessingError(error.message);
+        } finally {
+            setIsImageProcessing(false);
+        }
+    };
+    
+    const handleGenerateShareLink = async () => {
+        if (!userId) {
+          alert("La sesión no está lista. Intenta de nuevo en un momento.");
+          return;
+        }
+    
+        setIsGeneratingLink(true);
+        const newShareId = `session_${Date.now()}`;
+        justCreatedSessionId.current = newShareId;
+    
+        const dataToSave = {
+          comensales,
+          availableProducts: Object.fromEntries(availableProducts),
+          activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+        };
+    
+        try {
+          await saveStateToGoogleSheets(newShareId, dataToSave);
+          const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`;
+    
+          setShareId(newShareId);
+          setShareLink(fullLink);
+          window.history.pushState({ path: fullLink }, '', fullLink);
+          
+          setTimeout(() => {
+            if (justCreatedSessionId.current === newShareId) {
+              justCreatedSessionId.current = null;
+            }
+          }, 10000);
+    
+        } catch (e) {
+          alert(`Error al generar enlace: ${e.message}`);
+          justCreatedSessionId.current = null;
+        } finally {
+          setIsGeneratingLink(false);
+        }
+    };
+
+    const handleOpenSummaryModal = () => {
+        const data = comensales.map(comensal => {
+          const totalConPropina = comensal.total || 0;
+          const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
+          const propina = totalConPropina - totalSinPropina;
+          return {
+            id: comensal.id,
+            name: comensal.name,
+            totalSinPropina: Math.round(totalSinPropina),
+            propina: Math.round(propina),
+            totalConPropina: Math.round(totalConPropina),
+          };
+        });
+        setSummaryData(data);
+        setIsSummaryModalOpen(true);
+    };
+
+    const handlePrint = () => {
+        const printContent = document.getElementById('print-source-content');
+        if (!printContent) {
+            console.error('Elemento para imprimir no encontrado.');
+            return;
+        }
+    
+        const printWindow = window.open('', '_blank', 'height=800,width=800');
+        if (!printWindow) {
+            alert('Por favor, permite las ventanas emergentes para poder imprimir.');
+            return;
+        }
+        
+        printWindow.document.write('<html><head><title>Resumen de Cuenta</title>');
+        printWindow.document.write('<script src="https://cdn.tailwindcss.com"></script>');
+        printWindow.document.write('</head><body class="p-8">');
+        printWindow.document.write(printContent.innerHTML);
+        printWindow.document.write('</body></html>');
+    
+        printWindow.document.close();
+        
+        setTimeout(() => {
+            printWindow.focus();
+            printWindow.print();
+            printWindow.close();
+        }, 500);
+    };
 
 
   const renderStep = () => {
