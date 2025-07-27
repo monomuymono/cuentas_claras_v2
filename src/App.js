@@ -206,11 +206,9 @@ const App = () => {
     const [summaryData, setSummaryData] = useState([]);
     const [isImageProcessing, setIsImageProcessing] = useState(false);
     const [imageProcessingError, setImageProcessingError] = useState(null);
-    const hasPendingChanges = useRef(false);
+    
     const initialLoadDone = useRef(false);
     const isLoadingFromServer = useRef(false);
-    const justCreatedSessionId = useRef(null);
-    const pollTimer = useRef(null);
 
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { return Promise.reject(new Error("URL de Apps Script inválida.")); }
@@ -219,6 +217,7 @@ const App = () => {
         try { const result = await promiseWithTimeout; if (result.status === 'error') return Promise.reject(new Error(result.message)); return Promise.resolve();
         } catch (error) { return Promise.reject(error); }
     }, [userId]);
+    
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
     
     const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
@@ -229,10 +228,6 @@ const App = () => {
         try {
             const data = await promise;
             if (data && data.status !== "not_found") {
-                if (hasPendingChanges.current) {
-                    console.warn("Polling detectó cambios locales pendientes. Se aborta la actualización desde el servidor para proteger los datos del usuario.");
-                    return;
-                }
                 isLoadingFromServer.current = true;
                 const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value]));
                 const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
@@ -245,45 +240,13 @@ const App = () => {
                     }
                 }
             } else {
-                if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura."); return; }
                 alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
                 handleResetAll();
             }
         } catch (error) { console.error("Error al cargar con JSONP:", error);
         } finally { setTimeout(() => { isLoadingFromServer.current = false; }, 0); }
     }, [handleResetAll]);
-    
-    const stopPolling = useCallback(() => {
-        if (pollTimer.current) {
-            clearTimeout(pollTimer.current);
-        }
-    }, []);
-
-    const startPolling = useCallback(() => {
-        stopPolling();
-        const poll = () => {
-            if (hasPendingChanges.current) {
-                pollTimer.current = setTimeout(poll, 5000);
-                return;
-            }
-            loadStateFromGoogleSheets(shareId).finally(() => {
-                pollTimer.current = setTimeout(poll, 5000);
-            });
-        };
-        pollTimer.current = setTimeout(poll, 5000);
-    }, [shareId, loadStateFromGoogleSheets, stopPolling]);
-
-    // --- EFECTO DE POLLING CORREGIDO: Solo se activa en la pantalla de asignación ---
-    useEffect(() => {
-        const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
-        if (shareId && !shareId.startsWith('local-') && !isAnyModalOpen && currentStep === 'assigning') {
-            startPolling();
-        } else {
-            stopPolling();
-        }
-        return stopPolling;
-    }, [shareId, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen, currentStep, startPolling, stopPolling]);
-    
+        
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
         if (uniqueSessionUserId) { dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
@@ -308,19 +271,24 @@ const App = () => {
         performInitialLoad();
     }, [authReady, userId, loadStateFromGoogleSheets]);
     
+    // --- EFECTO DE AUTOGUARDADO SIMPLIFICADO ---
+    // Se guarda 1.2 segundos después de cualquier cambio en los datos principales.
     useEffect(() => {
-        if (isLoadingFromServer.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) {
+        // No guardar si la app no está lista o si es una sesión local.
+        if (!initialLoadDone.current || isLoadingFromServer.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) {
             return;
         }
-        hasPendingChanges.current = true;
+
         const handler = setTimeout(() => {
+            console.log("Autoguardando cambios...");
             const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: new Date().toISOString() };
             saveStateToGoogleSheets(shareId, dataToSave)
-                .catch((e) => { console.error("El guardado falló:", e.message); alert(`No se pudieron guardar los últimos cambios: ${e.message}`); })
-                .finally(() => {
-                    hasPendingChanges.current = false;
+                .catch((e) => { 
+                    console.error("El guardado automático falló:", e.message); 
+                    // Opcional: mostrar un toast de error al usuario
                 });
         }, 1200);
+
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
     
@@ -386,6 +354,7 @@ const App = () => {
 };
 
 // --- COMPONENTES DE PASOS ---
+// ... (El resto de los componentes de pasos no cambian y se omiten por brevedad)
 const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
 const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
 const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, discountCap, dispatch }) => {
