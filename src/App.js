@@ -1143,23 +1143,6 @@ const App = () => {
         }
     };
 
-    const handleOpenSummaryModal = () => {
-        const data = comensales.map(comensal => {
-          const totalConPropina = comensal.total || 0;
-          const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
-          const propina = totalConPropina - totalSinPropina;
-          return {
-            id: comensal.id,
-            name: comensal.name,
-            totalSinPropina: Math.round(totalSinPropina),
-            propina: Math.round(propina),
-            totalConPropina: Math.round(totalConPropina),
-          };
-        });
-        setSummaryData(data);
-        setIsSummaryModalOpen(true);
-    };
-
     const handlePrint = () => {
         const printContent = document.getElementById('print-source-content');
         if (!printContent) {
