@@ -261,7 +261,7 @@ const initialState = {
     userId: null,
     shareId: null,
     shareLink: '',
-    masterProductList: new Map()
+    masterProductList: new Map(),
     availableProducts: new Map(),
     comensales: [],
     activeSharedInstances: new Map(),
