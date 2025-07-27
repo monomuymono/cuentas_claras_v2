@@ -16,7 +16,6 @@ const ITEM_TYPES = {
 
 // --- COMPONENTES DE LA INTERFAZ ---
 
-// --- NUEVO COMPONENTE: Pantalla de carga para sesiones compartidas ---
 const LoadingSessionStep = () => (
     <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div>
@@ -239,16 +238,13 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
 
 // --- LÓGICA DE ESTADO CENTRALIZADA (REDUCER) ---
 
-// --- FUNCIÓN MODIFICADA: Determina el paso inicial antes de renderizar ---
 const getInitialStep = () => {
-    // Si hay una 'id' en la URL, empezamos en una pantalla de carga especial.
     if (typeof window !== 'undefined') {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('id')) {
             return 'loading_session';
         }
     }
-    // Si no, empezamos en la pantalla de bienvenida.
     return 'landing';
 };
 
@@ -282,7 +278,6 @@ function billReducer(state, action) {
                 discountCap: parseFloat(cap) || 0,
             };
         }
-        // --- ACCIÓN MODIFICADA: ya no fuerza el cambio de pantalla ---
         case 'LOAD_STATE': {
             const { comensales, availableProducts, activeSharedInstances, shareId } = action.payload;
             return {
@@ -519,7 +514,6 @@ const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
     const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
 
-    // ... (El resto de los useState y useRef no cambian) ...
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
     const [authReady, setAuthReady] = useState(false);
     const [newComensalName, setNewComensalName] = useState('');
@@ -538,7 +532,6 @@ const App = () => {
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
 
-    // ... (El resto de las funciones de App.js no cambian, excepto las marcadas) ...
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { return Promise.reject(new Error("URL de Apps Script inválida.")); }
         if (!currentShareId || !userId) return Promise.resolve();
@@ -559,16 +552,11 @@ const App = () => {
                 isLoadingFromServer.current = true;
                 const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value]));
                 const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
-                
-                // Primero, actualiza el estado con los datos
                 dispatch({ type: 'LOAD_STATE', payload: { comensales: data.comensales || [], availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances, shareId: idToLoad } });
-
-                // --- LÓGICA MODIFICADA: Solo cambia el paso en la carga inicial ---
                 if (!initialLoadDone.current) {
                     if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
                         dispatch({ type: 'SET_STEP', payload: 'assigning' });
                     } else {
-                        // Si la sesión está vacía, llevar a la pantalla de carga de ítems
                         dispatch({ type: 'SET_STEP', payload: 'reviewing' });
                     }
                 }
@@ -596,7 +584,6 @@ const App = () => {
             const urlParams = new URLSearchParams(window.location.search);
             const idFromUrl = urlParams.get('id');
             if (idFromUrl) {
-                // El estado inicial ya es 'loading_session', solo cargamos los datos
                 await loadStateFromGoogleSheets(idFromUrl);
             } else { 
                 dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` }); 
@@ -629,6 +616,40 @@ const App = () => {
         }, 1000);
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, currentStep]);
+
+    // --- NUEVA FUNCIÓN: Para crear la sesión al empezar ---
+    const handleStartNewSession = async () => {
+        if (!userId) {
+            alert("La sesión de usuario no está lista. Inténtalo de nuevo en un momento.");
+            return;
+        }
+        setIsGeneratingLink(true);
+        const newShareId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const initialData = { comensales: [], availableProducts: {}, activeSharedInstances: {} };
+
+        try {
+            await saveStateToGoogleSheets(newShareId, initialData);
+            const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`;
+            dispatch({ type: 'SET_SHARE_ID', payload: newShareId });
+            dispatch({ type: 'SET_STEP', payload: 'loading' });
+            window.history.pushState({ path: fullLink }, '', fullLink);
+        } catch (e) {
+            alert(`Error al crear la sesión: ${e.message}`);
+        } finally {
+            setIsGeneratingLink(false);
+        }
+    };
+    
+    // --- FUNCIÓN MODIFICADA: Ahora solo muestra el link de la sesión activa ---
+    const handleGenerateShareLink = () => {
+        if (shareId && !shareId.startsWith('local-')) {
+            const fullLink = `${window.location.origin}${window.location.pathname}?id=${shareId}`;
+            dispatch({ type: 'SET_SHARE_LINK', payload: fullLink });
+        } else {
+            alert("Error: No hay una sesión compartida activa para generar un enlace.");
+        }
+    };
+
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
     const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
@@ -639,14 +660,12 @@ const App = () => {
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
     const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); let currentMaxId = 0; (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
-    const handleGenerateShareLink = async () => { if (!userId) { alert("La sesión no está lista."); return; } setIsGeneratingLink(true); const newShareId = `session_${Date.now()}`; justCreatedSessionId.current = newShareId; const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])) }; try { await saveStateToGoogleSheets(newShareId, dataToSave); const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`; dispatch({ type: 'SET_SHARE_ID', payload: newShareId }); dispatch({ type: 'SET_SHARE_LINK', payload: fullLink }); window.history.pushState({ path: fullLink }, '', fullLink); setTimeout(() => { if (justCreatedSessionId.current === newShareId) justCreatedSessionId.current = null; }, 10000); } catch (e) { alert(`Error al generar enlace: ${e.message}`); justCreatedSessionId.current = null; } finally { setIsGeneratingLink(false); } };
     const handleOpenSummaryModal = () => { const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0); const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity); const data = comensales.map(comensal => { const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0); const propina = totalSinPropina * TIP_PERCENTAGE; const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0; const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal; const totalConPropina = totalSinPropina + propina - descuentoAplicado; return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina) }; }); setSummaryData(data); setIsSummaryModalOpen(true); };
     const handlePrint = () => { const printContent = document.getElementById('print-source-content'); if (!printContent) return; const printWindow = window.open('', '_blank', 'height=800,width=800'); if (!printWindow) { alert('Permite las ventanas emergentes.'); return; } printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500); };
 
     const renderStep = () => {
         switch (currentStep) {
-            case 'landing': return <LandingStep onStart={() => dispatch({ type: 'SET_STEP', payload: 'loading' })} />;
-            // --- NUEVO CASO DE RENDERIZADO ---
+            case 'landing': return <LandingStep onStart={handleStartNewSession} />;
             case 'loading_session': return <LoadingSessionStep />;
             case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
             case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts })} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
@@ -657,7 +676,7 @@ const App = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-            <LoadingModal isOpen={isGeneratingLink} message="Generando enlace..." />
+            <LoadingModal isOpen={isGeneratingLink} message="Creando sesión..." />
             <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
             <div style={{ display: 'none' }}>
                 <div id="print-source-content">
@@ -691,9 +710,9 @@ const App = () => {
 };
 
 // --- COMPONENTES DE PASOS ---
+// ... (El resto de los componentes de pasos no cambian) ...
 const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
 const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
-
 const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, discountCap, dispatch }) => {
     const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
@@ -772,7 +791,6 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
         </div>
     );
 };
-
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
@@ -844,7 +862,7 @@ const AssigningStep = ({
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4 text-center">Herramientas</h2>
                 <div className="space-y-3">
-                    <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg> <span className="font-semibold">Generar Link de Sesión</span> </button>
+                    <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg> <span className="font-semibold">Mostrar Link de Sesión</span> </button>
                     <button onClick={onOpenShareModal} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg> <span className="font-semibold">Compartir un Ítem</span> </button>
                     <button onClick={onRestart} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path d="M4 9a9 9 0 0114.65-4.65l-2.12 2.12a5 5 0 00-9.07 4.53" /><path d="M20 15a9 9 0 01-14.65 4.65l2.12-2.12a5 5 0 009.07-4.53" /></svg> <span className="font-semibold">Empezar de Nuevo</span> </button>
                 </div>
