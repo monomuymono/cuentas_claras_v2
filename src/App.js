@@ -736,25 +736,21 @@ const App = () => {
     }, []);
 
     useEffect(() => {
-        const performInitialLoad = async () => {
-            if (!authReady || !userId || initialLoadDone.current) return;
+    const performInitialLoad = async () => {
+        // ...
+        const urlParams = new URLSearchParams(window.location.search);
+        const idFromUrl = urlParams.get('id');
     
-            const urlParams = new URLSearchParams(window.location.search);
-            const idFromUrl = urlParams.get('id');
-    
-            if (idFromUrl) {
-                setShareId(idFromUrl);
-                setCurrentStep('loading'); // Si hay ID en la URL, saltamos el landing
-                await loadStateFromGoogleSheets(idFromUrl);
-            } else {
-                setShareId(`local-session-${Date.now()}`);
-            }
-            
-            initialLoadDone.current = true;
-        };
-    
-        performInitialLoad();
-    }, [authReady, userId, loadStateFromGoogleSheets]);
+        if (idFromUrl) {
+            // Si hay un ID en la URL, se salta el 'landing' y va directo a 'loading'
+            setShareId(idFromUrl);
+            setCurrentStep('loading'); // <--- ESTA LÍNEA SE SALTA EL INICIO
+            await loadStateFromGoogleSheets(idFromUrl);
+        }
+        // ...
+    };
+    performInitialLoad();
+}, [authReady, userId, loadStateFromGoogleSheets]);
 
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
