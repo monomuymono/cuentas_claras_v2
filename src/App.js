@@ -376,9 +376,10 @@ function billReducer(state, action) {
             
             return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances };
         }
+        // --- SECCIÓN CORREGIDA: Lógica de REMOVE_ITEM_FROM_COMENSAL ---
         case 'REMOVE_ITEM_FROM_COMENSAL': {
             const { comensalId, itemIdentifier } = action.payload;
-            let comensalTarget = state.comensales.find(c => c.id === comensalId);
+            const comensalTarget = state.comensales.find(c => c.id === comensalId);
             if (!comensalTarget) return state;
 
             const itemIndex = comensalTarget.selectedItems.findIndex(item =>
@@ -387,60 +388,63 @@ function billReducer(state, action) {
             );
             if (itemIndex === -1) return state;
 
-            const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
-            let updatedComensales = [...state.comensales];
+            const itemToRemove = comensalTarget.selectedItems[itemIndex];
             let updatedProducts = new Map(state.availableProducts);
             let updatedSharedInstances = new Map(state.activeSharedInstances);
 
-            if (itemToRemove.type === ITEM_TYPES.FULL) {
-                updatedComensales = state.comensales.map(c => {
-                    if (c.id === comensalId) {
-                        const updatedItems = [...c.selectedItems];
-                        if (updatedItems[itemIndex].quantity > 1) {
-                            updatedItems[itemIndex].quantity -= 1;
-                        } else {
-                            updatedItems.splice(itemIndex, 1);
-                        }
-                        return { ...c, selectedItems: updatedItems };
-                    }
-                    return c;
-                });
-                const product = updatedProducts.get(itemToRemove.id);
-                if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-            }
+            // Se procesa de forma inmutable para ambos casos (FULL y SHARED)
+            let updatedComensales = state.comensales.map(comensal => {
+                if (comensal.id === comensalId) {
+                    const items = [...comensal.selectedItems];
+                    const itemToUpdate = items[itemIndex];
 
+                    if (itemToUpdate.type === ITEM_TYPES.FULL) {
+                        if (itemToUpdate.quantity > 1) {
+                            // Crea un nuevo objeto de item en lugar de mutar el anterior
+                            const updatedItem = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 };
+                            items[itemIndex] = updatedItem;
+                        } else {
+                            items.splice(itemIndex, 1);
+                        }
+                        const product = updatedProducts.get(itemToRemove.id);
+                        if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
+                    }
+                    return { ...comensal, selectedItems: items };
+                }
+                return comensal;
+            });
+            
             if (itemToRemove.type === ITEM_TYPES.SHARED) {
                 const { shareInstanceId, id: originalProductId } = itemToRemove;
                 const shareGroup = updatedSharedInstances.get(shareInstanceId);
-                if (!shareGroup) return state;
+                if (shareGroup) {
+                    shareGroup.delete(comensalId);
+                    if (shareGroup.size === 0) {
+                        updatedSharedInstances.delete(shareInstanceId);
+                        const product = updatedProducts.get(originalProductId);
+                        if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
+                    }
 
-                shareGroup.delete(comensalId);
-                
-                if (shareGroup.size === 0) {
-                    updatedSharedInstances.delete(shareInstanceId);
-                    const product = updatedProducts.get(originalProductId);
-                    if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
+                    updatedComensales = updatedComensales.map(c => {
+                        let comensalToUpdate = { ...c };
+                        if (c.id === comensalId) {
+                            comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
+                        }
+                        if (shareGroup.size > 0 && shareGroup.has(c.id)) {
+                            const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
+                            const newSharerCount = shareGroup.size;
+                            const newBasePricePerShare = totalItemBasePrice / newSharerCount;
+                            
+                            comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => {
+                                if (String(item.shareInstanceId) === String(shareInstanceId)) {
+                                    return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
+                                }
+                                return item;
+                            });
+                        }
+                        return comensalToUpdate;
+                    });
                 }
-
-                updatedComensales = state.comensales.map(c => {
-                    let comensalToUpdate = { ...c };
-                    if (c.id === comensalId) {
-                        comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
-                    }
-                    if (shareGroup.size > 0 && shareGroup.has(c.id)) {
-                        const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
-                        const newSharerCount = shareGroup.size;
-                        const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-                        
-                        comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => {
-                            if (String(item.shareInstanceId) === String(shareInstanceId)) {
-                                return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
-                            }
-                            return item;
-                        });
-                    }
-                    return comensalToUpdate;
-                });
             }
 
             return { ...state, comensales: updatedComensales, availableProducts: updatedProducts, activeSharedInstances: updatedSharedInstances };
@@ -517,6 +521,7 @@ function billReducer(state, action) {
             return state;
     }
 }
+
 
 // --- Componente principal de la aplicación ---
 const App = () => {
