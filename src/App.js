@@ -245,6 +245,7 @@ const initialState = {
     discountCap: 0,
 };
 
+// --- REEMPLAZA ESTA FUNCIÓN COMPLETA EN TU CÓDIGO ---
 function billReducer(state, action) {
     switch (action.type) {
         case 'SET_STEP':
@@ -255,7 +256,6 @@ function billReducer(state, action) {
             return { ...state, shareId: action.payload };
         case 'SET_SHARE_LINK':
             return { ...state, shareLink: action.payload };
-        // --- NUEVA SECCIÓN: Acción para aplicar el descuento ---
         case 'APPLY_DISCOUNT': {
             const { percentage, cap } = action.payload;
             return {
@@ -280,6 +280,9 @@ function billReducer(state, action) {
             return {
                 ...state,
                 availableProducts: action.payload,
+                // Al confirmar productos, reseteamos el descuento
+                discountPercentage: 0,
+                discountCap: 0,
                 currentStep: 'assigning'
             };
         case 'ADD_COMENSAL': {
@@ -299,21 +302,19 @@ function billReducer(state, action) {
             const newComensales = state.comensales.map(comensal => {
                 if (comensal.id === comensalId) {
                     const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
-                    // El precio con propina ya no se almacena aquí. Se calcula en la vista.
                     const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL);
                     
                     if (existingItemIndex !== -1) {
                         updatedComensal.selectedItems[existingItemIndex].quantity += 1;
                     } else {
                         updatedComensal.selectedItems.push({
-                            ...productInStock,
-                            // Almacenamos el precio base original
+                            id: productInStock.id,
+                            name: productInStock.name,
                             originalBasePrice: Number(productInStock.price),
                             quantity: 1,
                             type: ITEM_TYPES.FULL,
                         });
                     }
-                    // El total se calculará en la vista para incluir propinas y descuentos
                     return updatedComensal;
                 }
                 return comensal;
@@ -324,7 +325,7 @@ function billReducer(state, action) {
         case 'SHARE_ITEM': {
             const { productId, sharingComensalIds } = action.payload;
             const productToShare = state.availableProducts.get(productId);
-            if (!productToShare || Number(productToShare.quantity) <= 0) return state;
+            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || Number(productToShare.quantity) <= 0) return state;
 
             const newProductsMap = new Map(state.availableProducts);
             newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 });
@@ -338,13 +339,9 @@ function billReducer(state, action) {
             const newComensales = state.comensales.map(comensal => {
                 if (sharingComensalIds.includes(comensal.id)) {
                     const updatedItems = [...comensal.selectedItems, {
-                        id: productToShare.id, 
-                        name: productToShare.name,
-                        originalBasePrice: basePricePerShare, 
-                        quantity: 1, 
-                        type: ITEM_TYPES.SHARED,
-                        sharedByCount: Number(sharingComensalIds.length), 
-                        shareInstanceId: shareInstanceId
+                        id: productToShare.id, name: productToShare.name,
+                        originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
+                        sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId
                     }];
                     return { ...comensal, selectedItems: updatedItems };
                 }
@@ -431,6 +428,7 @@ function billReducer(state, action) {
             const newSharedInstances = new Map(state.activeSharedInstances);
             const sharedGroupsToUpdate = new Map();
 
+            // 1. Devolver ítems y marcar grupos compartidos para actualizar
             comensalToClear.selectedItems.forEach(item => {
                 if (item.type === ITEM_TYPES.FULL) {
                     const product = newProducts.get(item.id);
@@ -439,7 +437,6 @@ function billReducer(state, action) {
                     const shareGroup = newSharedInstances.get(item.shareInstanceId);
                     if (!shareGroup) return;
                     shareGroup.delete(comensalIdToClear);
-
                     if (shareGroup.size === 0) {
                         newSharedInstances.delete(item.shareInstanceId);
                         const product = newProducts.get(item.id);
@@ -453,11 +450,11 @@ function billReducer(state, action) {
                 }
             });
 
+            // 2. Recalcular para los comensales restantes y limpiar el comensal objetivo
             const finalComensales = state.comensales.map(comensal => {
                 if (comensal.id === comensalIdToClear) {
-                    return { ...comensal, selectedItems: [] };
+                    return { ...comensal, selectedItems: [], total: 0 };
                 }
-
                 let needsRecalculation = false;
                 const updatedItems = comensal.selectedItems.map(item => {
                     if (item.type === ITEM_TYPES.SHARED && sharedGroupsToUpdate.has(item.shareInstanceId)) {
@@ -468,7 +465,6 @@ function billReducer(state, action) {
                     }
                     return item;
                 });
-
                 if (needsRecalculation) {
                     return { ...comensal, selectedItems: updatedItems };
                 }
