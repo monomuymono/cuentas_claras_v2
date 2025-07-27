@@ -14,7 +14,15 @@ const ITEM_TYPES = {
     SHARED: 'shared'
 };
 
-// --- COMPONENTES DE LA INTERFAZ (Sin cambios) ---
+// --- COMPONENTES DE LA INTERFAZ ---
+
+// --- NUEVO COMPONENTE: Pantalla de carga para sesiones compartidas ---
+const LoadingSessionStep = () => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div>
+      <p className="text-blue-700 text-lg font-semibold">Cargando sesión compartida...</p>
+    </div>
+);
 
 const LoadingModal = ({ isOpen, message }) => {
   if (!isOpen) return null;
@@ -231,8 +239,21 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
 
 // --- LÓGICA DE ESTADO CENTRALIZADA (REDUCER) ---
 
+// --- FUNCIÓN MODIFICADA: Determina el paso inicial antes de renderizar ---
+const getInitialStep = () => {
+    // Si hay una 'id' en la URL, empezamos en una pantalla de carga especial.
+    if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('id')) {
+            return 'loading_session';
+        }
+    }
+    // Si no, empezamos en la pantalla de bienvenida.
+    return 'landing';
+};
+
 const initialState = {
-    currentStep: 'landing',
+    currentStep: getInitialStep(),
     userId: null,
     shareId: null,
     shareLink: '',
@@ -261,16 +282,15 @@ function billReducer(state, action) {
                 discountCap: parseFloat(cap) || 0,
             };
         }
+        // --- ACCIÓN MODIFICADA: ya no fuerza el cambio de pantalla ---
         case 'LOAD_STATE': {
             const { comensales, availableProducts, activeSharedInstances, shareId } = action.payload;
-            const step = (availableProducts.size > 0 || comensales.length > 0) ? 'assigning' : 'landing';
             return {
                 ...state,
                 comensales,
                 availableProducts,
                 activeSharedInstances,
                 shareId,
-                currentStep: step,
             };
         }
         case 'SET_PRODUCTS_FOR_REVIEW':
@@ -499,11 +519,11 @@ const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
     const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
 
+    // ... (El resto de los useState y useRef no cambian) ...
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
     const [authReady, setAuthReady] = useState(false);
     const [newComensalName, setNewComensalName] = useState('');
     const [addComensalMessage, setAddComensalMessage] = useState({ type: '', text: '' });
-    
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [isClearComensalModalOpen, setIsClearComensalModalOpen] = useState(false);
     const [comensalToClearId, setComensalToClearId] = useState(null);
@@ -511,30 +531,18 @@ const App = () => {
     const [comensalToRemoveId, setComensalToRemoveId] = useState(null);
     const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
     const [summaryData, setSummaryData] = useState([]);
-    
     const [isImageProcessing, setIsImageProcessing] = useState(false);
     const [imageProcessingError, setImageProcessingError] = useState(null);
-    
     const hasPendingChanges = useRef(false);
     const initialLoadDone = useRef(false);
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
 
-    // ... (El resto de las funciones de App.js no cambian) ...
+    // ... (El resto de las funciones de App.js no cambian, excepto las marcadas) ...
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { return Promise.reject(new Error("URL de Apps Script inválida.")); }
         if (!currentShareId || !userId) return Promise.resolve();
-        const promiseWithTimeout = new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => { reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).')); }, 8000);
-            const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
-            const script = document.createElement('script');
-            const cleanup = () => { clearTimeout(timeoutId); if (document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; };
-            window[callbackName] = (data) => { cleanup(); resolve(data); };
-            script.onerror = () => { cleanup(); reject(new Error('Error de red al guardar los datos en Google Sheets.')); };
-            const dataString = JSON.stringify(dataToSave); const encodedData = encodeURIComponent(dataString);
-            script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
-            document.body.appendChild(script);
-        });
+        const promiseWithTimeout = new Promise((resolve, reject) => { const timeoutId = setTimeout(() => { reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).')); }, 8000); const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random()); const script = document.createElement('script'); const cleanup = () => { clearTimeout(timeoutId); if (document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; }; window[callbackName] = (data) => { cleanup(); resolve(data); }; script.onerror = () => { cleanup(); reject(new Error('Error de red al guardar los datos en Google Sheets.')); }; const dataString = JSON.stringify(dataToSave); const encodedData = encodeURIComponent(dataString); script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`; document.body.appendChild(script); });
         try { const result = await promiseWithTimeout; if (result.status === 'error') return Promise.reject(new Error(result.message)); return Promise.resolve();
         } catch (error) { return Promise.reject(error); }
     }, [userId]);
@@ -543,21 +551,27 @@ const App = () => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
         if (!idToLoad || idToLoad.startsWith('local-')) return;
         const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
-        const promise = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            window[callbackName] = (data) => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; resolve(data); };
-            script.onerror = () => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; reject(new Error('Error al cargar los datos desde Google Sheets.')); };
-            script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`;
-            document.body.appendChild(script);
-        });
+        const promise = new Promise((resolve, reject) => { const script = document.createElement('script'); window[callbackName] = (data) => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; resolve(data); }; script.onerror = () => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; reject(new Error('Error al cargar los datos desde Google Sheets.')); }; script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`; document.body.appendChild(script); });
         try {
             const data = await promise;
             if (data && data.status !== "not_found") {
-                if (hasPendingChanges.current) return;
+                if (hasPendingChanges.current && !initialLoadDone.current) return;
                 isLoadingFromServer.current = true;
                 const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value]));
                 const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
+                
+                // Primero, actualiza el estado con los datos
                 dispatch({ type: 'LOAD_STATE', payload: { comensales: data.comensales || [], availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances, shareId: idToLoad } });
+
+                // --- LÓGICA MODIFICADA: Solo cambia el paso en la carga inicial ---
+                if (!initialLoadDone.current) {
+                    if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
+                        dispatch({ type: 'SET_STEP', payload: 'assigning' });
+                    } else {
+                        // Si la sesión está vacía, llevar a la pantalla de carga de ítems
+                        dispatch({ type: 'SET_STEP', payload: 'reviewing' });
+                    }
+                }
             } else {
                 if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura."); return; }
                 alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
@@ -582,10 +596,11 @@ const App = () => {
             const urlParams = new URLSearchParams(window.location.search);
             const idFromUrl = urlParams.get('id');
             if (idFromUrl) {
-                dispatch({ type: 'SET_SHARE_ID', payload: idFromUrl });
-                dispatch({ type: 'SET_STEP', payload: 'loading' });
+                // El estado inicial ya es 'loading_session', solo cargamos los datos
                 await loadStateFromGoogleSheets(idFromUrl);
-            } else { dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` }); }
+            } else { 
+                dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` }); 
+            }
             initialLoadDone.current = true;
         };
         performInitialLoad();
@@ -604,7 +619,7 @@ const App = () => {
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
     useEffect(() => {
         if (isLoadingFromServer.current) return;
-        if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
+        if ((!initialLoadDone.current && currentStep !== 'landing') || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
         hasPendingChanges.current = true;
         const handler = setTimeout(() => {
             const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: new Date().toISOString() };
@@ -613,7 +628,7 @@ const App = () => {
                 .finally(() => { hasPendingChanges.current = false; });
         }, 1000);
         return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
+    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, currentStep]);
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
     const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
@@ -631,6 +646,8 @@ const App = () => {
     const renderStep = () => {
         switch (currentStep) {
             case 'landing': return <LandingStep onStart={() => dispatch({ type: 'SET_STEP', payload: 'loading' })} />;
+            // --- NUEVO CASO DE RENDERIZADO ---
+            case 'loading_session': return <LoadingSessionStep />;
             case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
             case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts })} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
             case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
@@ -705,22 +722,12 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
         });
         setNewItem({ name: '', price: '', quantity: '1' });
     };
-
-    // --- SECCIÓN MODIFICADA: Lógica de descuento automático ---
+    
     const handleDiscountChange = (e) => {
         const { name, value } = e.target;
-        // Determina los nuevos valores para porcentaje y tope
         const newPercentage = name === 'percentage' ? value : discountPercentage;
         const newCap = name === 'cap' ? value : discountCap;
-
-        // Despacha la acción en cada cambio
-        dispatch({
-            type: 'APPLY_DISCOUNT',
-            payload: {
-                percentage: newPercentage,
-                cap: newCap
-            }
-        });
+        dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: newPercentage, cap: newCap }});
     };
     
     return (
@@ -747,7 +754,6 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
             </div>
             <div className="bg-white p-4 rounded-xl shadow-md mb-6">
                 <h2 className="text-lg font-bold text-blue-600 mb-4">Aplicar Descuento</h2>
-                {/* --- SECCIÓN MODIFICADA: Se quita el botón y se enlaza el valor y onChange --- */}
                 <div className="flex flex-col sm:flex-row gap-3">
                     <input type="number" name="percentage" placeholder="% de Descuento" value={discountPercentage || ''} onChange={handleDiscountChange} className="flex-grow p-3 border rounded-md" min="0" max="100" aria-label="Porcentaje descuento"/>
                     <input type="number" name="cap" placeholder="Tope de Descuento ($)" value={discountCap || ''} onChange={handleDiscountChange} className="flex-grow p-3 border rounded-md" min="0" aria-label="Tope descuento"/>
