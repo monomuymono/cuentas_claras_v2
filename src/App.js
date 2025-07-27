@@ -192,7 +192,6 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
                 <span>Consumo (sin propina):</span>
                 <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
               </div>
-               {/* --- SECCIÓN MODIFICADA: Mostrar descuento en el resumen final --- */}
               {diner.descuentoAplicado > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span>Descuento:</span>
@@ -232,7 +231,6 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
 
 // --- LÓGICA DE ESTADO CENTRALIZADA (REDUCER) ---
 
-// --- SECCIÓN MODIFICADA: Se añaden los campos de descuento al estado inicial ---
 const initialState = {
     currentStep: 'landing',
     userId: null,
@@ -245,7 +243,6 @@ const initialState = {
     discountCap: 0,
 };
 
-// --- REEMPLAZA ESTA FUNCIÓN COMPLETA EN TU CÓDIGO ---
 function billReducer(state, action) {
     switch (action.type) {
         case 'SET_STEP':
@@ -280,9 +277,6 @@ function billReducer(state, action) {
             return {
                 ...state,
                 availableProducts: action.payload,
-                // Al confirmar productos, reseteamos el descuento
-                discountPercentage: 0,
-                discountCap: 0,
                 currentStep: 'assigning'
             };
         case 'ADD_COMENSAL': {
@@ -428,7 +422,6 @@ function billReducer(state, action) {
             const newSharedInstances = new Map(state.activeSharedInstances);
             const sharedGroupsToUpdate = new Map();
 
-            // 1. Devolver ítems y marcar grupos compartidos para actualizar
             comensalToClear.selectedItems.forEach(item => {
                 if (item.type === ITEM_TYPES.FULL) {
                     const product = newProducts.get(item.id);
@@ -450,7 +443,6 @@ function billReducer(state, action) {
                 }
             });
 
-            // 2. Recalcular para los comensales restantes y limpiar el comensal objetivo
             const finalComensales = state.comensales.map(comensal => {
                 if (comensal.id === comensalIdToClear) {
                     return { ...comensal, selectedItems: [], total: 0 };
@@ -499,13 +491,11 @@ const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
     const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
 
-    // --- ESTADOS LOCALES (No pertenecen al reducer global) ---
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
     const [authReady, setAuthReady] = useState(false);
     const [newComensalName, setNewComensalName] = useState('');
     const [addComensalMessage, setAddComensalMessage] = useState({ type: '', text: '' });
     
-    // Estados de modales
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [isClearComensalModalOpen, setIsClearComensalModalOpen] = useState(false);
     const [comensalToClearId, setComensalToClearId] = useState(null);
@@ -522,37 +512,22 @@ const App = () => {
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
 
-    // --- LÓGICA DE NEGOCIO Y EFECTOS ---
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
-          return Promise.reject(new Error("URL de Apps Script inválida."));
-        }
+        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { return Promise.reject(new Error("URL de Apps Script inválida.")); }
         if (!currentShareId || !userId) return Promise.resolve();
-    
         const promiseWithTimeout = new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => { reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).')); }, 8000);
             const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
             const script = document.createElement('script');
-            const cleanup = () => {
-                clearTimeout(timeoutId);
-                if (document.body.contains(script)) document.body.removeChild(script);
-                delete window[callbackName];
-            };
+            const cleanup = () => { clearTimeout(timeoutId); if (document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; };
             window[callbackName] = (data) => { cleanup(); resolve(data); };
             script.onerror = () => { cleanup(); reject(new Error('Error de red al guardar los datos en Google Sheets.')); };
-            const dataString = JSON.stringify(dataToSave);
-            const encodedData = encodeURIComponent(dataString);
+            const dataString = JSON.stringify(dataToSave); const encodedData = encodeURIComponent(dataString);
             script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
             document.body.appendChild(script);
         });
-    
-        try {
-            const result = await promiseWithTimeout;
-            if (result.status === 'error') return Promise.reject(new Error(result.message));
-            return Promise.resolve();
-        } catch (error) {
-            return Promise.reject(error);
-        }
+        try { const result = await promiseWithTimeout; if (result.status === 'error') return Promise.reject(new Error(result.message)); return Promise.resolve();
+        } catch (error) { return Promise.reject(error); }
     }, [userId]);
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
@@ -560,7 +535,6 @@ const App = () => {
     const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
         if (!idToLoad || idToLoad.startsWith('local-')) return;
-    
         const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
         const promise = new Promise((resolve, reject) => {
             const script = document.createElement('script');
@@ -569,7 +543,6 @@ const App = () => {
             script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`;
             document.body.appendChild(script);
         });
-    
         try {
             const data = await promise;
             if (data && data.status !== "not_found") {
@@ -577,17 +550,9 @@ const App = () => {
                 isLoadingFromServer.current = true;
                 const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value]));
                 const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
-                dispatch({
-                    type: 'LOAD_STATE',
-                    payload: {
-                        comensales: data.comensales || [],
-                        availableProducts: loadedProducts,
-                        activeSharedInstances: loadedSharedInstances,
-                        shareId: idToLoad
-                    }
-                });
+                dispatch({ type: 'LOAD_STATE', payload: { comensales: data.comensales || [], availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances, shareId: idToLoad } });
             } else {
-                if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura. Reintentando en el próximo ciclo."); return; }
+                if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura."); return; }
                 alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
                 handleResetAll();
             }
@@ -615,9 +580,7 @@ const App = () => {
                 dispatch({ type: 'SET_SHARE_ID', payload: idFromUrl });
                 dispatch({ type: 'SET_STEP', payload: 'loading' });
                 await loadStateFromGoogleSheets(idFromUrl);
-            } else {
-                dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` });
-            }
+            } else { dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` }); }
             initialLoadDone.current = true;
         };
         performInitialLoad();
@@ -626,16 +589,11 @@ const App = () => {
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
         if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) return;
-        let isCancelled = false;
-        const pollTimeout = 5000;
-        let pollTimer;
+        let isCancelled = false; const pollTimeout = 5000; let pollTimer;
         const poll = () => {
             if (isCancelled) return;
-            if (!hasPendingChanges.current) {
-                loadStateFromGoogleSheets(shareId).finally(() => { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); });
-            } else {
-                if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout);
-            }
+            if (!hasPendingChanges.current) { loadStateFromGoogleSheets(shareId).finally(() => { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); });
+            } else { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); }
         };
         pollTimer = setTimeout(poll, pollTimeout);
         return () => { isCancelled = true; clearTimeout(pollTimer); };
@@ -654,7 +612,6 @@ const App = () => {
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
-    // --- MANEJADORES DE ACCIONES ---
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
     const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
@@ -666,97 +623,21 @@ const App = () => {
         setNewComensalName('');
         setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
     };
-    const confirmClearComensal = () => {
-        if (comensalToClearId !== null) dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToClearId });
-        setIsClearComensalModalOpen(false); setComensalToClearId(null);
-    };
+    const confirmClearComensal = () => { if (comensalToClearId !== null) dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToClearId }); setIsClearComensalModalOpen(false); setComensalToClearId(null); };
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
-    const confirmRemoveComensal = () => {
-        if (comensalToRemoveId !== null) {
-            dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId });
-            dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId });
-        }
-        setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null);
-    };
+    const confirmRemoveComensal = () => { if (comensalToRemoveId !== null) { dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId }); dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId }); } setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
-    const handleImageUpload = (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        setIsImageProcessing(true); setImageProcessingError(null);
-        const reader = new FileReader();
-        reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); };
-        reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); };
-        reader.readAsDataURL(file);
-    };
-    const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
-        try {
-            const prompt = `Analiza la imagen de recibo adjunta. Extrae cada ítem con su nombre, cantidad y precio unitario. El formato de salida debe ser un objeto JSON con una única clave "items", que es un array de objetos. Cada objeto debe tener las claves "name" (string), "quantity" (integer) y "price" (number, sin puntos de miles). Asegúrate de que los precios sean correctos. Si un ítem no tiene cantidad explícita, asume que es 1.`;
-            const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } };
-            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
-            if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) throw new Error("Falta la clave de API de Gemini.");
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            const result = await response.json();
-            if (result.candidates && result.candidates[0].content.parts[0].text) {
-                const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
-                const newProductsMap = new Map(); let currentMaxId = 0;
-                (parsedData.items || []).forEach(item => {
-                    const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10);
-                    if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
-                        const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
-                        if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
-                        } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); }
-                    }
-                });
-                dispatch({ type: 'RESET_SESSION' });
-                dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: newProductsMap });
-            } else { throw new Error(result.error?.message || "No se pudo extraer información de la imagen."); }
-        } catch (error) { console.error("Error al analizar la imagen:", error); setImageProcessingError(error.message);
-        } finally { setIsImageProcessing(false); }
-    };
-    const handleGenerateShareLink = async () => {
-        if (!userId) { alert("La sesión no está lista."); return; }
-        setIsGeneratingLink(true); const newShareId = `session_${Date.now()}`; justCreatedSessionId.current = newShareId;
-        const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])) };
-        try {
-            await saveStateToGoogleSheets(newShareId, dataToSave);
-            const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`;
-            dispatch({ type: 'SET_SHARE_ID', payload: newShareId });
-            dispatch({ type: 'SET_SHARE_LINK', payload: fullLink });
-            window.history.pushState({ path: fullLink }, '', fullLink);
-            setTimeout(() => { if (justCreatedSessionId.current === newShareId) justCreatedSessionId.current = null; }, 10000);
-        } catch (e) { alert(`Error al generar enlace: ${e.message}`); justCreatedSessionId.current = null;
-        } finally { setIsGeneratingLink(false); }
-    };
-    const handleOpenSummaryModal = () => {
-        const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
-        const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
-
-        const data = comensales.map(comensal => {
-            const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
-            const propina = totalSinPropina * TIP_PERCENTAGE;
-            const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0;
-            const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal;
-            const totalConPropina = totalSinPropina + propina - descuentoAplicado;
-
-            return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina) };
-        });
-        setSummaryData(data); setIsSummaryModalOpen(true);
-    };
-    const handlePrint = () => {
-        const printContent = document.getElementById('print-source-content'); if (!printContent) { console.error('Elemento para imprimir no encontrado.'); return; }
-        const printWindow = window.open('', '_blank', 'height=800,width=800'); if (!printWindow) { alert('Por favor, permite las ventanas emergentes.'); return; }
-        printWindow.document.write('<html><head><title>Resumen de Cuenta</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">');
-        printWindow.document.write(printContent.innerHTML); printWindow.document.write('</body></html>');
-        printWindow.document.close();
-        setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500);
-    };
+    const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
+    const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de recibo adjunta...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_API_KEY"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); let currentMaxId = 0; (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
+    const handleGenerateShareLink = async () => { if (!userId) { alert("La sesión no está lista."); return; } setIsGeneratingLink(true); const newShareId = `session_${Date.now()}`; justCreatedSessionId.current = newShareId; const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])) }; try { await saveStateToGoogleSheets(newShareId, dataToSave); const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`; dispatch({ type: 'SET_SHARE_ID', payload: newShareId }); dispatch({ type: 'SET_SHARE_LINK', payload: fullLink }); window.history.pushState({ path: fullLink }, '', fullLink); setTimeout(() => { if (justCreatedSessionId.current === newShareId) justCreatedSessionId.current = null; }, 10000); } catch (e) { alert(`Error al generar enlace: ${e.message}`); justCreatedSessionId.current = null; } finally { setIsGeneratingLink(false); } };
+    const handleOpenSummaryModal = () => { const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0); const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity); const data = comensales.map(comensal => { const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0); const propina = totalSinPropina * TIP_PERCENTAGE; const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0; const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal; const totalConPropina = totalSinPropina + propina - descuentoAplicado; return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina) }; }); setSummaryData(data); setIsSummaryModalOpen(true); };
+    const handlePrint = () => { const printContent = document.getElementById('print-source-content'); if (!printContent) return; const printWindow = window.open('', '_blank', 'height=800,width=800'); if (!printWindow) { alert('Permite las ventanas emergentes.'); return; } printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500); };
 
     const renderStep = () => {
         switch (currentStep) {
             case 'landing': return <LandingStep onStart={() => dispatch({ type: 'SET_STEP', payload: 'loading' })} />;
             case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
-            case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={() => dispatch({ type: 'SET_STEP', payload: 'assigning' })} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
+            case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts })} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
             case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
             default: return <p>Cargando...</p>;
         }
@@ -766,24 +647,19 @@ const App = () => {
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
             <LoadingModal isOpen={isGeneratingLink} message="Generando enlace..." />
             <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
-            <div style={{ display: 'none' }}>
-                <div id="print-source-content">
-                    {/* El contenido para impresión se genera dinámicamente desde el modal */}
-                </div>
-            </div>
+            <div style={{ display: 'none' }}><div id="print-source-content"></div></div>
             <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
-            <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
-            <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
+            <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Seguro que deseas limpiar el consumo de este comensal?" confirmText="Limpiar" />
+            <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Seguro que deseas eliminar a este comensal?" confirmText="Eliminar" />
             <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
         </div>
     );
 };
 
 // --- COMPONENTES DE PASOS ---
-const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de cualquier restaurante de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
-const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando imagen...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
+const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
+const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
 
-// --- SECCIÓN MODIFICADA: ReviewStep ahora maneja porcentaje y tope ---
 const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, discountCap, dispatch }) => {
     const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
@@ -794,46 +670,27 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
     useEffect(() => { setLocalProducts(new Map(initialProducts)); }, [initialProducts]);
     
     const total = Array.from(localProducts.values()).reduce((sum, p) => (sum + (parseFloat(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
-    
-    // Calcula el descuento basado en los valores del estado global
     const potentialDiscount = total * (discountPercentage / 100);
     const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
     const tip = total * TIP_PERCENTAGE;
     const grandTotal = total + tip - actualDiscount;
 
-    const handleProductChange = (id, field, value) => {
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            const product = newMap.get(id);
-            if (product) newMap.set(id, { ...product, [field]: value });
-            return newMap;
-        });
-    };
-
-    const handleRemoveProduct = (id) => {
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(id);
-            return newMap;
-        });
-    };
-    
+    const handleProductChange = (id, field, value) => { setLocalProducts(prev => { const newMap = new Map(prev); const product = newMap.get(id); if (product) newMap.set(id, { ...product, [field]: value }); return newMap; }); };
+    const handleRemoveProduct = (id) => { setLocalProducts(prev => { const newMap = new Map(prev); newMap.delete(id); return newMap; }); };
     const handleAddNewItem = () => {
         if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
         const price = parseFloat(newItem.price); const quantity = parseInt(newItem.quantity, 10);
         if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
         setLocalProducts(prev => {
-            const newMap = new Map(prev); const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
+            const newMap = new Map(prev); const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1 + Math.random();
             newMap.set(newId, { id: newId, name: newItem.name.trim(), price: price, quantity: quantity });
             return newMap;
         });
         setNewItem({ name: '', price: '', quantity: '1' });
     };
-    
     const handleApplyDiscount = () => {
-        const perc = parseFloat(localPercentage);
-        const cap = parseFloat(localCap);
+        const perc = parseFloat(localPercentage); const cap = parseFloat(localCap);
         if (isNaN(perc) || perc < 0 || perc > 100) { setDiscountError('El porcentaje debe ser entre 0 y 100.'); return; }
         if (isNaN(cap) || cap < 0) { setDiscountError('El tope debe ser un número no negativo.'); return; }
         setDiscountError('');
@@ -879,20 +736,19 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
                 <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
-                <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
+                {/* --- LÍNEA CORREGIDA --- */}
+                <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
             </div>
         </div>
     );
 };
 
-// --- SECCIÓN MODIFICADA: AssigningStep ahora recibe y usa el descuento ---
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
     onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap
 }) => {
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
-
     const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
     const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
 
@@ -917,7 +773,7 @@ const AssigningStep = ({
                     {comensal.selectedItems.length > 0 ? (
                         <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
                             {comensal.selectedItems.map((item, index) => (
-                                <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
+                                <li key={`${item.id}-${item.shareInstanceId || index}-${index}`} className="flex justify-between items-center text-sm">
                                     <span className="font-medium text-gray-700">{item.type === ITEM_TYPES.SHARED ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
                                     <div className="flex items-center space-x-2">
                                         <span className="text-gray-900">${Math.round(Number(item.originalBasePrice) * Number(item.quantity)).toLocaleString('es-CL')}</span>
