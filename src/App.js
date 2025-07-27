@@ -285,16 +285,58 @@ function billReducer(state, action) {
                 discountPercentage: parseFloat(percentage) || 0,
                 discountCap: parseFloat(cap) || 0,
             };
+        
         }
         // --- ACCIÓN MODIFICADA: ya no fuerza el cambio de pantalla ---
         case 'LOAD_STATE': {
-            const { comensales, availableProducts, activeSharedInstances, shareId } = action.payload;
+            const { comensales, availableProducts, activeSharedInstances, shareId, lastUpdated } = action.payload;
             return {
                 ...state,
                 comensales,
                 availableProducts,
                 activeSharedInstances,
                 shareId,
+                lastUpdated: lastUpdated || null
+            };
+        }
+        case 'SYNC_STATE': {
+            const serverStateData = action.payload;
+            const localState = state;
+
+            // --- 1. Fusionar Comensales ---
+            const serverComensalesMap = new Map(serverStateData.comensales.map(c => [c.id, c]));
+            const localComensalesMap = new Map(localState.comensales.map(c => [c.id, c]));
+            const reconciledComensales = [];
+            const allDinerIds = new Set([...serverComensalesMap.keys(), ...localComensalesMap.keys()]);
+
+            allDinerIds.forEach(id => {
+                const serverDiner = serverComensalesMap.get(id);
+                const localDiner = localComensalesMap.get(id);
+
+                if (serverDiner && !localDiner) {
+                    // El comensal existe en el servidor pero no localmente (añadido por otro). Se añade.
+                    reconciledComensales.push(serverDiner);
+                } else if (!serverDiner && localDiner) {
+                    // El comensal existe localmente pero no en el servidor (añadido localmente, aún no guardado). Se mantiene.
+                    reconciledComensales.push(localDiner);
+                } else if (serverDiner && localDiner) {
+                    // El comensal existe en ambos. La versión del servidor se considera la más actualizada
+                    // ya que refleja el estado consolidado. Esto previene conflictos de edición.
+                    reconciledComensales.push(serverDiner);
+                }
+            });
+
+            // --- 2. Actualizar Inventario y Compartidos desde el Servidor ---
+            // Se considera al servidor la fuente de verdad para el inventario disponible.
+            const reconciledProducts = new Map(Object.entries(serverStateData.availableProducts || {}));
+            const reconciledSharedInstances = new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
+            
+            return {
+                ...localState,
+                comensales: reconciledComensales,
+                availableProducts: reconciledProducts,
+                activeSharedInstances: reconciledSharedInstances,
+                lastUpdated: serverStateData.lastUpdated // Actualizamos la fecha de la última versión válida
             };
         }
         case 'SET_PRODUCTS_FOR_REVIEW':
@@ -541,6 +583,7 @@ const App = () => {
     const initialLoadDone = useRef(false);
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
+    const lastSyncedTimestamp = useRef(null);
 
     // ... (El resto de las funciones de App.js no cambian, excepto las marcadas) ...
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
@@ -559,30 +602,47 @@ const App = () => {
         try {
             const data = await promise;
             if (data && data.status !== "not_found") {
-                if (hasPendingChanges.current && !initialLoadDone.current) return;
-                isLoadingFromServer.current = true;
-                const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [key, value]));
-                const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
-                
-                // Primero, actualiza el estado con los datos
-                dispatch({ type: 'LOAD_STATE', payload: { comensales: data.comensales || [], availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances, shareId: idToLoad } });
+                // --- LÓGICA DE SINCRONIZACIÓN MEJORADA ---
 
-                // --- LÓGICA MODIFICADA: Solo cambia el paso en la carga inicial ---
+                // Si es la carga inicial, cargamos el estado completamente.
                 if (!initialLoadDone.current) {
+                    isLoadingFromServer.current = true;
+                    const loadedProducts = new Map(Object.entries(data.availableProducts || {}));
+                    const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
+                    
+                    dispatch({ type: 'LOAD_STATE', payload: { ...data, availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances } });
+                    lastSyncedTimestamp.current = data.lastUpdated; // Establecer la fecha inicial
+
                     if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
                         dispatch({ type: 'SET_STEP', payload: 'assigning' });
                     } else {
-                        // Si la sesión está vacía, llevar a la pantalla de carga de ítems
                         dispatch({ type: 'SET_STEP', payload: 'reviewing' });
+                    }
+                } else {
+                    // Si es un sondeo (polling), comparamos las fechas antes de actualizar.
+                    const isServerStateNewer = !lastSyncedTimestamp.current || new Date(data.lastUpdated) > new Date(lastSyncedTimestamp.current);
+                    
+                    if (isServerStateNewer && !hasPendingChanges.current) {
+                        isLoadingFromServer.current = true;
+                        dispatch({ type: 'SYNC_STATE', payload: data });
+                        lastSyncedTimestamp.current = data.lastUpdated; // Actualizar a la nueva fecha
                     }
                 }
             } else {
-                if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura."); return; }
-                alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
-                handleResetAll();
+                 if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura."); return; }
+                 alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
+                 handleResetAll();
             }
         } catch (error) { console.error("Error al cargar con JSONP:", error);
-        } finally { setTimeout(() => { isLoadingFromServer.current = false; }, 0); }
+        } finally { 
+            // Usamos un timeout para asegurar que el flag se desactive después de que el render se complete
+            setTimeout(() => { 
+                isLoadingFromServer.current = false; 
+                if (!initialLoadDone.current) {
+                    initialLoadDone.current = true;
+                }
+            }, 0); 
+        }
     }, [handleResetAll]);
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
@@ -615,24 +675,38 @@ const App = () => {
         let isCancelled = false; const pollTimeout = 5000; let pollTimer;
         const poll = () => {
             if (isCancelled) return;
-            if (!hasPendingChanges.current) { loadStateFromGoogleSheets(shareId).finally(() => { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); });
-            } else { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); }
+            // No llamar si hay cambios locales pendientes de guardar
+            if (!hasPendingChanges.current) { 
+                loadStateFromGoogleSheets(shareId).finally(() => { 
+                    if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); 
+                });
+            } else { 
+                if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); 
+            }
         };
         pollTimer = setTimeout(poll, pollTimeout);
         return () => { isCancelled = true; clearTimeout(pollTimer); };
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
+
     useEffect(() => {
         if (isLoadingFromServer.current) return;
-        if ((!initialLoadDone.current && currentStep !== 'landing') || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
+        if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
+        
         hasPendingChanges.current = true;
         const handler = setTimeout(() => {
-            const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: new Date().toISOString() };
+            const dataToSave = { 
+                comensales, 
+                availableProducts: Object.fromEntries(availableProducts), 
+                activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), 
+                lastUpdated: new Date().toISOString() // Incluir siempre la fecha de la última modificación
+            };
             saveStateToGoogleSheets(shareId, dataToSave)
                 .catch((e) => { console.error("El guardado falló:", e.message); alert(`No se pudieron guardar los últimos cambios: ${e.message}`); })
                 .finally(() => { hasPendingChanges.current = false; });
         }, 1000);
         return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, currentStep]);
+    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
+
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
     const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
