@@ -677,18 +677,22 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
 
     const handleProductChange = (id, field, value) => { setLocalProducts(prev => { const newMap = new Map(prev); const product = newMap.get(id); if (product) newMap.set(id, { ...product, [field]: value }); return newMap; }); };
     const handleRemoveProduct = (id) => { setLocalProducts(prev => { const newMap = new Map(prev); newMap.delete(id); return newMap; }); };
+    
     const handleAddNewItem = () => {
         if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
         const price = parseFloat(newItem.price); const quantity = parseInt(newItem.quantity, 10);
         if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
         setLocalProducts(prev => {
-            const newMap = new Map(prev); const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1 + Math.random();
+            const newMap = new Map(prev);
+            // --- LÍNEA CORREGIDA: Se elimina el `+ Math.random()` que causaba el error ---
+            const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
             newMap.set(newId, { id: newId, name: newItem.name.trim(), price: price, quantity: quantity });
             return newMap;
         });
         setNewItem({ name: '', price: '', quantity: '1' });
     };
+    
     const handleApplyDiscount = () => {
         const perc = parseFloat(localPercentage); const cap = parseFloat(localCap);
         if (isNaN(perc) || perc < 0 || perc > 100) { setDiscountError('El porcentaje debe ser entre 0 y 100.'); return; }
@@ -736,7 +740,6 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
                 <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
-                {/* --- LÍNEA CORREGIDA --- */}
                 <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
             </div>
         </div>
