@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // --- CONSTANTES ---
 const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec";
-const TIP_MULTIPLIER = 1.10;
+const TIP_PERCENTAGE = 0.10; // Propina del 10%
 const MAX_COMENSALES = 20;
 const ITEM_TYPES = {
     FULL: 'full',
@@ -192,6 +192,12 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
                 <span>Consumo (sin propina):</span>
                 <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
               </div>
+              {diner.descuentoAplicado > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>Descuento:</span>
+                  <span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span>
+                </div>
+              )}
               <div className="flex justify-between text-gray-600">
                 <span>Propina (10%):</span>
                 <span>${diner.propina.toLocaleString('es-CL')}</span>
@@ -226,13 +232,15 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
 // --- LÓGICA DE ESTADO CENTRALIZADA (REDUCER) ---
 
 const initialState = {
-    currentStep: 'landing', // 'landing', 'loading', 'reviewing', 'assigning'
+    currentStep: 'landing',
     userId: null,
     shareId: null,
     shareLink: '',
     availableProducts: new Map(),
     comensales: [],
     activeSharedInstances: new Map(),
+    discountPercentage: 0,
+    discountCap: 0,
 };
 
 function billReducer(state, action) {
@@ -245,6 +253,14 @@ function billReducer(state, action) {
             return { ...state, shareId: action.payload };
         case 'SET_SHARE_LINK':
             return { ...state, shareLink: action.payload };
+        case 'APPLY_DISCOUNT': {
+            const { percentage, cap } = action.payload;
+            return {
+                ...state,
+                discountPercentage: parseFloat(percentage) || 0,
+                discountCap: parseFloat(cap) || 0,
+            };
+        }
         case 'LOAD_STATE': {
             const { comensales, availableProducts, activeSharedInstances, shareId } = action.payload;
             const step = (availableProducts.size > 0 || comensales.length > 0) ? 'assigning' : 'landing';
@@ -280,21 +296,19 @@ function billReducer(state, action) {
             const newComensales = state.comensales.map(comensal => {
                 if (comensal.id === comensalId) {
                     const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
-                    const priceWithTip = Number(productInStock.price) * TIP_MULTIPLIER;
                     const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL);
                     
                     if (existingItemIndex !== -1) {
                         updatedComensal.selectedItems[existingItemIndex].quantity += 1;
                     } else {
                         updatedComensal.selectedItems.push({
-                            ...productInStock,
-                            price: priceWithTip,
+                            id: productInStock.id,
+                            name: productInStock.name,
                             originalBasePrice: Number(productInStock.price),
                             quantity: 1,
                             type: ITEM_TYPES.FULL,
                         });
                     }
-                    updatedComensal.total = updatedComensal.selectedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
                     return updatedComensal;
                 }
                 return comensal;
@@ -305,7 +319,7 @@ function billReducer(state, action) {
         case 'SHARE_ITEM': {
             const { productId, sharingComensalIds } = action.payload;
             const productToShare = state.availableProducts.get(productId);
-            if (!productToShare || Number(productToShare.quantity) <= 0) return state;
+            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || Number(productToShare.quantity) <= 0) return state;
 
             const newProductsMap = new Map(state.availableProducts);
             newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 });
@@ -315,24 +329,21 @@ function billReducer(state, action) {
             newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds));
 
             const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
-            const priceWithTipPerShare = basePricePerShare * TIP_MULTIPLIER;
 
             const newComensales = state.comensales.map(comensal => {
                 if (sharingComensalIds.includes(comensal.id)) {
                     const updatedItems = [...comensal.selectedItems, {
-                        id: productToShare.id, name: productToShare.name, price: priceWithTipPerShare,
+                        id: productToShare.id, name: productToShare.name,
                         originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
                         sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId
                     }];
-                    const newTotal = updatedItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
-                    return { ...comensal, selectedItems: updatedItems, total: newTotal };
+                    return { ...comensal, selectedItems: updatedItems };
                 }
                 return comensal;
             });
             
             return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances };
         }
-        // --- NUEVA SECCIÓN: Lógica para remover un ítem individual ---
         case 'REMOVE_ITEM_FROM_COMENSAL': {
             const { comensalId, itemIdentifier } = action.payload;
             let comensalTarget = state.comensales.find(c => c.id === comensalId);
@@ -358,8 +369,7 @@ function billReducer(state, action) {
                         } else {
                             updatedItems.splice(itemIndex, 1);
                         }
-                        const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                        return { ...c, selectedItems: updatedItems, total: newTotal };
+                        return { ...c, selectedItems: updatedItems };
                     }
                     return c;
                 });
@@ -382,31 +392,21 @@ function billReducer(state, action) {
 
                 updatedComensales = state.comensales.map(c => {
                     let comensalToUpdate = { ...c };
-                    // Primero, remover el ítem del comensal que lo elimina
                     if (c.id === comensalId) {
                         comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
                     }
-
-                    // Segundo, recalcular para los que quedan en el grupo
                     if (shareGroup.size > 0 && shareGroup.has(c.id)) {
                         const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
                         const newSharerCount = shareGroup.size;
                         const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-                        const newPriceWithTipPerShare = newBasePricePerShare * TIP_MULTIPLIER;
                         
                         comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => {
                             if (String(item.shareInstanceId) === String(shareInstanceId)) {
-                                return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
+                                return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
                             }
                             return item;
                         });
                     }
-
-                    // Finalmente, actualizar el total para todos los comensales afectados
-                    if (comensalToUpdate.id === comensalId || (shareGroup.size > 0 && shareGroup.has(c.id))) {
-                       comensalToUpdate.total = comensalToUpdate.selectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                    }
-                    
                     return comensalToUpdate;
                 });
             }
@@ -425,12 +425,11 @@ function billReducer(state, action) {
             comensalToClear.selectedItems.forEach(item => {
                 if (item.type === ITEM_TYPES.FULL) {
                     const product = newProducts.get(item.id);
-                    if (product) newProducts.set(item.id, { ...product, quantity: product.quantity + item.quantity });
+                    if (product) newProducts.set(item.id, { ...product, quantity: item.quantity + (product.quantity || 0) });
                 } else if (item.type === ITEM_TYPES.SHARED) {
                     const shareGroup = newSharedInstances.get(item.shareInstanceId);
                     if (!shareGroup) return;
                     shareGroup.delete(comensalIdToClear);
-
                     if (shareGroup.size === 0) {
                         newSharedInstances.delete(item.shareInstanceId);
                         const product = newProducts.get(item.id);
@@ -448,22 +447,18 @@ function billReducer(state, action) {
                 if (comensal.id === comensalIdToClear) {
                     return { ...comensal, selectedItems: [], total: 0 };
                 }
-
                 let needsRecalculation = false;
                 const updatedItems = comensal.selectedItems.map(item => {
                     if (item.type === ITEM_TYPES.SHARED && sharedGroupsToUpdate.has(item.shareInstanceId)) {
                         needsRecalculation = true;
                         const updateInfo = sharedGroupsToUpdate.get(item.shareInstanceId);
                         const newBasePricePerShare = updateInfo.totalBasePrice / updateInfo.newSharerCount;
-                        const newPriceWithTipPerShare = newBasePricePerShare * TIP_MULTIPLIER;
-                        return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: updateInfo.newSharerCount };
+                        return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: updateInfo.newSharerCount };
                     }
                     return item;
                 });
-
                 if (needsRecalculation) {
-                    const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                    return { ...comensal, selectedItems: updatedItems, total: newTotal };
+                    return { ...comensal, selectedItems: updatedItems };
                 }
                 return comensal;
             });
@@ -482,7 +477,7 @@ function billReducer(state, action) {
             return { 
                 ...initialState, 
                 currentStep: 'landing', 
-                userId: state.userId, // Mantener el userId
+                userId: state.userId,
                 shareId: `local-session-${Date.now()}`
             };
         }
@@ -494,15 +489,13 @@ function billReducer(state, action) {
 // --- Componente principal de la aplicación ---
 const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
-    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances } = state;
+    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
 
-    // --- ESTADOS LOCALES (No pertenecen al reducer global) ---
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
     const [authReady, setAuthReady] = useState(false);
     const [newComensalName, setNewComensalName] = useState('');
     const [addComensalMessage, setAddComensalMessage] = useState({ type: '', text: '' });
     
-    // Estados de modales
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [isClearComensalModalOpen, setIsClearComensalModalOpen] = useState(false);
     const [comensalToClearId, setComensalToClearId] = useState(null);
@@ -511,138 +504,65 @@ const App = () => {
     const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
     const [summaryData, setSummaryData] = useState([]);
     
-    // Estados de procesamiento de imagen
     const [isImageProcessing, setIsImageProcessing] = useState(false);
     const [imageProcessingError, setImageProcessingError] = useState(null);
     
-    // Refs
     const hasPendingChanges = useRef(false);
     const initialLoadDone = useRef(false);
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
-    
-    // --- LÓGICA DE NEGOCIO Y EFECTOS ---
 
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
-          return Promise.reject(new Error("URL de Apps Script inválida."));
-        }
+        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { return Promise.reject(new Error("URL de Apps Script inválida.")); }
         if (!currentShareId || !userId) return Promise.resolve();
-    
         const promiseWithTimeout = new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
-            }, 8000);
-    
+            const timeoutId = setTimeout(() => { reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).')); }, 8000);
             const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
             const script = document.createElement('script');
-    
-            const cleanup = () => {
-                clearTimeout(timeoutId);
-                if (document.body.contains(script)) {
-                    document.body.removeChild(script);
-                }
-                delete window[callbackName];
-            };
-    
-            window[callbackName] = (data) => {
-                cleanup();
-                resolve(data);
-            };
-    
-            script.onerror = () => {
-                cleanup();
-                reject(new Error('Error de red al guardar los datos en Google Sheets.'));
-            };
-    
-            const dataString = JSON.stringify(dataToSave);
-            const encodedData = encodeURIComponent(dataString);
+            const cleanup = () => { clearTimeout(timeoutId); if (document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; };
+            window[callbackName] = (data) => { cleanup(); resolve(data); };
+            script.onerror = () => { cleanup(); reject(new Error('Error de red al guardar los datos en Google Sheets.')); };
+            const dataString = JSON.stringify(dataToSave); const encodedData = encodeURIComponent(dataString);
             script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
             document.body.appendChild(script);
         });
-    
-        try {
-            const result = await promiseWithTimeout;
-            if (result.status === 'error') {
-                return Promise.reject(new Error(result.message));
-            }
-            return Promise.resolve();
-        } catch (error) {
-            return Promise.reject(error);
-        }
+        try { const result = await promiseWithTimeout; if (result.status === 'error') return Promise.reject(new Error(result.message)); return Promise.resolve();
+        } catch (error) { return Promise.reject(error); }
     }, [userId]);
     
-    const handleResetAll = useCallback(() => {
-        dispatch({ type: 'RESET_SESSION' });
-    }, []);
+    const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
 
     const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
         if (!idToLoad || idToLoad.startsWith('local-')) return;
-    
         const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
         const promise = new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            window[callbackName] = (data) => {
-                if(document.body.contains(script)) document.body.removeChild(script);
-                delete window[callbackName];
-                resolve(data);
-            };
-            script.onerror = () => {
-                if(document.body.contains(script)) document.body.removeChild(script);
-                delete window[callbackName];
-                reject(new Error('Error al cargar los datos desde Google Sheets.'));
-            };
+            window[callbackName] = (data) => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; resolve(data); };
+            script.onerror = () => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; reject(new Error('Error al cargar los datos desde Google Sheets.')); };
             script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`;
             document.body.appendChild(script);
         });
-    
         try {
             const data = await promise;
             if (data && data.status !== "not_found") {
                 if (hasPendingChanges.current) return;
-                
                 isLoadingFromServer.current = true;
-    
-                const loadedProducts = new Map(
-                    Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value])
-                );
-                const loadedSharedInstances = new Map(
-                    Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])
-                );
-                
-                dispatch({
-                    type: 'LOAD_STATE',
-                    payload: {
-                        comensales: data.comensales || [],
-                        availableProducts: loadedProducts,
-                        activeSharedInstances: loadedSharedInstances,
-                        shareId: idToLoad
-                    }
-                });
-    
+                const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value]));
+                const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
+                dispatch({ type: 'LOAD_STATE', payload: { comensales: data.comensales || [], availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances, shareId: idToLoad } });
             } else {
-                if (idToLoad === justCreatedSessionId.current) {
-                  console.warn("La sesión recién creada aún no está disponible para lectura. Reintentando en el próximo ciclo.");
-                  return; 
-                }
-    
+                if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura."); return; }
                 alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
                 handleResetAll();
             }
-        } catch (error) {
-            console.error("Error al cargar con JSONP:", error);
-        } finally {
-            setTimeout(() => {
-                isLoadingFromServer.current = false;
-            }, 0);
-        }
+        } catch (error) { console.error("Error al cargar con JSONP:", error);
+        } finally { setTimeout(() => { isLoadingFromServer.current = false; }, 0); }
     }, [handleResetAll]);
 
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
-        if (uniqueSessionUserId) {
-            dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
+        if (uniqueSessionUserId) { dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
         } else {
             const newUniqueId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
             localStorage.setItem('billSplitterUserId', newUniqueId);
@@ -654,603 +574,193 @@ const App = () => {
     useEffect(() => {
         const performInitialLoad = async () => {
             if (!authReady || !userId || initialLoadDone.current) return;
-    
             const urlParams = new URLSearchParams(window.location.search);
             const idFromUrl = urlParams.get('id');
-    
             if (idFromUrl) {
                 dispatch({ type: 'SET_SHARE_ID', payload: idFromUrl });
                 dispatch({ type: 'SET_STEP', payload: 'loading' });
                 await loadStateFromGoogleSheets(idFromUrl);
-            } else {
-                dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` });
-            }
-            
+            } else { dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` }); }
             initialLoadDone.current = true;
         };
-    
         performInitialLoad();
     }, [authReady, userId, loadStateFromGoogleSheets]);
     
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
-        
-        if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) {
-            return;
-        }
-    
-        let isCancelled = false;
-        const pollTimeout = 5000;
-        let pollTimer;
-    
+        if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) return;
+        let isCancelled = false; const pollTimeout = 5000; let pollTimer;
         const poll = () => {
-            if (isCancelled) { return; }
-            if (!hasPendingChanges.current) {
-                loadStateFromGoogleSheets(shareId).finally(() => {
-                    if (!isCancelled) {
-                        pollTimer = setTimeout(poll, pollTimeout);
-                    }
-                });
-            } else {
-                if (!isCancelled) {
-                    pollTimer = setTimeout(poll, pollTimeout);
-                }
-            }
+            if (isCancelled) return;
+            if (!hasPendingChanges.current) { loadStateFromGoogleSheets(shareId).finally(() => { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); });
+            } else { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); }
         };
         pollTimer = setTimeout(poll, pollTimeout);
-        return () => {
-            isCancelled = true;
-            clearTimeout(pollTimer);
-        };
+        return () => { isCancelled = true; clearTimeout(pollTimer); };
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
     
     useEffect(() => {
-        if (isLoadingFromServer.current) { return; }
+        if (isLoadingFromServer.current) return;
         if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
-    
         hasPendingChanges.current = true;
         const handler = setTimeout(() => {
-            const dataToSave = {
-                comensales,
-                availableProducts: Object.fromEntries(availableProducts),
-                activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-                lastUpdated: new Date().toISOString()
-            };
+            const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: new Date().toISOString() };
             saveStateToGoogleSheets(shareId, dataToSave)
-                .catch((e) => {
-                    console.error("El guardado falló:", e.message);
-                    alert(`No se pudieron guardar los últimos cambios: ${e.message}`);
-                })
-                .finally(() => {
-                    hasPendingChanges.current = false;
-                });
+                .catch((e) => { console.error("El guardado falló:", e.message); alert(`No se pudieron guardar los últimos cambios: ${e.message}`); })
+                .finally(() => { hasPendingChanges.current = false; });
         }, 1000);
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
-    // --- MANEJADORES DE ACCIONES (ahora despachan al reducer) ---
-
-    const handleAddItem = (comensalId, productId) => {
-        dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } });
-    };
-
-    // --- LÍNEA MODIFICADA: Se agrega el nuevo manejador ---
-    const handleRemoveItem = (comensalId, itemIdentifier) => {
-        dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } });
-    };
-    
-    const handleShareItem = (productId, sharingComensalIds) => {
-        dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } });
-    };
-    
+    const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
+    const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
+    const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
     const handleAddComensal = () => {
-        if (newComensalName.trim() === '') {
-            setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre para el nuevo comensal.' });
-            return;
-        }
-        if (comensales.length >= MAX_COMENSALES) {
-            setAddComensalMessage({ type: 'error', text: `No se pueden agregar más de ${MAX_COMENSALES} comensales.` });
-            return;
-        }
+        if (newComensalName.trim() === '') { setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' }); return; }
+        if (comensales.length >= MAX_COMENSALES) { setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` }); return; }
         dispatch({ type: 'ADD_COMENSAL', payload: newComensalName });
-        setAddComensalMessage({ type: 'success', text: `¡Comensal "${newComensalName.trim()}" añadido con éxito!` });
+        setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
         setNewComensalName('');
         setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
     };
+    const confirmClearComensal = () => { if (comensalToClearId !== null) dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToClearId }); setIsClearComensalModalOpen(false); setComensalToClearId(null); };
+    const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
+    const confirmRemoveComensal = () => { if (comensalToRemoveId !== null) { dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId }); dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId }); } setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null); };
+    const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
+    const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
+    const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de recibo adjunta...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); let currentMaxId = 0; (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
+    const handleGenerateShareLink = async () => { if (!userId) { alert("La sesión no está lista."); return; } setIsGeneratingLink(true); const newShareId = `session_${Date.now()}`; justCreatedSessionId.current = newShareId; const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])) }; try { await saveStateToGoogleSheets(newShareId, dataToSave); const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`; dispatch({ type: 'SET_SHARE_ID', payload: newShareId }); dispatch({ type: 'SET_SHARE_LINK', payload: fullLink }); window.history.pushState({ path: fullLink }, '', fullLink); setTimeout(() => { if (justCreatedSessionId.current === newShareId) justCreatedSessionId.current = null; }, 10000); } catch (e) { alert(`Error al generar enlace: ${e.message}`); justCreatedSessionId.current = null; } finally { setIsGeneratingLink(false); } };
+    const handleOpenSummaryModal = () => { const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0); const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity); const data = comensales.map(comensal => { const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0); const propina = totalSinPropina * TIP_PERCENTAGE; const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0; const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal; const totalConPropina = totalSinPropina + propina - descuentoAplicado; return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina) }; }); setSummaryData(data); setIsSummaryModalOpen(true); };
+    const handlePrint = () => { const printContent = document.getElementById('print-source-content'); if (!printContent) return; const printWindow = window.open('', '_blank', 'height=800,width=800'); if (!printWindow) { alert('Permite las ventanas emergentes.'); return; } printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500); };
 
-    const confirmClearComensal = () => {
-        if (comensalToClearId !== null) {
-            dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToClearId });
-        }
-        setIsClearComensalModalOpen(false);
-        setComensalToClearId(null);
-    };
-
-    const openClearComensalModal = (comensalId) => {
-        setComensalToClearId(comensalId);
-        setIsClearComensalModalOpen(true);
-    };
-
-    const confirmRemoveComensal = () => {
-        if (comensalToRemoveId !== null) {
-            // Primero, despachar la acción para limpiar sus items y recalcular totales
-            dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId });
-            // Luego, despachar la acción para removerlo de la lista
-            dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId });
-        }
-        setIsRemoveComensalModalOpen(false);
-        setComensalToRemoveId(null);
-    };
-
-    const openRemoveComensalModal = (comensalId) => {
-        setComensalToRemoveId(comensalId);
-        setIsRemoveComensalModalOpen(true);
-    };
-
-    const handleImageUpload = (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        setIsImageProcessing(true);
-        setImageProcessingError(null);
-    
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64Image = reader.result.split(',')[1];
-            analyzeImageWithGemini(base64Image, file.type);
-        };
-        reader.onerror = () => {
-            setImageProcessingError("Error al cargar la imagen.");
-            setIsImageProcessing(false);
-        };
-        reader.readAsDataURL(file);
-    };
-
-    const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
-        try {
-            const prompt = `Analiza la imagen de recibo adjunta. Extrae cada ítem con su nombre, cantidad y precio unitario. El formato de salida debe ser un objeto JSON con una única clave "items", que es un array de objetos. Cada objeto debe tener las claves "name" (string), "quantity" (integer) y "price" (number, sin puntos de miles). Asegúrate de que los precios sean correctos. Si un ítem no tiene cantidad explícita, asume que es 1.`;
-            const payload = {
-                contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] }
-                }
-            };
-            const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; // Reemplazar con clave real
-            if (apiKey.includes("YOUR_GEMINI_API_KEY_HERE")) throw new Error("Falta la clave de API de Gemini.");
-            
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            const result = await response.json();
-    
-            if (result.candidates && result.candidates[0].content.parts[0].text) {
-                const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
-                
-                const newProductsMap = new Map();
-                let currentMaxId = 0;
-                (parsedData.items || []).forEach(item => {
-                    const name = item.name.trim();
-                    const price = parseFloat(String(item.price).replace(/\./g, ''));
-                    const quantity = parseInt(item.quantity, 10);
-                    if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
-                        const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
-                        if (existing) {
-                            newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
-                        } else {
-                            currentMaxId++;
-                            newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity });
-                        }
-                    }
-                });
-                
-                dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: newProductsMap });
-                dispatch({ type: 'RESET_SESSION' }); // Resetea comensales y otros datos de sesión
-            } else {
-                throw new Error(result.error?.message || "No se pudo extraer información de la imagen.");
-            }
-        } catch (error) {
-            console.error("Error al analizar la imagen:", error);
-            setImageProcessingError(error.message);
-        } finally {
-            setIsImageProcessing(false);
-        }
-    };
-
-    const handleGenerateShareLink = async () => {
-        if (!userId) {
-            alert("La sesión no está lista. Intenta de nuevo en un momento.");
-            return;
-        }
-    
-        setIsGeneratingLink(true);
-        const newShareId = `session_${Date.now()}`;
-        justCreatedSessionId.current = newShareId;
-    
-        const dataToSave = {
-            comensales,
-            availableProducts: Object.fromEntries(availableProducts),
-            activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-        };
-    
-        try {
-            await saveStateToGoogleSheets(newShareId, dataToSave);
-            const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`;
-    
-            dispatch({ type: 'SET_SHARE_ID', payload: newShareId });
-            dispatch({ type: 'SET_SHARE_LINK', payload: fullLink });
-            window.history.pushState({ path: fullLink }, '', fullLink);
-            
-            setTimeout(() => {
-                if (justCreatedSessionId.current === newShareId) {
-                    justCreatedSessionId.current = null;
-                }
-            }, 10000);
-    
-        } catch (e) {
-            alert(`Error al generar enlace: ${e.message}`);
-            justCreatedSessionId.current = null;
-        } finally {
-            setIsGeneratingLink(false);
-        }
-    };
-
-    const handleOpenSummaryModal = () => {
-        const data = comensales.map(comensal => {
-            const totalConPropina = comensal.total || 0;
-            const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
-            const propina = totalConPropina - totalSinPropina;
-            return {
-                id: comensal.id,
-                name: comensal.name,
-                totalSinPropina: Math.round(totalSinPropina),
-                propina: Math.round(propina),
-                totalConPropina: Math.round(totalConPropina),
-            };
-        });
-        setSummaryData(data);
-        setIsSummaryModalOpen(true);
-    };
-
-    const handlePrint = () => {
-        const printContent = document.getElementById('print-source-content');
-        if (!printContent) {
-            console.error('Elemento para imprimir no encontrado.');
-            return;
-        }
-    
-        const printWindow = window.open('', '_blank', 'height=800,width=800');
-        if (!printWindow) {
-            alert('Por favor, permite las ventanas emergentes para poder imprimir.');
-            return;
-        }
-        
-        printWindow.document.write('<html><head><title>Resumen de Cuenta</title>');
-        printWindow.document.write('<script src="https://cdn.tailwindcss.com"></script>');
-        printWindow.document.write('</head><body class="p-8">');
-        printWindow.document.write(printContent.innerHTML);
-        printWindow.document.write('</body></html>');
-    
-        printWindow.document.close();
-        
-        setTimeout(() => {
-            printWindow.focus();
-            printWindow.print();
-            printWindow.close();
-        }, 500);
-    };
-
-    // --- RENDERIZADO CONDICIONAL POR PASOS ---
     const renderStep = () => {
         switch (currentStep) {
-            case 'landing':
-                return <LandingStep onStart={() => dispatch({ type: 'SET_STEP', payload: 'loading' })} />;
-            case 'loading':
-                return (
-                    <LoadingStep
-                        onImageUpload={handleImageUpload}
-                        onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })}
-                        isImageProcessing={isImageProcessing}
-                        imageProcessingError={imageProcessingError}
-                    />
-                );
-            case 'reviewing':
-                return (
-                    <ReviewStep
-                        initialProducts={availableProducts}
-                        onConfirm={(finalProducts) => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: finalProducts })}
-                        onBack={handleResetAll}
-                    />
-                );
-            case 'assigning':
-                return (
-                    <AssigningStep
-                        availableProducts={availableProducts}
-                        comensales={comensales}
-                        newComensalName={newComensalName}
-                        setNewComensalName={setNewComensalName}
-                        addComensalMessage={addComensalMessage}
-                        onAddComensal={handleAddComensal}
-                        onAddItem={handleAddItem}
-                        onRemoveItem={handleRemoveItem} // --- LÍNEA MODIFICADA ---
-                        onOpenClearComensalModal={openClearComensalModal}
-                        onOpenRemoveComensalModal={openRemoveComensalModal}
-                        onOpenShareModal={() => setIsShareModalOpen(true)}
-                        onOpenSummary={handleOpenSummaryModal}
-                        onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })}
-                        onGenerateLink={handleGenerateShareLink}
-                        onRestart={handleResetAll}
-                        shareLink={shareLink}
-                    />
-                );
-            default:
-                return <p>Cargando...</p>;
+            case 'landing': return <LandingStep onStart={() => dispatch({ type: 'SET_STEP', payload: 'loading' })} />;
+            case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
+            case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts })} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
+            case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
+            default: return <p>Cargando...</p>;
         }
     };
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
             <LoadingModal isOpen={isGeneratingLink} message="Generando enlace..." />
-            
-            <div className="max-w-4xl mx-auto p-4">
-                {renderStep()}
-            </div>
-
-            {/* Modales y elementos ocultos */}
-            <div style={{ display: 'none' }}>
-                <div id="print-source-content">
-                    <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
-                    <div className="space-y-6">
-                        {summaryData.map(diner => (
-                            <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
-                                <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
-                                <div className="flex justify-between text-gray-600">
-                                    <span>Consumo (sin propina):</span>
-                                    <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
-                                </div>
-                                <div className="flex justify-between text-gray-600">
-                                    <span>Propina (10%):</span>
-                                    <span>${diner.propina.toLocaleString('es-CL')}</span>
-                                </div>
-                                <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
-                                    <span>TOTAL A PAGAR:</span>
-                                    <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
-                        <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
-                         <div className="flex justify-between text-lg text-gray-700">
-                            <span>Total General (sin propina):</span>
-                            <span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span>
-                        </div>
-                         <div className="flex justify-between text-lg text-gray-700">
-                            <span>Total Propina:</span>
-                            <span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300">
-                            <span>GRAN TOTAL A PAGAR:</span>
-                            <span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
+            <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
+            <div style={{ display: 'none' }}><div id="print-source-content"></div></div>
             <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
-            <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Estás seguro de que deseas limpiar todo el consumo para este comensal?" confirmText="Limpiar Consumo" />
-            <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Estás seguro de que deseas eliminar este comensal?" confirmText="Eliminar Comensal" />
+            <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Seguro que deseas limpiar el consumo de este comensal?" confirmText="Limpiar" />
+            <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Seguro que deseas eliminar a este comensal?" confirmText="Eliminar" />
             <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
         </div>
     );
 };
 
 // --- COMPONENTES DE PASOS ---
+const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
+const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
 
-const LandingStep = ({ onStart }) => (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
-        <div className="mb-8">
-            <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-        </div>
-        <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1>
-        <p className="text-lg text-gray-600 mt-4 max-w-md">
-            Divide la cuenta de cualquier restaurante de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto.
-        </p>
-        <button 
-            onClick={onStart} 
-            className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"
-        >
-            Empezar
-        </button>
-    </div>
-);
-
-const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
-        <header className="mb-12">
-            <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1>
-            <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p>
-        </header>
-        <div className="w-full max-w-sm space-y-5">
-            <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                    <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" />
-                </svg>
-                <span className="text-lg font-semibold">Escanear Recibo</span>
-                <span className="text-sm">Carga una foto</span>
-                <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} />
-            </label>
-
-            <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50">
-                Ingresar Manualmente
-            </button>
-        </div>
-        {isImageProcessing && (
-            <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Procesando imagen...</span>
-            </div>
-        )}
-        {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>}
-    </div>
-);
-
-const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
+const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, discountCap, dispatch }) => {
     const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
-    const [discount, setDiscount] = useState('');
+    const [localPercentage, setLocalPercentage] = useState(discountPercentage || '');
+    const [localCap, setLocalCap] = useState(discountCap || '');
     const [discountError, setDiscountError] = useState('');
 
-    useEffect(() => {
-        setLocalProducts(new Map(initialProducts));
-    }, [initialProducts]);
+    useEffect(() => { setLocalProducts(new Map(initialProducts)); }, [initialProducts]);
     
-    const total = Array.from(localProducts.values()).reduce((sum, p) => {
-        const price = parseFloat(p.price) || 0;
-        const quantity = parseInt(p.quantity, 10) || 0;
-        return sum + price * quantity;
-    }, 0);
-    const discountAmount = parseFloat(discount) || 0;
-    const totalAfterDiscount = Math.max(0, total - discountAmount);
-    const tip = totalAfterDiscount * 0.10;
+    const total = Array.from(localProducts.values()).reduce((sum, p) => (sum + (parseFloat(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
+    const potentialDiscount = total * (discountPercentage / 100);
+    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
+    const tip = total * TIP_PERCENTAGE;
+    const grandTotal = total + tip - actualDiscount;
 
-    const handleProductChange = (id, field, value) => {
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            const product = newMap.get(id);
-            if (product) {
-                newMap.set(id, { ...product, [field]: value });
-            }
-            return newMap;
-        });
-    };
-
-    const handleRemoveProduct = (id) => {
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(id);
-            return newMap;
-        });
-    };
+    const handleProductChange = (id, field, value) => { setLocalProducts(prev => { const newMap = new Map(prev); const product = newMap.get(id); if (product) newMap.set(id, { ...product, [field]: value }); return newMap; }); };
+    const handleRemoveProduct = (id) => { setLocalProducts(prev => { const newMap = new Map(prev); newMap.delete(id); return newMap; }); };
     
     const handleAddNewItem = () => {
-        if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido para el ítem.'); return; }
-        const price = parseFloat(newItem.price);
-        const quantity = parseInt(newItem.quantity, 10);
+        if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
+        const price = parseFloat(newItem.price); const quantity = parseInt(newItem.quantity, 10);
         if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
-        
         setLocalProducts(prev => {
             const newMap = new Map(prev);
+            // --- LÍNEA CORREGIDA: Se elimina el `+ Math.random()` que causaba el error ---
             const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
             newMap.set(newId, { id: newId, name: newItem.name.trim(), price: price, quantity: quantity });
             return newMap;
         });
         setNewItem({ name: '', price: '', quantity: '1' });
     };
-
-    const handleConfirmWithDiscount = () => {
-        const discountValue = parseFloat(discount) || 0;
-        const currentTotal = total;
     
-        if (discountValue > currentTotal) {
-            setDiscountError('El descuento no puede ser mayor que el subtotal.');
-            return;
-        }
+    const handleApplyDiscount = () => {
+        const perc = parseFloat(localPercentage); const cap = parseFloat(localCap);
+        if (isNaN(perc) || perc < 0 || perc > 100) { setDiscountError('El porcentaje debe ser entre 0 y 100.'); return; }
+        if (isNaN(cap) || cap < 0) { setDiscountError('El tope debe ser un número no negativo.'); return; }
         setDiscountError('');
-    
-        if (discountValue > 0 && currentTotal > 0) {
-            const discountFactor = (currentTotal - discountValue) / currentTotal;
-    
-            const discountedProducts = new Map();
-            localProducts.forEach((product, id) => {
-                discountedProducts.set(id, {
-                    ...product,
-                    price: product.price * discountFactor,
-                });
-            });
-            onConfirm(discountedProducts);
-        } else {
-            onConfirm(localProducts);
-        }
+        dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: localPercentage, cap: localCap } });
     };
 
     return (
         <div className="p-4 pb-20">
-            <header className="text-center mb-6">
-                <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
-                <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
-            </header>
-
+            <header className="text-center mb-6"> <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1> <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p> </header>
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
                 <h2 className="text-lg font-bold">Ítems Cargados</h2>
                 {Array.from(localProducts.values()).map(p => (
                     <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
-                        <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" aria-label="Nombre del ítem"/>
-                        <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad del ítem" min="1"/>
+                        <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" aria-label="Nombre"/>
+                        <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
                         <span className="col-span-1 text-center self-center">$</span>
-                        <input type="number" value={p.price} onChange={e => handleProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" aria-label="Precio del ítem" min="0" step="0.01"/>
-                        <button onClick={() => handleRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700" aria-label={`Eliminar ítem ${p.name}`}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
+                        <input type="number" value={p.price} onChange={e => handleProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" aria-label="Precio" min="0"/>
+                        <button onClick={() => handleRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700" aria-label={`Eliminar ${p.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg> </button>
                     </div>
                 ))}
-
                 <div className="grid grid-cols-12 gap-2 items-center pt-3">
-                    <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="col-span-5 p-2 border rounded-md" aria-label="Nombre del nuevo ítem"/>
-                    <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad del nuevo ítem" min="1"/>
+                    <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="col-span-5 p-2 border rounded-md" aria-label="Nombre nuevo ítem"/>
+                    <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad nuevo ítem" min="1"/>
                     <span className="col-span-1 text-center self-center">$</span>
-                    <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="col-span-3 p-2 border rounded-md" aria-label="Precio del nuevo ítem" min="0" step="0.01"/>
-                    <button onClick={handleAddNewItem} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center" aria-label="Agregar nuevo ítem">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                    </button>
+                    <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="col-span-3 p-2 border rounded-md" aria-label="Precio nuevo ítem" min="0"/>
+                    <button onClick={handleAddNewItem} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center" aria-label="Agregar ítem"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg> </button>
                 </div>
             </div>
-            
             <div className="bg-white p-4 rounded-xl shadow-md mb-6">
                 <h2 className="text-lg font-bold text-blue-600 mb-4">Aplicar Descuento</h2>
-                <div className="flex flex-col sm:flex-row gap-3 items-center">
-                    <input
-                        type="number"
-                        placeholder="Monto del descuento"
-                        value={discount}
-                        onChange={e => { setDiscount(e.target.value); setDiscountError(''); }}
-                        className="flex-grow p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        min="0"
-                        step="0.01"
-                        aria-label="Monto del descuento"
-                    />
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <input type="number" placeholder="% de Descuento" value={localPercentage} onChange={e => setLocalPercentage(e.target.value)} className="flex-grow p-3 border rounded-md" min="0" max="100" aria-label="Porcentaje descuento"/>
+                    <input type="number" placeholder="Tope de Descuento ($)" value={localCap} onChange={e => setLocalCap(e.target.value)} className="flex-grow p-3 border rounded-md" min="0" aria-label="Tope descuento"/>
+                    <button onClick={handleApplyDiscount} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Aplicar</button>
                 </div>
                 {discountError && (<p className="mt-3 text-red-600 text-sm">{discountError}</p>)}
             </div>
-
             <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-6">
                 <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
-                {discountAmount > 0 && (<div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Descuento:</span><span className="font-bold text-green-600">-${Math.round(discountAmount).toLocaleString('es-CL')}</span></div>)}
-                <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Propina (10%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
-                <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(totalAfterDiscount + tip).toLocaleString('es-CL')}</span></div>
+                {actualDiscount > 0 && (<div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Descuento ({discountPercentage}%):</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
+                <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
+                <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
             </div>
-
             <div className="flex flex-col sm:flex-row gap-4">
-                <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300" aria-label="Volver y empezar de nuevo">Volver y Empezar de Nuevo</button>
-                <button onClick={handleConfirmWithDiscount} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700" aria-label="Confirmar y continuar a asignar">Todo Correcto, Continuar a Asignar</button>
+                <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
+                <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
             </div>
         </div>
     );
 };
 
-
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
-    onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary, // --- LÍNEA MODIFICADA ---
-    onGoBack, onGenerateLink, onRestart, shareLink
+    onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
+    onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap
 }) => {
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
+    const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
+    const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
 
     const ComensalCard = ({ comensal }) => {
-        const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
-        const propina = comensal.total - totalSinPropina;
+        const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * item.quantity), 0);
+        const propina = totalSinPropina * TIP_PERCENTAGE;
+        const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0;
+        const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal;
+        const totalAPagar = totalSinPropina + propina - descuentoAplicado;
 
         return (
             <div className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full">
@@ -1266,16 +776,11 @@ const AssigningStep = ({
                     {comensal.selectedItems.length > 0 ? (
                         <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
                             {comensal.selectedItems.map((item, index) => (
-                                // --- SECCIÓN MODIFICADA: Se restaura el botón de eliminar ---
-                                <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
+                                <li key={`${item.id}-${item.shareInstanceId || index}-${index}`} className="flex justify-between items-center text-sm">
                                     <span className="font-medium text-gray-700">{item.type === ITEM_TYPES.SHARED ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
                                     <div className="flex items-center space-x-2">
-                                        <span className="text-gray-900">${Math.round(Number(item.price) * Number(item.quantity)).toLocaleString('es-CL')}</span>
-                                        <button 
-                                            onClick={() => onRemoveItem(comensal.id, item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id)} 
-                                            className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" 
-                                            aria-label="Remove item"
-                                        >
+                                        <span className="text-gray-900">${Math.round(Number(item.originalBasePrice) * Number(item.quantity)).toLocaleString('es-CL')}</span>
+                                        <button onClick={() => onRemoveItem(comensal.id, item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                         </button>
                                     </div>
@@ -1285,9 +790,10 @@ const AssigningStep = ({
                     ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
                 </div>
                 <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
-                    <div className="flex justify-between text-sm text-gray-600"><span>Total sin Propina:</span><span>${Math.round(totalSinPropina).toLocaleString('es-CL')}</span></div>
-                    <div className="flex justify-between text-sm text-gray-600"><span>Propina (10%):</span><span>${Math.round(propina).toLocaleString('es-CL')}</span></div>
-                    <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1"><span>TOTAL A PAGAR:</span><span className="text-2xl">${Math.round(comensal.total).toLocaleString('es-CL')}</span></div>
+                    <div className="flex justify-between text-sm text-gray-600"><span>Consumo:</span><span>${Math.round(totalSinPropina).toLocaleString('es-CL')}</span></div>
+                    {descuentoAplicado > 0 && (<div className="flex justify-between text-sm text-green-600"><span>Descuento ({discountPercentage}%):</span><span>-${Math.round(descuentoAplicado).toLocaleString('es-CL')}</span></div>)}
+                    <div className="flex justify-between text-sm text-gray-600"><span>Propina ({TIP_PERCENTAGE*100}%):</span><span>${Math.round(propina).toLocaleString('es-CL')}</span></div>
+                    <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1"><span>TOTAL A PAGAR:</span><span className="text-2xl">${Math.round(totalAPagar).toLocaleString('es-CL')}</span></div>
                 </div>
                 <div className="flex gap-2 mt-4">
                     <button onClick={() => onOpenClearComensalModal(comensal.id)} className="w-full bg-orange-100 text-orange-700 py-2 px-4 rounded-md shadow-sm hover:bg-orange-200 text-sm">Limpiar</button>
@@ -1299,12 +805,7 @@ const AssigningStep = ({
     
     return (
         <div className="pb-24">
-            <header className="mb-6 text-center">
-                <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
-                <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p>
-                <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">&larr; Volver y Editar Ítems</button>
-            </header>
-
+            <header className="mb-6 text-center"> <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1> <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p> <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">&larr; Volver y Editar Ítems</button> </header>
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
                 <div className="flex flex-col sm:flex-row gap-3 items-center">
@@ -1313,53 +814,28 @@ const AssigningStep = ({
                 </div>
                 {addComensalMessage.text && (<p className={`mt-3 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
             </div>
-
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4 text-center">Herramientas</h2>
                 <div className="space-y-3">
-                    <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                        <span className="font-semibold">Generar Link de Sesión</span>
-                    </button>
-                    <button onClick={onOpenShareModal} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg>
-                        <span className="font-semibold">Compartir un Ítem</span>
-                    </button>
-                    <button onClick={onRestart} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path d="M4 9a9 9 0 0114.65-4.65l-2.12 2.12a5 5 0 00-9.07 4.53" /><path d="M20 15a9 9 0 01-14.65 4.65l2.12-2.12a5 5 0 009.07-4.53" /></svg>
-                        <span className="font-semibold">Empezar de Nuevo</span>
-                    </button>
+                    <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg> <span className="font-semibold">Generar Link de Sesión</span> </button>
+                    <button onClick={onOpenShareModal} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg> <span className="font-semibold">Compartir un Ítem</span> </button>
+                    <button onClick={onRestart} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path d="M4 9a9 9 0 0114.65-4.65l-2.12 2.12a5 5 0 00-9.07 4.53" /><path d="M20 15a9 9 0 01-14.65 4.65l2.12-2.12a5 5 0 009.07-4.53" /></svg> <span className="font-semibold">Empezar de Nuevo</span> </button>
                 </div>
-                {shareLink && (
-                    <div className="mt-4 bg-green-50 p-4 rounded-lg border border-green-200">
-                        <p className="font-semibold text-green-800">¡Enlace para compartir generado!</p>
-                        <input type="text" readOnly value={shareLink} className="w-full mt-2 p-2 border rounded-md bg-white text-center text-sm" onFocus={(e) => e.target.select()} />
-                        <button onClick={() => navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado!'))} className="mt-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700">Copiar Enlace</button>
-                    </div>
-                )}
+                {shareLink && ( <div className="mt-4 bg-green-50 p-4 rounded-lg border border-green-200"> <p className="font-semibold text-green-800">¡Enlace para compartir generado!</p> <input type="text" readOnly value={shareLink} className="w-full mt-2 p-2 border rounded-md bg-white text-center text-sm" onFocus={(e) => e.target.select()} /> <button onClick={() => navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado!'))} className="mt-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700">Copiar Enlace</button> </div> )}
             </div>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {comensales.map(comensal => (
-                    <ComensalCard key={comensal.id} comensal={comensal} />
-                ))}
+                {comensales.map(comensal => ( <ComensalCard key={comensal.id} comensal={comensal} /> ))}
             </div>
-
             {comensales.length > 0 && (
                 <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
                     <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105 flex flex-col items-center">
                         <span className="text-lg">Ver Resumen Final</span>
-                        {Math.round(remainingToAssign) > 0 && (
-                             <span className="text-xs font-normal opacity-90">
-                                 Faltan ${Math.round(remainingToAssign).toLocaleString('es-CL')} por asignar
-                             </span>
-                        )}
+                        {Math.round(remainingToAssign) > 0 && ( <span className="text-xs font-normal opacity-90"> Faltan ${Math.round(remainingToAssign).toLocaleString('es-CL')} por asignar </span> )}
                     </button>
                 </div>
             )}
         </div>
     )
 };
-
 
 export default App;
