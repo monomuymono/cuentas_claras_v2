@@ -15,174 +15,47 @@ const ITEM_TYPES = {
 };
 
 // --- COMPONENTES DE LA INTERFAZ ---
-
-const LoadingSessionStep = () => (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div>
-      <p className="text-blue-700 text-lg font-semibold">Cargando sesión compartida...</p>
-    </div>
-);
-
-const LoadingModal = ({ isOpen, message }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[100] print:hidden">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div>
-      <p className="text-white text-lg font-semibold">{message}</p>
-    </div>
-  );
-};
-
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center z-50 print:hidden">
-      <div className="bg-white p-6 rounded-t-2xl shadow-2xl w-full max-w-md mx-auto animate-slide-up">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">Confirmar Acción</h2>
-        <p className="text-gray-700 mb-6 text-center">{message}</p>
-        <div className="flex flex-col sm:flex-row-reverse gap-3">
-          <button onClick={onConfirm} className="w-full px-5 py-3 bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
-            {confirmText || 'Confirmar'}
-          </button>
-          <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">
-            {cancelText || 'Cancelar'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
+const LoadingSessionStep = () => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div> <p className="text-blue-700 text-lg font-semibold">Cargando sesión compartida...</p> </div> );
+const LoadingModal = ({ isOpen, message }) => { if (!isOpen) return null; return ( <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[100] print:hidden"> <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div> <p className="text-white text-lg font-semibold">{message}</p> </div> ); };
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => { if (!isOpen) return null; return ( <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center z-50 print:hidden"> <div className="bg-white p-6 rounded-t-2xl shadow-2xl w-full max-w-md mx-auto animate-slide-up"> <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">Confirmar Acción</h2> <p className="text-gray-700 mb-6 text-center">{message}</p> <div className="flex flex-col sm:flex-row-reverse gap-3"> <button onClick={onConfirm} className="w-full px-5 py-3 bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"> {confirmText || 'Confirmar'} </button> <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"> {cancelText || 'Cancelar'} </button> </div> </div> </div> ); };
 const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShareConfirm }) => {
-  const [selectedProductToShare, setSelectedProductToShare] = useState('');
-  const [selectedComensalesForShare, setSelectedComensalesForShare] = useState([]);
-  const [isShareWarningModalOpen, setIsShareWarningModalOpen] = useState(false);
-  const [tempShareProductId, setTempShareProductId] = useState(null);
-  const [tempSharingComensalIds, setTempSharingComensalIds] = useState([]);
-
-  useEffect(() => {
-    if (isOpen) {
-      setSelectedProductToShare('');
-      setSelectedComensalesForShare([]);
-    }
-  }, [isOpen]);
-
-  const handleComensalToggle = (comensalId) => {
-    setSelectedComensalesForShare(prev =>
-      prev.includes(comensalId)
-        ? prev.filter(id => id !== comensalId)
-        : [...prev, comensalId]
-    );
-  };
-
-  const handleConfirm = () => {
-    if (!selectedProductToShare || selectedComensalesForShare.length === 0) {
-      alert('Por favor, selecciona un producto y al menos un comensal para compartir.');
-      return;
-    }
-    if (selectedComensalesForShare.length === 1) {
-        setTempShareProductId(parseInt(selectedProductToShare));
-        setTempSharingComensalIds(selectedComensalesForShare);
-        setIsShareWarningModalOpen(true);
-    } else {
-        onShareConfirm(parseInt(selectedProductToShare), selectedComensalesForShare);
-        onClose();
-    }
-  };
-
-  const confirmShareWarning = () => {
-    onShareConfirm(tempShareProductId, tempSharingComensalIds);
-    setIsShareWarningModalOpen(false);
-    onClose();
-  };
-
+  const [selectedProductToShare, setSelectedProductToShare] = useState(''); const [selectedComensalesForShare, setSelectedComensalesForShare] = useState([]); const [isShareWarningModalOpen, setIsShareWarningModalOpen] = useState(false); const [tempShareProductId, setTempShareProductId] = useState(null); const [tempSharingComensalIds, setTempSharingComensalIds] = useState([]);
+  useEffect(() => { if (isOpen) { setSelectedProductToShare(''); setSelectedComensalesForShare([]); } }, [isOpen]);
+  const handleComensalToggle = (comensalId) => { setSelectedComensalesForShare(prev => prev.includes(comensalId) ? prev.filter(id => id !== comensalId) : [...prev, comensalId]); };
+  const handleConfirm = () => { if (!selectedProductToShare || selectedComensalesForShare.length === 0) { alert('Por favor, selecciona un producto y al menos un comensal para compartir.'); return; } if (selectedComensalesForShare.length === 1) { setTempShareProductId(parseInt(selectedProductToShare)); setTempSharingComensalIds(selectedComensalesForShare); setIsShareWarningModalOpen(true); } else { onShareConfirm(parseInt(selectedProductToShare), selectedComensalesForShare); onClose(); } };
+  const confirmShareWarning = () => { onShareConfirm(tempShareProductId, tempSharingComensalIds); setIsShareWarningModalOpen(false); onClose(); };
   const sharableProducts = Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0);
-
   if (!isOpen) return null;
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-end justify-center z-50 print:hidden">
-        <div className="bg-white p-6 rounded-t-2xl shadow-2xl w-full max-w-lg mx-auto max-h-[80vh] flex flex-col animate-slide-up">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Compartir Ítem</h2>
-          <div className="flex-grow overflow-y-auto space-y-6 pr-2">
-            <div>
-              <label htmlFor="share-product-select" className="block text-sm font-medium text-gray-700 mb-2">1. Selecciona Ítem a Compartir:</label>
-              <select id="share-product-select" value={selectedProductToShare} onChange={(e) => setSelectedProductToShare(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm">
-                <option value="" disabled>Selecciona un producto</option>
-                {sharableProducts.map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">2. Selecciona Comensales:</label>
-              <div className="grid grid-cols-2 gap-3 border p-3 rounded-md bg-gray-50">
-                {comensales.map(comensal => (
-                  <div key={String(comensal.id)} className={`flex items-center p-3 rounded-lg cursor-pointer transition-all ${selectedComensalesForShare.includes(comensal.id) ? 'bg-blue-100 ring-2 ring-blue-500' : 'bg-white'}`} onClick={() => handleComensalToggle(comensal.id)}>
-                    <input type="checkbox" id={`comensal-share-${comensal.id}`} checked={selectedComensalesForShare.includes(comensal.id)} onChange={() => {}} className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 pointer-events-none"/>
-                    <label htmlFor={`comensal-share-${comensal.id}`} className="ml-3 text-sm font-medium text-gray-900 pointer-events-none">{comensal.name}</label>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="mt-6 flex flex-col sm:flex-row-reverse gap-3">
-            <button onClick={handleConfirm} className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Confirmar Compartir</button>
-            <button onClick={onClose} className="w-full px-4 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">Cancelar</button>
-          </div>
-        </div>
-      </div>
-      <ConfirmationModal isOpen={isShareWarningModalOpen} onClose={() => setIsShareWarningModalOpen(false)} onConfirm={confirmShareWarning} message="Estás compartiendo un ítem con un solo comensal. ¿No sería mejor agregarlo directamente? Continuar para dividirlo." confirmText="Dividir de todos modos" cancelText="Cancelar"/>
-    </>
-  );
+  return ( <> <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-end justify-center z-50 print:hidden"> <div className="bg-white p-6 rounded-t-2xl shadow-2xl w-full max-w-lg mx-auto max-h-[80vh] flex flex-col animate-slide-up"> <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Compartir Ítem</h2> <div className="flex-grow overflow-y-auto space-y-6 pr-2"> <div> <label htmlFor="share-product-select" className="block text-sm font-medium text-gray-700 mb-2">1. Selecciona Ítem a Compartir:</label> <select id="share-product-select" value={selectedProductToShare} onChange={(e) => setSelectedProductToShare(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"> <option value="" disabled>Selecciona un producto</option> {sharableProducts.map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))} </select> </div> <div> <label className="block text-sm font-medium text-gray-700 mb-2">2. Selecciona Comensales:</label> <div className="grid grid-cols-2 gap-3 border p-3 rounded-md bg-gray-50"> {comensales.map(comensal => ( <div key={String(comensal.id)} className={`flex items-center p-3 rounded-lg cursor-pointer transition-all ${selectedComensalesForShare.includes(comensal.id) ? 'bg-blue-100 ring-2 ring-blue-500' : 'bg-white'}`} onClick={() => handleComensalToggle(comensal.id)}> <input type="checkbox" id={`comensal-share-${comensal.id}`} checked={selectedComensalesForShare.includes(comensal.id)} onChange={() => {}} className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 pointer-events-none"/> <label htmlFor={`comensal-share-${comensal.id}`} className="ml-3 text-sm font-medium text-gray-900 pointer-events-none">{comensal.name}</label> </div> ))} </div> </div> </div> <div className="mt-6 flex flex-col sm:flex-row-reverse gap-3"> <button onClick={handleConfirm} className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Confirmar Compartir</button> <button onClick={onClose} className="w-full px-4 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">Cancelar</button> </div> </div> </div> <ConfirmationModal isOpen={isShareWarningModalOpen} onClose={() => setIsShareWarningModalOpen(false)} onConfirm={confirmShareWarning} message="Estás compartiendo un ítem con un solo comensal. ¿No sería mejor agregarlo directamente? Continuar para dividirlo." confirmText="Dividir de todos modos" cancelText="Cancelar"/> </> );
 };
-
 const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
   if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
-        <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
-        <div className="space-y-6 overflow-y-auto flex-grow">
-          {summaryData.map(diner => (
-            <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0">
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
-              <div className="flex justify-between text-gray-600"><span>Consumo (sin propina):</span><span>${diner.totalSinPropina.toLocaleString('es-CL')}</span></div>
-              {diner.descuentoAplicado > 0 && (<div className="flex justify-between text-green-600"><span>Descuento:</span><span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span></div>)}
-              <div className="flex justify-between text-gray-600"><span>Propina (10%):</span><span>${diner.propina.toLocaleString('es-CL')}</span></div>
-              <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200"><span>TOTAL A PAGAR:</span><span>${diner.totalConPropina.toLocaleString('es-CL')}</span></div>
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-col sm:flex-row-reverse gap-4 mt-8">
-            <button onClick={onPrint} className="w-full px-5 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Generar PDF</button>
-            <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">Cerrar</button>
-        </div>
-      </div>
-    </div>
-  );
+  return ( <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50"> <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col"> <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2> <div className="space-y-6 overflow-y-auto flex-grow"> {summaryData.map(diner => ( <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0"> <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3> <div className="flex justify-between text-gray-600"><span>Consumo (sin propina):</span><span>${diner.totalSinPropina.toLocaleString('es-CL')}</span></div> {diner.descuentoAplicado > 0 && (<div className="flex justify-between text-green-600"><span>Descuento:</span><span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span></div>)} <div className="flex justify-between text-gray-600"><span>Propina (10%):</span><span>${diner.propina.toLocaleString('es-CL')}</span></div> <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200"><span>TOTAL A PAGAR:</span><span>${diner.totalConPropina.toLocaleString('es-CL')}</span></div> </div> ))} </div> <div className="flex flex-col sm:flex-row-reverse gap-4 mt-8"> <button onClick={onPrint} className="w-full px-5 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Generar PDF</button> <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">Cerrar</button> </div> </div> </div> );
 };
 
 
 // --- LÓGICA DE ESTADO CENTRALIZADA (REDUCER) ---
 const getInitialStep = () => { if (typeof window !== 'undefined') { const urlParams = new URLSearchParams(window.location.search); if (urlParams.has('id')) { return 'loading_session'; } } return 'landing'; };
-const initialState = { currentStep: getInitialStep(), userId: null, shareId: null, shareLink: '', availableProducts: new Map(), comensales: [], activeSharedInstances: new Map(), discountPercentage: 0, discountCap: 0, };
+const initialState = { currentStep: getInitialStep(), userId: null, shareId: null, shareLink: '', availableProducts: new Map(), comensales: [], activeSharedInstances: new Map(), discountPercentage: 0, discountCap: 0, lastUpdated: null, };
+
 function billReducer(state, action) {
+    const newTimestamp = new Date().toISOString();
     switch (action.type) {
         case 'SET_STEP': return { ...state, currentStep: action.payload };
         case 'SET_USER_ID': return { ...state, userId: action.payload };
         case 'SET_SHARE_ID': return { ...state, shareId: action.payload };
         case 'SET_SHARE_LINK': return { ...state, shareLink: action.payload };
-        case 'APPLY_DISCOUNT': { const { percentage, cap } = action.payload; return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0, }; }
-        case 'LOAD_STATE': { const { comensales, availableProducts, activeSharedInstances, shareId } = action.payload; return { ...state, comensales, availableProducts, activeSharedInstances, shareId, }; }
-        case 'SET_PRODUCTS_FOR_REVIEW': return { ...state, availableProducts: action.payload, discountPercentage: 0, discountCap: 0, currentStep: 'reviewing' };
-        case 'SET_PRODUCTS_AND_ADVANCE': return { ...state, availableProducts: action.payload, currentStep: 'assigning' };
-        case 'CLEAR_BILL_DATA': return { ...state, availableProducts: new Map(), comensales: [], activeSharedInstances: new Map(), discountPercentage: 0, discountCap: 0, };
-        case 'ADD_COMENSAL': { if (state.comensales.length >= MAX_COMENSALES) return state; const newComensalId = state.comensales.length > 0 ? Math.max(0, ...state.comensales.map(c => c.id)) + 1 : 1; const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 }; return { ...state, comensales: [...state.comensales, newComensal] }; }
-        case 'ADD_ITEM': { const { comensalId, productId } = action.payload; const productInStock = state.availableProducts.get(productId); if (!productInStock || Number(productInStock.quantity) <= 0) return state; const newProductsMap = new Map(state.availableProducts); newProductsMap.set(productId, { ...productInStock, quantity: Number(productInStock.quantity) - 1 }); const newComensales = state.comensales.map(comensal => { if (comensal.id === comensalId) { const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] }; const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL); if (existingItemIndex !== -1) { updatedComensal.selectedItems[existingItemIndex].quantity += 1; } else { updatedComensal.selectedItems.push({ id: productInStock.id, name: productInStock.name, originalBasePrice: Number(productInStock.price), quantity: 1, type: ITEM_TYPES.FULL, }); } return updatedComensal; } return comensal; }); return { ...state, availableProducts: newProductsMap, comensales: newComensales }; }
-        case 'SHARE_ITEM': { const { productId, sharingComensalIds } = action.payload; const productToShare = state.availableProducts.get(productId); if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || Number(productToShare.quantity) <= 0) return state; const newProductsMap = new Map(state.availableProducts); newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 }); const shareInstanceId = Date.now() + Math.random(); const newActiveSharedInstances = new Map(state.activeSharedInstances); newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds)); const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length); const newComensales = state.comensales.map(comensal => { if (sharingComensalIds.includes(comensal.id)) { const updatedItems = [...comensal.selectedItems, { id: productToShare.id, name: productToShare.name, originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED, sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId }]; return { ...comensal, selectedItems: updatedItems }; } return comensal; }); return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances }; }
-        case 'REMOVE_ITEM_FROM_COMENSAL': { const { comensalId, itemIdentifier } = action.payload; const comensalTarget = state.comensales.find(c => c.id === comensalId); if (!comensalTarget) return state; const itemIndex = comensalTarget.selectedItems.findIndex(item => (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || (item.type === ITEM_TYPES.FULL && item.id === Number(itemIdentifier))); if (itemIndex === -1) return state; const itemToRemove = comensalTarget.selectedItems[itemIndex]; let updatedProducts = new Map(state.availableProducts); let updatedSharedInstances = new Map(state.activeSharedInstances); let updatedComensales = state.comensales.map(comensal => { if (comensal.id === comensalId) { const items = [...comensal.selectedItems]; const itemToUpdate = items[itemIndex]; if (itemToUpdate.type === ITEM_TYPES.FULL) { if (itemToUpdate.quantity > 1) { const updatedItem = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 }; items[itemIndex] = updatedItem; } else { items.splice(itemIndex, 1); } const product = updatedProducts.get(itemToRemove.id); if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 }); } return { ...comensal, selectedItems: items }; } return comensal; }); if (itemToRemove.type === ITEM_TYPES.SHARED) { const { shareInstanceId, id: originalProductId } = itemToRemove; const shareGroup = updatedSharedInstances.get(shareInstanceId); if (shareGroup) { shareGroup.delete(comensalId); if (shareGroup.size === 0) { updatedSharedInstances.delete(shareInstanceId); const product = updatedProducts.get(originalProductId); if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 }); } updatedComensales = updatedComensales.map(c => { let comensalToUpdate = { ...c }; if (c.id === comensalId) { comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId)); } if (shareGroup.size > 0 && shareGroup.has(c.id)) { const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount; const newSharerCount = shareGroup.size; const newBasePricePerShare = totalItemBasePrice / newSharerCount; comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => { if (String(item.shareInstanceId) === String(shareInstanceId)) { return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount }; } return item; }); } return comensalToUpdate; }); } } return { ...state, comensales: updatedComensales, availableProducts: updatedProducts, activeSharedInstances: updatedSharedInstances }; }
-        case 'CLEAR_COMENSAL_ITEMS': { const comensalIdToClear = action.payload; const comensalToClear = state.comensales.find(c => c.id === comensalIdToClear); if (!comensalToClear || comensalToClear.selectedItems.length === 0) return state; const newProducts = new Map(state.availableProducts); const newSharedInstances = new Map(state.activeSharedInstances); const sharedGroupsToUpdate = new Map(); comensalToClear.selectedItems.forEach(item => { if (item.type === ITEM_TYPES.FULL) { const product = newProducts.get(item.id); if (product) newProducts.set(item.id, { ...product, quantity: item.quantity + (product.quantity || 0) }); } else if (item.type === ITEM_TYPES.SHARED) { const shareGroup = newSharedInstances.get(item.shareInstanceId); if (!shareGroup) return; shareGroup.delete(comensalIdToClear); if (shareGroup.size === 0) { newSharedInstances.delete(item.shareInstanceId); const product = newProducts.get(item.id); if (product) newProducts.set(item.id, { ...product, quantity: product.quantity + 1 }); } else { sharedGroupsToUpdate.set(item.shareInstanceId, { totalBasePrice: item.originalBasePrice * item.sharedByCount, newSharerCount: shareGroup.size }); } } }); const finalComensales = state.comensales.map(comensal => { if (comensal.id === comensalIdToClear) { return { ...comensal, selectedItems: [], total: 0 }; } let needsRecalculation = false; const updatedItems = comensal.selectedItems.map(item => { if (item.type === ITEM_TYPES.SHARED && sharedGroupsToUpdate.has(item.shareInstanceId)) { needsRecalculation = true; const updateInfo = sharedGroupsToUpdate.get(item.shareInstanceId); const newBasePricePerShare = updateInfo.totalBasePrice / updateInfo.newSharerCount; return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: updateInfo.newSharerCount }; } return item; }); if (needsRecalculation) { return { ...comensal, selectedItems: updatedItems }; } return comensal; }); return { ...state, comensales: finalComensales, availableProducts: newProducts, activeSharedInstances: newSharedInstances }; }
-        case 'REMOVE_COMENSAL': { const comensalIdToRemove = action.payload; const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove); return { ...state, comensales: newComensales }; }
+        case 'APPLY_DISCOUNT': { const { percentage, cap } = action.payload; return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0, lastUpdated: newTimestamp }; }
+        case 'LOAD_STATE': { const { comensales, availableProducts, activeSharedInstances, shareId, lastUpdated } = action.payload; return { ...state, comensales, availableProducts, activeSharedInstances, shareId, lastUpdated: lastUpdated || state.lastUpdated, }; }
+        case 'SET_PRODUCTS_FOR_REVIEW': return { ...state, availableProducts: action.payload, discountPercentage: 0, discountCap: 0, currentStep: 'reviewing', lastUpdated: newTimestamp };
+        case 'SET_PRODUCTS_AND_ADVANCE': return { ...state, availableProducts: action.payload, currentStep: 'assigning', lastUpdated: newTimestamp };
+        case 'CLEAR_BILL_DATA': return { ...state, availableProducts: new Map(), comensales: [], activeSharedInstances: new Map(), discountPercentage: 0, discountCap: 0, lastUpdated: newTimestamp };
+        case 'ADD_COMENSAL': { if (state.comensales.length >= MAX_COMENSALES) return state; const newComensalId = state.comensales.length > 0 ? Math.max(0, ...state.comensales.map(c => c.id)) + 1 : 1; const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 }; return { ...state, comensales: [...state.comensales, newComensal], lastUpdated: newTimestamp }; }
+        case 'ADD_ITEM': { const { comensalId, productId } = action.payload; const productInStock = state.availableProducts.get(productId); if (!productInStock || Number(productInStock.quantity) <= 0) return state; const newProductsMap = new Map(state.availableProducts); newProductsMap.set(productId, { ...productInStock, quantity: Number(productInStock.quantity) - 1 }); const newComensales = state.comensales.map(comensal => { if (comensal.id === comensalId) { const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] }; const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL); if (existingItemIndex !== -1) { updatedComensal.selectedItems[existingItemIndex].quantity += 1; } else { updatedComensal.selectedItems.push({ id: productInStock.id, name: productInStock.name, originalBasePrice: Number(productInStock.price), quantity: 1, type: ITEM_TYPES.FULL, }); } return updatedComensal; } return comensal; }); return { ...state, availableProducts: newProductsMap, comensales: newComensales, lastUpdated: newTimestamp }; }
+        case 'SHARE_ITEM': { const { productId, sharingComensalIds } = action.payload; const productToShare = state.availableProducts.get(productId); if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || Number(productToShare.quantity) <= 0) return state; const newProductsMap = new Map(state.availableProducts); newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 }); const shareInstanceId = Date.now() + Math.random(); const newActiveSharedInstances = new Map(state.activeSharedInstances); newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds)); const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length); const newComensales = state.comensales.map(comensal => { if (sharingComensalIds.includes(comensal.id)) { const updatedItems = [...comensal.selectedItems, { id: productToShare.id, name: productToShare.name, originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED, sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId }]; return { ...comensal, selectedItems: updatedItems }; } return comensal; }); return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances, lastUpdated: newTimestamp }; }
+        case 'REMOVE_ITEM_FROM_COMENSAL': { const { comensalId, itemIdentifier } = action.payload; const comensalTarget = state.comensales.find(c => c.id === comensalId); if (!comensalTarget) return state; const itemIndex = comensalTarget.selectedItems.findIndex(item => (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || (item.type === ITEM_TYPES.FULL && item.id === Number(itemIdentifier))); if (itemIndex === -1) return state; const itemToRemove = comensalTarget.selectedItems[itemIndex]; let updatedProducts = new Map(state.availableProducts); let updatedSharedInstances = new Map(state.activeSharedInstances); let updatedComensales = state.comensales.map(comensal => { if (comensal.id === comensalId) { const items = [...comensal.selectedItems]; const itemToUpdate = items[itemIndex]; if (itemToUpdate.type === ITEM_TYPES.FULL) { if (itemToUpdate.quantity > 1) { const updatedItem = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 }; items[itemIndex] = updatedItem; } else { items.splice(itemIndex, 1); } const product = updatedProducts.get(itemToRemove.id); if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 }); } return { ...comensal, selectedItems: items }; } return comensal; }); if (itemToRemove.type === ITEM_TYPES.SHARED) { const { shareInstanceId, id: originalProductId } = itemToRemove; const shareGroup = updatedSharedInstances.get(shareInstanceId); if (shareGroup) { shareGroup.delete(comensalId); if (shareGroup.size === 0) { updatedSharedInstances.delete(shareInstanceId); const product = updatedProducts.get(originalProductId); if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 }); } updatedComensales = updatedComensales.map(c => { let comensalToUpdate = { ...c }; if (c.id === comensalId) { comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId)); } if (shareGroup.size > 0 && shareGroup.has(c.id)) { const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount; const newSharerCount = shareGroup.size; const newBasePricePerShare = totalItemBasePrice / newSharerCount; comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => { if (String(item.shareInstanceId) === String(shareInstanceId)) { return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount }; } return item; }); } return comensalToUpdate; }); } } return { ...state, comensales: updatedComensales, availableProducts: updatedProducts, activeSharedInstances: updatedSharedInstances, lastUpdated: newTimestamp }; }
+        case 'CLEAR_COMENSAL_ITEMS': { const comensalIdToClear = action.payload; const comensalToClear = state.comensales.find(c => c.id === comensalIdToClear); if (!comensalToClear || comensalToClear.selectedItems.length === 0) return state; const newProducts = new Map(state.availableProducts); const newSharedInstances = new Map(state.activeSharedInstances); const sharedGroupsToUpdate = new Map(); comensalToClear.selectedItems.forEach(item => { if (item.type === ITEM_TYPES.FULL) { const product = newProducts.get(item.id); if (product) newProducts.set(item.id, { ...product, quantity: item.quantity + (product.quantity || 0) }); } else if (item.type === ITEM_TYPES.SHARED) { const shareGroup = newSharedInstances.get(item.shareInstanceId); if (!shareGroup) return; shareGroup.delete(comensalIdToClear); if (shareGroup.size === 0) { newSharedInstances.delete(item.shareInstanceId); const product = newProducts.get(item.id); if (product) newProducts.set(item.id, { ...product, quantity: product.quantity + 1 }); } else { sharedGroupsToUpdate.set(item.shareInstanceId, { totalBasePrice: item.originalBasePrice * item.sharedByCount, newSharerCount: shareGroup.size }); } } }); const finalComensales = state.comensales.map(comensal => { if (comensal.id === comensalIdToClear) { return { ...comensal, selectedItems: [], total: 0 }; } let needsRecalculation = false; const updatedItems = comensal.selectedItems.map(item => { if (item.type === ITEM_TYPES.SHARED && sharedGroupsToUpdate.has(item.shareInstanceId)) { needsRecalculation = true; const updateInfo = sharedGroupsToUpdate.get(item.shareInstanceId); const newBasePricePerShare = updateInfo.totalBasePrice / updateInfo.newSharerCount; return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: updateInfo.newSharerCount }; } return item; }); if (needsRecalculation) { return { ...comensal, selectedItems: updatedItems }; } return comensal; }); return { ...state, comensales: finalComensales, availableProducts: newProducts, activeSharedInstances: newSharedInstances, lastUpdated: newTimestamp }; }
+        case 'REMOVE_COMENSAL': { const comensalIdToRemove = action.payload; const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove); return { ...state, comensales: newComensales, lastUpdated: newTimestamp }; }
         case 'RESET_SESSION': { const url = new URL(window.location.href); url.searchParams.delete('id'); window.history.replaceState({}, document.title, url.toString()); return { ...initialState, currentStep: 'landing', userId: state.userId, shareId: `local-session-${Date.now()}` }; }
         default: return state;
     }
@@ -191,7 +64,7 @@ function billReducer(state, action) {
 // --- Componente principal de la aplicación ---
 const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
-    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
+    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap, lastUpdated } = state;
 
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
     const [authReady, setAuthReady] = useState(false);
@@ -209,9 +82,14 @@ const App = () => {
     
     const initialLoadDone = useRef(false);
     const isLoadingFromServer = useRef(false);
+    const pollTimer = useRef(null);
+    const lastUpdatedRef = useRef(lastUpdated);
+
+    useEffect(() => {
+        lastUpdatedRef.current = lastUpdated;
+    }, [lastUpdated]);
 
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) { return Promise.reject(new Error("URL de Apps Script inválida.")); }
         if (!currentShareId || !userId) return Promise.resolve();
         const promiseWithTimeout = new Promise((resolve, reject) => { const timeoutId = setTimeout(() => { reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).')); }, 8000); const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random()); const script = document.createElement('script'); const cleanup = () => { clearTimeout(timeoutId); if (document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; }; window[callbackName] = (data) => { cleanup(); resolve(data); }; script.onerror = () => { cleanup(); reject(new Error('Error de red al guardar los datos en Google Sheets.')); }; const dataString = JSON.stringify(dataToSave); const encodedData = encodeURIComponent(dataString); script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`; document.body.appendChild(script); });
         try { const result = await promiseWithTimeout; if (result.status === 'error') return Promise.reject(new Error(result.message)); return Promise.resolve();
@@ -220,41 +98,62 @@ const App = () => {
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
     
+    // --- LÓGICA DE CARGA MODIFICADA: Ahora compara timestamps ---
     const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
         if (!idToLoad || idToLoad.startsWith('local-')) return;
         const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
         const promise = new Promise((resolve, reject) => { const script = document.createElement('script'); window[callbackName] = (data) => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; resolve(data); }; script.onerror = () => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; reject(new Error('Error al cargar los datos desde Google Sheets.')); }; script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`; document.body.appendChild(script); });
         try {
             const data = await promise;
-            if (data && data.status !== "not_found") {
-                isLoadingFromServer.current = true;
-                const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value]));
-                const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
-                dispatch({ type: 'LOAD_STATE', payload: { comensales: data.comensales || [], availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances, shareId: idToLoad } });
-                if (!initialLoadDone.current) {
-                    if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
-                        dispatch({ type: 'SET_STEP', payload: 'assigning' });
-                    } else {
-                        dispatch({ type: 'SET_STEP', payload: 'reviewing' });
+            if (data && data.status !== "not_found" && data.lastUpdated) {
+                const serverTimestamp = new Date(data.lastUpdated);
+                const localTimestamp = lastUpdatedRef.current ? new Date(lastUpdatedRef.current) : null;
+                
+                if (!localTimestamp || serverTimestamp > localTimestamp) {
+                    console.log("Datos del servidor son más recientes. Actualizando estado local.");
+                    isLoadingFromServer.current = true;
+                    const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value]));
+                    const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
+                    dispatch({ type: 'LOAD_STATE', payload: { ...data, comensales: data.comensales || [], availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances, shareId: idToLoad } });
+                    if (!initialLoadDone.current) {
+                        if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
+                            dispatch({ type: 'SET_STEP', payload: 'assigning' });
+                        } else {
+                            dispatch({ type: 'SET_STEP', payload: 'reviewing' });
+                        }
                     }
+                } else {
+                    console.log("Datos locales son iguales o más recientes. Ignorando actualización del servidor.");
                 }
-            } else {
+            } else if (data && data.status === "not_found") {
                 alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
                 handleResetAll();
             }
         } catch (error) { console.error("Error al cargar con JSONP:", error);
         } finally { setTimeout(() => { isLoadingFromServer.current = false; }, 0); }
     }, [handleResetAll]);
-        
+    
+    const stopPolling = useCallback(() => { if (pollTimer.current) { clearTimeout(pollTimer.current); } }, []);
+    const startPolling = useCallback(() => {
+        stopPolling();
+        const poll = () => { loadStateFromGoogleSheets(shareId).finally(() => { pollTimer.current = setTimeout(poll, 5000); }); };
+        pollTimer.current = setTimeout(poll, 5000);
+    }, [shareId, loadStateFromGoogleSheets, stopPolling]);
+
+    useEffect(() => {
+        const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
+        if (shareId && !shareId.startsWith('local-') && !isAnyModalOpen && currentStep === 'assigning') {
+            startPolling();
+        } else {
+            stopPolling();
+        }
+        return stopPolling;
+    }, [shareId, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen, currentStep, startPolling, stopPolling]);
+    
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
         if (uniqueSessionUserId) { dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
-        } else {
-            const newUniqueId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-            localStorage.setItem('billSplitterUserId', newUniqueId);
-            dispatch({ type: 'SET_USER_ID', payload: newUniqueId });
-        }
+        } else { const newUniqueId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`; localStorage.setItem('billSplitterUserId', newUniqueId); dispatch({ type: 'SET_USER_ID', payload: newUniqueId }); }
         setAuthReady(true);
     }, []);
 
@@ -271,28 +170,19 @@ const App = () => {
         performInitialLoad();
     }, [authReady, userId, loadStateFromGoogleSheets]);
     
-    // --- EFECTO DE AUTOGUARDADO SIMPLIFICADO ---
-    // Se guarda 1.2 segundos después de cualquier cambio en los datos principales.
     useEffect(() => {
-        // No guardar si la app no está lista o si es una sesión local.
-        if (!initialLoadDone.current || isLoadingFromServer.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) {
+        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) {
             return;
         }
-
         const handler = setTimeout(() => {
             console.log("Autoguardando cambios...");
-            const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: new Date().toISOString() };
-            saveStateToGoogleSheets(shareId, dataToSave)
-                .catch((e) => { 
-                    console.error("El guardado automático falló:", e.message); 
-                    // Opcional: mostrar un toast de error al usuario
-                });
-        }, 1200);
-
+            const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: lastUpdated };
+            saveStateToGoogleSheets(shareId, dataToSave).catch((e) => { console.error("El guardado automático falló:", e.message); });
+        }, 1500);
         return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
+    }, [comensales, availableProducts, activeSharedInstances, lastUpdated, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
     
-    const handleStartNewSession = async () => { if (!userId) { alert("La sesión de usuario no está lista."); return; } setIsGeneratingLink(true); const newShareId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`; const initialData = { comensales: [], availableProducts: {}, activeSharedInstances: {} }; try { await saveStateToGoogleSheets(newShareId, initialData); const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`; dispatch({ type: 'SET_SHARE_ID', payload: newShareId }); dispatch({ type: 'SET_STEP', payload: 'loading' }); window.history.pushState({ path: fullLink }, '', fullLink); } catch (e) { alert(`Error al crear la sesión: ${e.message}`); } finally { setIsGeneratingLink(false); } };
+    const handleStartNewSession = async () => { if (!userId) { alert("La sesión de usuario no está lista."); return; } setIsGeneratingLink(true); const newShareId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`; const initialData = { comensales: [], availableProducts: {}, activeSharedInstances: {}, lastUpdated: new Date().toISOString() }; try { await saveStateToGoogleSheets(newShareId, initialData); const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`; dispatch({ type: 'SET_SHARE_ID', payload: newShareId }); dispatch({ type: 'SET_STEP', payload: 'loading' }); window.history.pushState({ path: fullLink }, '', fullLink); } catch (e) { alert(`Error al crear la sesión: ${e.message}`); } finally { setIsGeneratingLink(false); } };
     const handleGenerateShareLink = () => { if (shareId && !shareId.startsWith('local-')) { const fullLink = `${window.location.origin}${window.location.pathname}?id=${shareId}`; dispatch({ type: 'SET_SHARE_LINK', payload: fullLink }); } else { alert("Error: No hay una sesión compartida activa para generar un enlace."); } };
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
