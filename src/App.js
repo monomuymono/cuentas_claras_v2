@@ -7,7 +7,7 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 
 // --- CONSTANTES ---
 const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec";
-const TIP_PERCENTAGE = 0.10; // Propina del 10%
+const TIP_PERCENTAGE = 0.10;
 const MAX_COMENSALES = 20;
 const ITEM_TYPES = {
     FULL: 'full',
@@ -25,7 +25,6 @@ const LoadingSessionStep = () => (
 
 const LoadingModal = ({ isOpen, message }) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-[100] print:hidden">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mb-4"></div>
@@ -36,23 +35,16 @@ const LoadingModal = ({ isOpen, message }) => {
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, message, confirmText, cancelText }) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end justify-center z-50 print:hidden">
       <div className="bg-white p-6 rounded-t-2xl shadow-2xl w-full max-w-md mx-auto animate-slide-up">
         <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">Confirmar Acción</h2>
         <p className="text-gray-700 mb-6 text-center">{message}</p>
         <div className="flex flex-col sm:flex-row-reverse gap-3">
-          <button
-            onClick={onConfirm}
-            className="w-full px-5 py-3 bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-          >
+          <button onClick={onConfirm} className="w-full px-5 py-3 bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
             {confirmText || 'Confirmar'}
           </button>
-          <button
-            onClick={onClose}
-            className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-          >
+          <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">
             {cancelText || 'Cancelar'}
           </button>
         </div>
@@ -115,78 +107,37 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
           <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Compartir Ítem</h2>
           <div className="flex-grow overflow-y-auto space-y-6 pr-2">
             <div>
-              <label htmlFor="share-product-select" className="block text-sm font-medium text-gray-700 mb-2">
-                1. Selecciona Ítem a Compartir:
-              </label>
-              <select
-                id="share-product-select"
-                value={selectedProductToShare}
-                onChange={(e) => setSelectedProductToShare(e.target.value)}
-                className="mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
-              >
+              <label htmlFor="share-product-select" className="block text-sm font-medium text-gray-700 mb-2">1. Selecciona Ítem a Compartir:</label>
+              <select id="share-product-select" value={selectedProductToShare} onChange={(e) => setSelectedProductToShare(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm">
                 <option value="" disabled>Selecciona un producto</option>
-                {sharableProducts.map(product => (
-                  <option key={String(product.id)} value={product.id}>
-                    {product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})
-                  </option>
-                ))}
+                {sharableProducts.map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                2. Selecciona Comensales:
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">2. Selecciona Comensales:</label>
               <div className="grid grid-cols-2 gap-3 border p-3 rounded-md bg-gray-50">
                 {comensales.map(comensal => (
-                  <div key={String(comensal.id)}
-                       className={`flex items-center p-3 rounded-lg cursor-pointer transition-all ${selectedComensalesForShare.includes(comensal.id) ? 'bg-blue-100 ring-2 ring-blue-500' : 'bg-white'}`}
-                       onClick={() => handleComensalToggle(comensal.id)}>
-                    <input
-                      type="checkbox"
-                      id={`comensal-share-${comensal.id}`}
-                      checked={selectedComensalesForShare.includes(comensal.id)}
-                      onChange={() => {}}
-                      className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 pointer-events-none"
-                    />
-                    <label htmlFor={`comensal-share-${comensal.id}`} className="ml-3 text-sm font-medium text-gray-900 pointer-events-none">
-                      {comensal.name}
-                    </label>
+                  <div key={String(comensal.id)} className={`flex items-center p-3 rounded-lg cursor-pointer transition-all ${selectedComensalesForShare.includes(comensal.id) ? 'bg-blue-100 ring-2 ring-blue-500' : 'bg-white'}`} onClick={() => handleComensalToggle(comensal.id)}>
+                    <input type="checkbox" id={`comensal-share-${comensal.id}`} checked={selectedComensalesForShare.includes(comensal.id)} onChange={() => {}} className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 pointer-events-none"/>
+                    <label htmlFor={`comensal-share-${comensal.id}`} className="ml-3 text-sm font-medium text-gray-900 pointer-events-none">{comensal.name}</label>
                   </div>
                 ))}
               </div>
             </div>
           </div>
           <div className="mt-6 flex flex-col sm:flex-row-reverse gap-3">
-            <button
-              onClick={handleConfirm}
-              className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Confirmar Compartir
-            </button>
-            <button
-              onClick={onClose}
-              className="w-full px-4 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-            >
-              Cancelar
-            </button>
+            <button onClick={handleConfirm} className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Confirmar Compartir</button>
+            <button onClick={onClose} className="w-full px-4 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">Cancelar</button>
           </div>
         </div>
       </div>
-      <ConfirmationModal
-        isOpen={isShareWarningModalOpen}
-        onClose={() => setIsShareWarningModalOpen(false)}
-        onConfirm={confirmShareWarning}
-        message="Estás compartiendo un ítem con un solo comensal. ¿No sería mejor agregarlo directamente? Continuar para dividirlo."
-        confirmText="Dividir de todos modos"
-        cancelText="Cancelar"
-      />
+      <ConfirmationModal isOpen={isShareWarningModalOpen} onClose={() => setIsShareWarningModalOpen(false)} onConfirm={confirmShareWarning} message="Estás compartiendo un ítem con un solo comensal. ¿No sería mejor agregarlo directamente? Continuar para dividirlo." confirmText="Dividir de todos modos" cancelText="Cancelar"/>
     </>
   );
 };
 
 const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-gray-800 bg-opacity-80 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
@@ -195,326 +146,44 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
           {summaryData.map(diner => (
             <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0">
               <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
-              <div className="flex justify-between text-gray-600">
-                <span>Consumo (sin propina):</span>
-                <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
-              </div>
-              {diner.descuentoAplicado > 0 && (
-                <div className="flex justify-between text-green-600">
-                  <span>Descuento:</span>
-                  <span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-gray-600">
-                <span>Propina (10%):</span>
-                <span>${diner.propina.toLocaleString('es-CL')}</span>
-              </div>
-              <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
-                <span>TOTAL A PAGAR:</span>
-                <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
-              </div>
+              <div className="flex justify-between text-gray-600"><span>Consumo (sin propina):</span><span>${diner.totalSinPropina.toLocaleString('es-CL')}</span></div>
+              {diner.descuentoAplicado > 0 && (<div className="flex justify-between text-green-600"><span>Descuento:</span><span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span></div>)}
+              <div className="flex justify-between text-gray-600"><span>Propina (10%):</span><span>${diner.propina.toLocaleString('es-CL')}</span></div>
+              <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200"><span>TOTAL A PAGAR:</span><span>${diner.totalConPropina.toLocaleString('es-CL')}</span></div>
             </div>
           ))}
         </div>
         <div className="flex flex-col sm:flex-row-reverse gap-4 mt-8">
-            <button
-              onClick={onPrint}
-              className="w-full px-5 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Generar PDF
-            </button>
-            <button
-              onClick={onClose}
-              className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-            >
-              Cerrar
-            </button>
+            <button onClick={onPrint} className="w-full px-5 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Generar PDF</button>
+            <button onClick={onClose} className="w-full px-5 py-3 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">Cerrar</button>
         </div>
       </div>
     </div>
   );
 };
 
-
 // --- LÓGICA DE ESTADO CENTRALIZADA (REDUCER) ---
-
-const getInitialStep = () => {
-    if (typeof window !== 'undefined') {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('id')) {
-            return 'loading_session';
-        }
-    }
-    return 'landing';
-};
-
-const initialState = {
-    currentStep: getInitialStep(),
-    userId: null,
-    shareId: null,
-    shareLink: '',
-    availableProducts: new Map(),
-    comensales: [],
-    activeSharedInstances: new Map(),
-    discountPercentage: 0,
-    discountCap: 0,
-};
-
+const getInitialStep = () => { if (typeof window !== 'undefined') { const urlParams = new URLSearchParams(window.location.search); if (urlParams.has('id')) { return 'loading_session'; } } return 'landing'; };
+const initialState = { currentStep: getInitialStep(), userId: null, shareId: null, shareLink: '', availableProducts: new Map(), comensales: [], activeSharedInstances: new Map(), discountPercentage: 0, discountCap: 0, };
 function billReducer(state, action) {
     switch (action.type) {
-        case 'SET_STEP':
-            return { ...state, currentStep: action.payload };
-        case 'SET_USER_ID':
-            return { ...state, userId: action.payload };
-        case 'SET_SHARE_ID':
-            return { ...state, shareId: action.payload };
-        case 'SET_SHARE_LINK':
-            return { ...state, shareLink: action.payload };
-        case 'APPLY_DISCOUNT': {
-            const { percentage, cap } = action.payload;
-            return {
-                ...state,
-                discountPercentage: parseFloat(percentage) || 0,
-                discountCap: parseFloat(cap) || 0,
-            };
-        }
-        case 'LOAD_STATE': {
-            const { comensales, availableProducts, activeSharedInstances, shareId } = action.payload;
-            return {
-                ...state,
-                comensales,
-                availableProducts,
-                activeSharedInstances,
-                shareId,
-            };
-        }
-        case 'SET_PRODUCTS_FOR_REVIEW':
-            return {
-                ...state,
-                availableProducts: action.payload,
-                discountPercentage: 0,
-                discountCap: 0,
-                currentStep: 'reviewing'
-            };
-        case 'SET_PRODUCTS_AND_ADVANCE':
-            return {
-                ...state,
-                availableProducts: action.payload,
-                currentStep: 'assigning'
-            };
-        case 'CLEAR_BILL_DATA':
-            return {
-                ...state,
-                availableProducts: new Map(),
-                comensales: [],
-                activeSharedInstances: new Map(),
-                discountPercentage: 0,
-                discountCap: 0,
-            };
-        case 'ADD_COMENSAL': {
-            if (state.comensales.length >= MAX_COMENSALES) return state;
-            const newComensalId = state.comensales.length > 0 ? Math.max(0, ...state.comensales.map(c => c.id)) + 1 : 1;
-            const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 };
-            return { ...state, comensales: [...state.comensales, newComensal] };
-        }
-        case 'ADD_ITEM': {
-            const { comensalId, productId } = action.payload;
-            const productInStock = state.availableProducts.get(productId);
-            if (!productInStock || Number(productInStock.quantity) <= 0) return state;
-            
-            const newProductsMap = new Map(state.availableProducts);
-            newProductsMap.set(productId, { ...productInStock, quantity: Number(productInStock.quantity) - 1 });
-
-            const newComensales = state.comensales.map(comensal => {
-                if (comensal.id === comensalId) {
-                    const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
-                    const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL);
-                    
-                    if (existingItemIndex !== -1) {
-                        updatedComensal.selectedItems[existingItemIndex].quantity += 1;
-                    } else {
-                        updatedComensal.selectedItems.push({
-                            id: productInStock.id,
-                            name: productInStock.name,
-                            originalBasePrice: Number(productInStock.price),
-                            quantity: 1,
-                            type: ITEM_TYPES.FULL,
-                        });
-                    }
-                    return updatedComensal;
-                }
-                return comensal;
-            });
-
-            return { ...state, availableProducts: newProductsMap, comensales: newComensales };
-        }
-        case 'SHARE_ITEM': {
-            const { productId, sharingComensalIds } = action.payload;
-            const productToShare = state.availableProducts.get(productId);
-            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || Number(productToShare.quantity) <= 0) return state;
-
-            const newProductsMap = new Map(state.availableProducts);
-            newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 });
-
-            const shareInstanceId = Date.now() + Math.random();
-            const newActiveSharedInstances = new Map(state.activeSharedInstances);
-            newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds));
-
-            const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
-
-            const newComensales = state.comensales.map(comensal => {
-                if (sharingComensalIds.includes(comensal.id)) {
-                    const updatedItems = [...comensal.selectedItems, {
-                        id: productToShare.id, name: productToShare.name,
-                        originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
-                        sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId
-                    }];
-                    return { ...comensal, selectedItems: updatedItems };
-                }
-                return comensal;
-            });
-            
-            return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances };
-        }
-        case 'REMOVE_ITEM_FROM_COMENSAL': {
-            const { comensalId, itemIdentifier } = action.payload;
-            const comensalTarget = state.comensales.find(c => c.id === comensalId);
-            if (!comensalTarget) return state;
-
-            const itemIndex = comensalTarget.selectedItems.findIndex(item =>
-                (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) ||
-                (item.type === ITEM_TYPES.FULL && item.id === Number(itemIdentifier))
-            );
-            if (itemIndex === -1) return state;
-
-            const itemToRemove = comensalTarget.selectedItems[itemIndex];
-            let updatedProducts = new Map(state.availableProducts);
-            let updatedSharedInstances = new Map(state.activeSharedInstances);
-            let updatedComensales = state.comensales.map(comensal => {
-                if (comensal.id === comensalId) {
-                    const items = [...comensal.selectedItems];
-                    const itemToUpdate = items[itemIndex];
-
-                    if (itemToUpdate.type === ITEM_TYPES.FULL) {
-                        if (itemToUpdate.quantity > 1) {
-                            const updatedItem = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 };
-                            items[itemIndex] = updatedItem;
-                        } else {
-                            items.splice(itemIndex, 1);
-                        }
-                        const product = updatedProducts.get(itemToRemove.id);
-                        if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-                    }
-                    return { ...comensal, selectedItems: items };
-                }
-                return comensal;
-            });
-            
-            if (itemToRemove.type === ITEM_TYPES.SHARED) {
-                const { shareInstanceId, id: originalProductId } = itemToRemove;
-                const shareGroup = updatedSharedInstances.get(shareInstanceId);
-                if (shareGroup) {
-                    shareGroup.delete(comensalId);
-                    if (shareGroup.size === 0) {
-                        updatedSharedInstances.delete(shareInstanceId);
-                        const product = updatedProducts.get(originalProductId);
-                        if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
-                    }
-
-                    updatedComensales = updatedComensales.map(c => {
-                        let comensalToUpdate = { ...c };
-                        if (c.id === comensalId) {
-                            comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
-                        }
-                        if (shareGroup.size > 0 && shareGroup.has(c.id)) {
-                            const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
-                            const newSharerCount = shareGroup.size;
-                            const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-                            
-                            comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => {
-                                if (String(item.shareInstanceId) === String(shareInstanceId)) {
-                                    return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
-                                }
-                                return item;
-                            });
-                        }
-                        return comensalToUpdate;
-                    });
-                }
-            }
-
-            return { ...state, comensales: updatedComensales, availableProducts: updatedProducts, activeSharedInstances: updatedSharedInstances };
-        }
-        case 'CLEAR_COMENSAL_ITEMS': {
-            const comensalIdToClear = action.payload;
-            const comensalToClear = state.comensales.find(c => c.id === comensalIdToClear);
-            if (!comensalToClear || comensalToClear.selectedItems.length === 0) return state;
-
-            const newProducts = new Map(state.availableProducts);
-            const newSharedInstances = new Map(state.activeSharedInstances);
-            const sharedGroupsToUpdate = new Map();
-
-            comensalToClear.selectedItems.forEach(item => {
-                if (item.type === ITEM_TYPES.FULL) {
-                    const product = newProducts.get(item.id);
-                    if (product) newProducts.set(item.id, { ...product, quantity: item.quantity + (product.quantity || 0) });
-                } else if (item.type === ITEM_TYPES.SHARED) {
-                    const shareGroup = newSharedInstances.get(item.shareInstanceId);
-                    if (!shareGroup) return;
-                    shareGroup.delete(comensalIdToClear);
-                    if (shareGroup.size === 0) {
-                        newSharedInstances.delete(item.shareInstanceId);
-                        const product = newProducts.get(item.id);
-                        if (product) newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
-                    } else {
-                        sharedGroupsToUpdate.set(item.shareInstanceId, {
-                            totalBasePrice: item.originalBasePrice * item.sharedByCount,
-                            newSharerCount: shareGroup.size
-                        });
-                    }
-                }
-            });
-
-            const finalComensales = state.comensales.map(comensal => {
-                if (comensal.id === comensalIdToClear) {
-                    return { ...comensal, selectedItems: [], total: 0 };
-                }
-                let needsRecalculation = false;
-                const updatedItems = comensal.selectedItems.map(item => {
-                    if (item.type === ITEM_TYPES.SHARED && sharedGroupsToUpdate.has(item.shareInstanceId)) {
-                        needsRecalculation = true;
-                        const updateInfo = sharedGroupsToUpdate.get(item.shareInstanceId);
-                        const newBasePricePerShare = updateInfo.totalBasePrice / updateInfo.newSharerCount;
-                        return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: updateInfo.newSharerCount };
-                    }
-                    return item;
-                });
-                if (needsRecalculation) {
-                    return { ...comensal, selectedItems: updatedItems };
-                }
-                return comensal;
-            });
-
-            return { ...state, comensales: finalComensales, availableProducts: newProducts, activeSharedInstances: newSharedInstances };
-        }
-        case 'REMOVE_COMENSAL': {
-             const comensalIdToRemove = action.payload;
-             const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove);
-             return { ...state, comensales: newComensales };
-        }
-        case 'RESET_SESSION': {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('id');
-            window.history.replaceState({}, document.title, url.toString());
-            return { 
-                ...initialState, 
-                currentStep: 'landing', 
-                userId: state.userId,
-                shareId: `local-session-${Date.now()}`
-            };
-        }
-        default:
-            return state;
+        case 'SET_STEP': return { ...state, currentStep: action.payload };
+        case 'SET_USER_ID': return { ...state, userId: action.payload };
+        case 'SET_SHARE_ID': return { ...state, shareId: action.payload };
+        case 'SET_SHARE_LINK': return { ...state, shareLink: action.payload };
+        case 'APPLY_DISCOUNT': { const { percentage, cap } = action.payload; return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0, }; }
+        case 'LOAD_STATE': { const { comensales, availableProducts, activeSharedInstances, shareId } = action.payload; return { ...state, comensales, availableProducts, activeSharedInstances, shareId, }; }
+        case 'SET_PRODUCTS_FOR_REVIEW': return { ...state, availableProducts: action.payload, discountPercentage: 0, discountCap: 0, currentStep: 'reviewing' };
+        case 'SET_PRODUCTS_AND_ADVANCE': return { ...state, availableProducts: action.payload, currentStep: 'assigning' };
+        case 'CLEAR_BILL_DATA': return { ...state, availableProducts: new Map(), comensales: [], activeSharedInstances: new Map(), discountPercentage: 0, discountCap: 0, };
+        case 'ADD_COMENSAL': { if (state.comensales.length >= MAX_COMENSALES) return state; const newComensalId = state.comensales.length > 0 ? Math.max(0, ...state.comensales.map(c => c.id)) + 1 : 1; const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 }; return { ...state, comensales: [...state.comensales, newComensal] }; }
+        case 'ADD_ITEM': { const { comensalId, productId } = action.payload; const productInStock = state.availableProducts.get(productId); if (!productInStock || Number(productInStock.quantity) <= 0) return state; const newProductsMap = new Map(state.availableProducts); newProductsMap.set(productId, { ...productInStock, quantity: Number(productInStock.quantity) - 1 }); const newComensales = state.comensales.map(comensal => { if (comensal.id === comensalId) { const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] }; const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL); if (existingItemIndex !== -1) { updatedComensal.selectedItems[existingItemIndex].quantity += 1; } else { updatedComensal.selectedItems.push({ id: productInStock.id, name: productInStock.name, originalBasePrice: Number(productInStock.price), quantity: 1, type: ITEM_TYPES.FULL, }); } return updatedComensal; } return comensal; }); return { ...state, availableProducts: newProductsMap, comensales: newComensales }; }
+        case 'SHARE_ITEM': { const { productId, sharingComensalIds } = action.payload; const productToShare = state.availableProducts.get(productId); if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || Number(productToShare.quantity) <= 0) return state; const newProductsMap = new Map(state.availableProducts); newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 }); const shareInstanceId = Date.now() + Math.random(); const newActiveSharedInstances = new Map(state.activeSharedInstances); newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds)); const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length); const newComensales = state.comensales.map(comensal => { if (sharingComensalIds.includes(comensal.id)) { const updatedItems = [...comensal.selectedItems, { id: productToShare.id, name: productToShare.name, originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED, sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId }]; return { ...comensal, selectedItems: updatedItems }; } return comensal; }); return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances }; }
+        case 'REMOVE_ITEM_FROM_COMENSAL': { const { comensalId, itemIdentifier } = action.payload; const comensalTarget = state.comensales.find(c => c.id === comensalId); if (!comensalTarget) return state; const itemIndex = comensalTarget.selectedItems.findIndex(item => (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || (item.type === ITEM_TYPES.FULL && item.id === Number(itemIdentifier))); if (itemIndex === -1) return state; const itemToRemove = comensalTarget.selectedItems[itemIndex]; let updatedProducts = new Map(state.availableProducts); let updatedSharedInstances = new Map(state.activeSharedInstances); let updatedComensales = state.comensales.map(comensal => { if (comensal.id === comensalId) { const items = [...comensal.selectedItems]; const itemToUpdate = items[itemIndex]; if (itemToUpdate.type === ITEM_TYPES.FULL) { if (itemToUpdate.quantity > 1) { const updatedItem = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 }; items[itemIndex] = updatedItem; } else { items.splice(itemIndex, 1); } const product = updatedProducts.get(itemToRemove.id); if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 }); } return { ...comensal, selectedItems: items }; } return comensal; }); if (itemToRemove.type === ITEM_TYPES.SHARED) { const { shareInstanceId, id: originalProductId } = itemToRemove; const shareGroup = updatedSharedInstances.get(shareInstanceId); if (shareGroup) { shareGroup.delete(comensalId); if (shareGroup.size === 0) { updatedSharedInstances.delete(shareInstanceId); const product = updatedProducts.get(originalProductId); if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 }); } updatedComensales = updatedComensales.map(c => { let comensalToUpdate = { ...c }; if (c.id === comensalId) { comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId)); } if (shareGroup.size > 0 && shareGroup.has(c.id)) { const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount; const newSharerCount = shareGroup.size; const newBasePricePerShare = totalItemBasePrice / newSharerCount; comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => { if (String(item.shareInstanceId) === String(shareInstanceId)) { return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount }; } return item; }); } return comensalToUpdate; }); } } return { ...state, comensales: updatedComensales, availableProducts: updatedProducts, activeSharedInstances: updatedSharedInstances }; }
+        case 'CLEAR_COMENSAL_ITEMS': { const comensalIdToClear = action.payload; const comensalToClear = state.comensales.find(c => c.id === comensalIdToClear); if (!comensalToClear || comensalToClear.selectedItems.length === 0) return state; const newProducts = new Map(state.availableProducts); const newSharedInstances = new Map(state.activeSharedInstances); const sharedGroupsToUpdate = new Map(); comensalToClear.selectedItems.forEach(item => { if (item.type === ITEM_TYPES.FULL) { const product = newProducts.get(item.id); if (product) newProducts.set(item.id, { ...product, quantity: item.quantity + (product.quantity || 0) }); } else if (item.type === ITEM_TYPES.SHARED) { const shareGroup = newSharedInstances.get(item.shareInstanceId); if (!shareGroup) return; shareGroup.delete(comensalIdToClear); if (shareGroup.size === 0) { newSharedInstances.delete(item.shareInstanceId); const product = newProducts.get(item.id); if (product) newProducts.set(item.id, { ...product, quantity: product.quantity + 1 }); } else { sharedGroupsToUpdate.set(item.shareInstanceId, { totalBasePrice: item.originalBasePrice * item.sharedByCount, newSharerCount: shareGroup.size }); } } }); const finalComensales = state.comensales.map(comensal => { if (comensal.id === comensalIdToClear) { return { ...comensal, selectedItems: [], total: 0 }; } let needsRecalculation = false; const updatedItems = comensal.selectedItems.map(item => { if (item.type === ITEM_TYPES.SHARED && sharedGroupsToUpdate.has(item.shareInstanceId)) { needsRecalculation = true; const updateInfo = sharedGroupsToUpdate.get(item.shareInstanceId); const newBasePricePerShare = updateInfo.totalBasePrice / updateInfo.newSharerCount; return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: updateInfo.newSharerCount }; } return item; }); if (needsRecalculation) { return { ...comensal, selectedItems: updatedItems }; } return comensal; }); return { ...state, comensales: finalComensales, availableProducts: newProducts, activeSharedInstances: newSharedInstances }; }
+        case 'REMOVE_COMENSAL': { const comensalIdToRemove = action.payload; const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove); return { ...state, comensales: newComensales }; }
+        case 'RESET_SESSION': { const url = new URL(window.location.href); url.searchParams.delete('id'); window.history.replaceState({}, document.title, url.toString()); return { ...initialState, currentStep: 'landing', userId: state.userId, shareId: `local-session-${Date.now()}` }; }
+        default: return state;
     }
 }
 
@@ -549,9 +218,9 @@ const App = () => {
         try { const result = await promiseWithTimeout; if (result.status === 'error') return Promise.reject(new Error(result.message)); return Promise.resolve();
         } catch (error) { return Promise.reject(error); }
     }, [userId]);
+    
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
     
-    // --- FUNCIÓN MODIFICADA: Lógica de carga con protección contra cambios locales ---
     const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
         if (!idToLoad || idToLoad.startsWith('local-')) return;
@@ -560,7 +229,6 @@ const App = () => {
         try {
             const data = await promise;
             if (data && data.status !== "not_found") {
-                // --- LÍNEA CORREGIDA: Verifica si hay cambios locales antes de sobrescribir ---
                 if (hasPendingChanges.current) {
                     console.warn("Polling detectó cambios locales pendientes. Se aborta la actualización desde el servidor para proteger los datos del usuario.");
                     return;
@@ -583,7 +251,7 @@ const App = () => {
             }
         } catch (error) { console.error("Error al cargar con JSONP:", error);
         } finally { setTimeout(() => { isLoadingFromServer.current = false; }, 0); }
-    }, [handleResetAll]); // hasPendingChanges.current no necesita ser dependencia
+    }, [handleResetAll]);
     
     const startPolling = useCallback(() => {
         stopPolling();
@@ -605,15 +273,17 @@ const App = () => {
         }
     };
 
+    // --- EFECTO DE POLLING MODIFICADO: Ahora depende del paso actual ---
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
-        if (shareId && !shareId.startsWith('local-') && !isAnyModalOpen) {
+        // Solo activa el polling en la pantalla de asignación y cuando no hay modales abiertos.
+        if (shareId && !shareId.startsWith('local-') && !isAnyModalOpen && currentStep === 'assigning') {
             startPolling();
         } else {
             stopPolling();
         }
         return stopPolling;
-    }, [shareId, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen, startPolling]);
+    }, [shareId, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen, currentStep, startPolling]);
     
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
