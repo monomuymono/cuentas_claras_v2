@@ -332,6 +332,87 @@ function billReducer(state, action) {
             
             return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances };
         }
+        // --- NUEVA SECCIÓN: Lógica para remover un ítem individual ---
+        case 'REMOVE_ITEM_FROM_COMENSAL': {
+            const { comensalId, itemIdentifier } = action.payload;
+            let comensalTarget = state.comensales.find(c => c.id === comensalId);
+            if (!comensalTarget) return state;
+
+            const itemIndex = comensalTarget.selectedItems.findIndex(item =>
+                (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) ||
+                (item.type === ITEM_TYPES.FULL && item.id === Number(itemIdentifier))
+            );
+            if (itemIndex === -1) return state;
+
+            const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
+            let updatedComensales = [...state.comensales];
+            let updatedProducts = new Map(state.availableProducts);
+            let updatedSharedInstances = new Map(state.activeSharedInstances);
+
+            if (itemToRemove.type === ITEM_TYPES.FULL) {
+                updatedComensales = state.comensales.map(c => {
+                    if (c.id === comensalId) {
+                        const updatedItems = [...c.selectedItems];
+                        if (updatedItems[itemIndex].quantity > 1) {
+                            updatedItems[itemIndex].quantity -= 1;
+                        } else {
+                            updatedItems.splice(itemIndex, 1);
+                        }
+                        const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                        return { ...c, selectedItems: updatedItems, total: newTotal };
+                    }
+                    return c;
+                });
+                const product = updatedProducts.get(itemToRemove.id);
+                if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
+            }
+
+            if (itemToRemove.type === ITEM_TYPES.SHARED) {
+                const { shareInstanceId, id: originalProductId } = itemToRemove;
+                const shareGroup = updatedSharedInstances.get(shareInstanceId);
+                if (!shareGroup) return state;
+
+                shareGroup.delete(comensalId);
+                
+                if (shareGroup.size === 0) {
+                    updatedSharedInstances.delete(shareInstanceId);
+                    const product = updatedProducts.get(originalProductId);
+                    if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
+                }
+
+                updatedComensales = state.comensales.map(c => {
+                    let comensalToUpdate = { ...c };
+                    // Primero, remover el ítem del comensal que lo elimina
+                    if (c.id === comensalId) {
+                        comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
+                    }
+
+                    // Segundo, recalcular para los que quedan en el grupo
+                    if (shareGroup.size > 0 && shareGroup.has(c.id)) {
+                        const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
+                        const newSharerCount = shareGroup.size;
+                        const newBasePricePerShare = totalItemBasePrice / newSharerCount;
+                        const newPriceWithTipPerShare = newBasePricePerShare * TIP_MULTIPLIER;
+                        
+                        comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => {
+                            if (String(item.shareInstanceId) === String(shareInstanceId)) {
+                                return { ...item, price: newPriceWithTipPerShare, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
+                            }
+                            return item;
+                        });
+                    }
+
+                    // Finalmente, actualizar el total para todos los comensales afectados
+                    if (comensalToUpdate.id === comensalId || (shareGroup.size > 0 && shareGroup.has(c.id))) {
+                       comensalToUpdate.total = comensalToUpdate.selectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                    }
+                    
+                    return comensalToUpdate;
+                });
+            }
+
+            return { ...state, comensales: updatedComensales, availableProducts: updatedProducts, activeSharedInstances: updatedSharedInstances };
+        }
         case 'CLEAR_COMENSAL_ITEMS': {
             const comensalIdToClear = action.payload;
             const comensalToClear = state.comensales.find(c => c.id === comensalIdToClear);
@@ -391,8 +472,6 @@ function billReducer(state, action) {
         }
         case 'REMOVE_COMENSAL': {
              const comensalIdToRemove = action.payload;
-             // La lógica de CLEAR_COMENSAL_ITEMS ya se encarga de devolver los ítems.
-             // Aquí solo filtramos al comensal de la lista.
              const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove);
              return { ...state, comensales: newComensales };
         }
@@ -654,6 +733,11 @@ const App = () => {
     const handleAddItem = (comensalId, productId) => {
         dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } });
     };
+
+    // --- LÍNEA MODIFICADA: Se agrega el nuevo manejador ---
+    const handleRemoveItem = (comensalId, itemIdentifier) => {
+        dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } });
+    };
     
     const handleShareItem = (productId, sharingComensalIds) => {
         dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } });
@@ -701,19 +785,6 @@ const App = () => {
     const openRemoveComensalModal = (comensalId) => {
         setComensalToRemoveId(comensalId);
         setIsRemoveComensalModalOpen(true);
-    };
-
-    // La función de remover item individual se mantiene aquí porque es compleja
-    // y llamarla desde el reducer sería complicado. Es más fácil mantenerla aquí
-    // y que despache un nuevo estado calculado.
-    const handleRemoveItem = (comensalId, itemToRemoveIdentifier) => {
-        // Esta función ahora es interna para el reducer, se llama desde CLEAR_COMENSAL_ITEMS
-        // Para simplificar, la eliminaremos de aquí y su lógica vive solo en el reducer.
-        // Las llamadas desde los componentes deben ser adaptadas, pero en este caso, 
-        // no hay un botón de "remover item individual" explícito en la UI original
-        // que necesitemos mantener. Si lo hubiera, crearíamos una acción 'REMOVE_ITEM'
-        // para el reducer.
-        console.warn("handleRemoveItem ya no debe ser llamada directamente. Lógica movida al reducer.");
     };
 
     const handleImageUpload = (event) => {
@@ -899,7 +970,7 @@ const App = () => {
                         addComensalMessage={addComensalMessage}
                         onAddComensal={handleAddComensal}
                         onAddItem={handleAddItem}
-                        onRemoveItem={handleRemoveItem} // Nota: la lógica de remover item ahora es más compleja.
+                        onRemoveItem={handleRemoveItem} // --- LÍNEA MODIFICADA ---
                         onOpenClearComensalModal={openClearComensalModal}
                         onOpenRemoveComensalModal={openRemoveComensalModal}
                         onOpenShareModal={() => setIsShareModalOpen(true)}
@@ -1172,7 +1243,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack }) => {
 
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
-    onAddItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
+    onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary, // --- LÍNEA MODIFICADA ---
     onGoBack, onGenerateLink, onRestart, shareLink
 }) => {
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
@@ -1180,11 +1251,6 @@ const AssigningStep = ({
     const ComensalCard = ({ comensal }) => {
         const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
         const propina = comensal.total - totalSinPropina;
-
-        // NOTA: La función onRemoveItem ya no existe en el componente App.
-        // La lógica de remover ítems ahora está centralizada en el reducer
-        // a través de la acción CLEAR_COMENSAL_ITEMS. No hay una UI para remover
-        // un ítem individual en este diseño, solo para limpiar al comensal completo.
 
         return (
             <div className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full">
@@ -1200,11 +1266,18 @@ const AssigningStep = ({
                     {comensal.selectedItems.length > 0 ? (
                         <ul className="space-y-2 mb-4 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
                             {comensal.selectedItems.map((item, index) => (
+                                // --- SECCIÓN MODIFICADA: Se restaura el botón de eliminar ---
                                 <li key={`${item.id}-${item.shareInstanceId || index}`} className="flex justify-between items-center text-sm">
                                     <span className="font-medium text-gray-700">{item.type === ITEM_TYPES.SHARED ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
                                     <div className="flex items-center space-x-2">
                                         <span className="text-gray-900">${Math.round(Number(item.price) * Number(item.quantity)).toLocaleString('es-CL')}</span>
-                                        {/* El botón de remover item individual se omite porque su lógica se centralizó */}
+                                        <button 
+                                            onClick={() => onRemoveItem(comensal.id, item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id)} 
+                                            className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" 
+                                            aria-label="Remove item"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                        </button>
                                     </div>
                                 </li>
                             ))}
