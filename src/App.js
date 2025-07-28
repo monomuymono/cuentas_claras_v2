@@ -273,9 +273,7 @@ const initialState = {
 function billReducer(state, action) {
     // --- FUNCIÓN AUXILIAR PARA RECALCULAR EL INVENTARIO ---
     const recalculateAvailableProducts = (masterList, comensales) => {
-        if (!masterList || masterList.size === 0) {
-            return new Map();
-        }
+        if (!masterList || masterList.size === 0) return new Map();
         const newAvailableProducts = new Map(JSON.parse(JSON.stringify(Array.from(masterList))));
         comensales.forEach(diner => {
             (diner.selectedItems || []).forEach(item => {
@@ -334,12 +332,18 @@ function billReducer(state, action) {
                 availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || [])
             };
         }
-        case 'SET_PRODUCTS_FOR_REVIEW':
-             return {
+        case 'UPDATE_AVAILABLE_PRODUCTS':
+            return {
                 ...state,
                 availableProducts: action.payload,
-                masterProductList: new Map(),
-                comensales: [], // Mantenemos los comensales si ya existen
+            };
+        
+        case 'SET_PRODUCTS_FOR_REVIEW':
+            return {
+                ...state,
+                availableProducts: action.payload,
+                // NO borra los comensales, solo resetea lo necesario
+                masterProductList: new Map(action.payload),
                 discountPercentage: 0,
                 discountCap: 0,
                 currentStep: 'reviewing'
