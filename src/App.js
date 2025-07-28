@@ -551,8 +551,10 @@ const App = () => {
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
     const lastSyncedTimestamp = useRef(null);
+    const [loadingMessage, setLoadingMessage] = useState('');
 
     const handleStartNewSession = async () => {
+        setLoadingMessage("Creando sesión...");
         setIsGeneratingLink(true); // Reutilizamos el modal de carga
         await handleResetAll(); // Limpiamos cualquier estado previo
         
@@ -755,6 +757,7 @@ const App = () => {
     const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { const newId = generateUniqueId('item'); newProductsMap.set(newId, { id: newId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
     const handleGenerateShareLink = () => {
         // CAMBIO: Muestra el modal de carga con el mensaje apropiado
+        setLoadingMessage("Generando enlace...");
         setIsGeneratingLink(true);
     
         if (shareId && !shareId.startsWith('local-')) {
@@ -806,7 +809,7 @@ const App = () => {
         */}
         <LoadingModal 
             isOpen={isGeneratingLink} 
-            message={shareLink ? "Generando enlace..." : "Creando sesión..."} 
+            message={loadingMessage} 
         />
         <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
         {/* ... (el resto del JSX no cambia) ... */}
