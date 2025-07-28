@@ -272,18 +272,17 @@ const initialState = {
 // Reemplaza tu función billReducer completa con esta versión
 function billReducer(state, action) {
     // --- FUNCIÓN AUXILIAR PARA RECALCULAR EL INVENTARIO ---
-    // Esta función centraliza la lógica y es la clave de la solución.
     const recalculateAvailableProducts = (masterList, comensales) => {
+        if (!masterList || masterList.size === 0) {
+            return new Map();
+        }
         const newAvailableProducts = new Map(JSON.parse(JSON.stringify(Array.from(masterList))));
         comensales.forEach(diner => {
             (diner.selectedItems || []).forEach(item => {
                 const productInMap = newAvailableProducts.get(item.id);
                 if (productInMap) {
-                    if (item.type === ITEM_TYPES.FULL) {
-                        productInMap.quantity -= item.quantity;
-                    } else if (item.type === ITEM_TYPES.SHARED) {
-                        productInMap.quantity -= 1;
-                    }
+                    const quantityToRemove = item.type === ITEM_TYPES.SHARED ? 1 : item.quantity;
+                    productInMap.quantity -= quantityToRemove;
                 }
             });
         });
@@ -291,7 +290,7 @@ function billReducer(state, action) {
     };
 
     switch (action.type) {
-        // --- ACCIONES QUE NO MODIFICAN EL INVENTARIO (SIN CAMBIOS) ---
+        // --- ACCIONES DE ESTADO GENERAL (SIN CAMBIOS) ---
         case 'SET_STEP':
             return { ...state, currentStep: action.payload };
         case 'SET_USER_ID':
@@ -324,7 +323,7 @@ function billReducer(state, action) {
             return {
                 ...state,
                 comensales,
-                activeSharedInstances,
+                activeSharedInstances: new Map(Object.entries(activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
                 shareId,
                 lastUpdated: lastUpdated || null,
                 masterProductList: masterList,
@@ -336,6 +335,7 @@ function billReducer(state, action) {
                 ...state,
                 availableProducts: action.payload,
                 masterProductList: new Map(),
+                comensales: [],
                 discountPercentage: 0,
                 discountCap: 0,
                 currentStep: 'reviewing'
@@ -364,7 +364,6 @@ function billReducer(state, action) {
                 } else if (!serverDiner && localDiner) {
                     reconciledComensales.push(localDiner);
                 } else if (serverDiner && localDiner) {
-                    // --- CAMBIO: LÓGICA DE FUSIÓN GRANULAR POR ÍTEM ---
                     const finalItems = [];
                     const localItemsMap = new Map((localDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
                     const serverItemsMap = new Map((serverDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
@@ -373,29 +372,20 @@ function billReducer(state, action) {
                     allItemKeys.forEach(key => {
                         const localItem = localItemsMap.get(key);
                         const serverItem = serverItemsMap.get(key);
-
                         if (localItem && !serverItem) {
-                            finalItems.push(localItem); // Ítem solo existe localmente
+                            finalItems.push(localItem);
                         } else if (!localItem && serverItem) {
-                            finalItems.push(serverItem); // Ítem solo existe en el servidor
+                            finalItems.push(serverItem);
                         } else {
-                            // Ítem existe en ambos, comparar fechas y guardar el más nuevo
-                            const localDate = new Date(localItem.modifiedAt);
-                            const serverDate = new Date(serverItem.modifiedAt);
-                            if (serverDate > localDate) {
-                                finalItems.push(serverItem);
-                            } else {
-                                finalItems.push(localItem);
-                            }
+                            const localDate = new Date(localItem.modifiedAt || 0);
+                            const serverDate = new Date(serverItem.modifiedAt || 0);
+                            finalItems.push(serverDate > localDate ? serverItem : localItem);
                         }
                     });
-
                     reconciledComensales.push({ ...serverDiner, selectedItems: finalItems });
                 }
             });
 
-            const reconciledSharedInstances = new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
-            
             return {
                 ...state,
                 comensales: reconciledComensales,
@@ -405,7 +395,7 @@ function billReducer(state, action) {
             };
         }
 
-        // --- ACCIONES LOCALES QUE AHORA RECALCULAN EL INVENTARIO ---
+        // --- ACCIONES LOCALES QUE RECALCULAN EL INVENTARIO ---
         case 'ADD_ITEM': {
             const { comensalId, productId } = action.payload;
             const productInStock = state.availableProducts.get(productId);
@@ -413,21 +403,15 @@ function billReducer(state, action) {
 
             const newComensales = state.comensales.map(comensal => {
                 if (comensal.id === comensalId) {
-                    const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
+                    const updatedComensal = { ...comensal, selectedItems: JSON.parse(JSON.stringify(comensal.selectedItems)) };
                     const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL);
-                    
                     if (existingItemIndex !== -1) {
                         updatedComensal.selectedItems[existingItemIndex].quantity += 1;
-                        // CAMBIO: Actualizar timestamp al modificar cantidad
                         updatedComensal.selectedItems[existingItemIndex].modifiedAt = new Date().toISOString();
                     } else {
                         updatedComensal.selectedItems.push({
-                            id: productInStock.id,
-                            name: productInStock.name,
-                            originalBasePrice: Number(productInStock.price),
-                            quantity: 1,
-                            type: ITEM_TYPES.FULL,
-                            // CAMBIO: Añadir timestamp al crear
+                            id: productInStock.id, name: productInStock.name,
+                            originalBasePrice: Number(productInStock.price), quantity: 1, type: ITEM_TYPES.FULL,
                             modifiedAt: new Date().toISOString(),
                         });
                     }
@@ -435,7 +419,6 @@ function billReducer(state, action) {
                 }
                 return comensal;
             });
-
             return {
                 ...state,
                 comensales: newComensales,
@@ -445,28 +428,24 @@ function billReducer(state, action) {
         case 'SHARE_ITEM': {
             const { productId, sharingComensalIds } = action.payload;
             const productToShare = state.availableProducts.get(productId);
-            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0) return state;
+            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || state.availableProducts.get(productId).quantity < 1) return state;
 
             const shareInstanceId = Date.now() + Math.random();
             const newActiveSharedInstances = new Map(state.activeSharedInstances).set(shareInstanceId, new Set(sharingComensalIds));
             const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
+            const newItemData = {
+                id: productToShare.id, name: productToShare.name,
+                originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
+                sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId,
+                modifiedAt: new Date().toISOString(),
+            };
 
             const newComensales = state.comensales.map(comensal => {
                 if (sharingComensalIds.includes(comensal.id)) {
-                    return {
-                        ...comensal,
-                        selectedItems: [...comensal.selectedItems, {
-                            id: productToShare.id, name: productToShare.name,
-                            originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
-                            sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId,
-                            // CAMBIO: Añadir timestamp al crear ítem compartido
-                            modifiedAt: new Date().toISOString(),
-                        }]
-                    };
+                    return { ...comensal, selectedItems: [...comensal.selectedItems, newItemData] };
                 }
                 return comensal;
             });
-
             return {
                 ...state,
                 comensales: newComensales,
@@ -491,6 +470,7 @@ function billReducer(state, action) {
                         const updatedItems = [...c.selectedItems];
                         if (updatedItems[itemIndex].quantity > 1) {
                             updatedItems[itemIndex].quantity -= 1;
+                            updatedItems[itemIndex].modifiedAt = new Date().toISOString();
                         } else {
                             updatedItems.splice(itemIndex, 1);
                         }
@@ -498,28 +478,36 @@ function billReducer(state, action) {
                     }
                     return c;
                 });
-            }
-
-            if (itemToRemove.type === ITEM_TYPES.SHARED) {
+            } else { // SHARED
                 const { shareInstanceId } = itemToRemove;
                 const shareGroup = newSharedInstances.get(shareInstanceId);
                 if (!shareGroup) return state;
                 shareGroup.delete(comensalId);
+                
+                let tempComensales = state.comensales.map(c => ({
+                    ...c,
+                    selectedItems: c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
+                }));
+                
                 if (shareGroup.size === 0) {
                     newSharedInstances.delete(shareInstanceId);
+                } else {
+                    const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
+                    const newBasePricePerShare = totalItemBasePrice / shareGroup.size;
+                    const updatedItemData = {
+                        ...itemToRemove,
+                        originalBasePrice: newBasePricePerShare,
+                        sharedByCount: shareGroup.size,
+                        modifiedAt: new Date().toISOString()
+                    };
+                    tempComensales = tempComensales.map(c => {
+                        if (shareGroup.has(c.id)) {
+                            return { ...c, selectedItems: [...c.selectedItems, updatedItemData] };
+                        }
+                        return c;
+                    });
                 }
-                newComensales = state.comensales.map(c => {
-                    let updatedComensal = { ...c, selectedItems: c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId)) };
-                    if (shareGroup.size > 0 && shareGroup.has(c.id)) {
-                        const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
-                        const newSharerCount = shareGroup.size;
-                        const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-                        updatedComensal.selectedItems.push({
-                            ...itemToRemove, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount
-                        });
-                    }
-                    return updatedComensal;
-                });
+                newComensales = tempComensales;
             }
 
             return {
@@ -530,21 +518,12 @@ function billReducer(state, action) {
             };
         }
         case 'CLEAR_COMENSAL_ITEMS': {
-            const comensalIdToClear = action.payload;
-            let finalComensales = state.comensales;
-            const comensalToClear = state.comensales.find(c => c.id === comensalIdToClear);
-            if (!comensalToClear || comensalToClear.selectedItems.length === 0) return state;
-            
-            // Lógica compleja para recalcular precios compartidos si es necesario
-            // (Esta parte es compleja, la dejamos como está, pero el recalculado final lo arregla)
-            // ... (código existente) ...
-
-            finalComensales = state.comensales.map(c => c.id === comensalIdToClear ? { ...c, selectedItems: [] } : c);
-
+            const { comensalId } = action.payload;
+            const newComensales = state.comensales.map(c => c.id === comensalId ? { ...c, selectedItems: [] } : c);
             return {
                 ...state,
-                comensales: finalComensales,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, finalComensales)
+                comensales: newComensales,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
             };
         }
         case 'RESET_SESSION': {
