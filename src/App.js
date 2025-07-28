@@ -289,11 +289,12 @@ function billReducer(state, action) {
         }
         case 'LOAD_STATE': {
             const { comensales, availableProducts, activeSharedInstances, shareId, lastUpdated } = action.payload;
+            const productsMap = new Map(Object.entries(availableProducts || {}));
             return {
                 ...state,
                 comensales,
-                availableProducts,
-                masterProductList: new Map(Object.entries(availableProducts || {})), // Initialize master list on first load
+                availableProducts: productsMap,
+                masterProductList: new Map(JSON.parse(JSON.stringify(Array.from(productsMap)))), // Initialize master list on first load
                 activeSharedInstances,
                 shareId,
                 lastUpdated: lastUpdated || null
@@ -303,7 +304,7 @@ function billReducer(state, action) {
             const serverStateData = action.payload;
             const localState = state;
 
-            // --- 1. Fusionar Comensales ---
+            // --- 1. FUSIONAR COMENSALES (LÓGICA CORREGIDA) ---
             const serverComensalesMap = new Map((serverStateData.comensales || []).map(c => [c.id, c]));
             const localComensalesMap = new Map(localState.comensales.map(c => [c.id, c]));
             const reconciledComensales = [];
@@ -312,16 +313,39 @@ function billReducer(state, action) {
             allDinerIds.forEach(id => {
                 const serverDiner = serverComensalesMap.get(id);
                 const localDiner = localComensalesMap.get(id);
+
                 if (serverDiner && !localDiner) {
+                    // Comensal añadido por otro usuario -> se agrega.
                     reconciledComensales.push(serverDiner);
                 } else if (!serverDiner && localDiner) {
+                    // Comensal añadido localmente y no guardado -> se mantiene.
                     reconciledComensales.push(localDiner);
                 } else if (serverDiner && localDiner) {
-                    reconciledComensales.push(serverDiner);
+                    // Comensal existe en ambos -> FUSIONAR SUS ITEMS PARA NO PERDER CAMBIOS.
+                    const mergedItems = new Map();
+
+                    // 1. Agregar todos los items locales al mapa
+                    (localDiner.selectedItems || []).forEach(item => {
+                        const key = item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id;
+                        mergedItems.set(key, item);
+                    });
+
+                    // 2. Agregar/sobrescribir con los items del servidor.
+                    // Esto actualiza los items modificados por otros y añade los nuevos.
+                    (serverDiner.selectedItems || []).forEach(item => {
+                        const key = item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id;
+                        mergedItems.set(key, item);
+                    });
+
+                    reconciledComensales.push({
+                        ...localDiner, // Usar base local
+                        ...serverDiner, // Sobrescribir con datos del servidor (ej. nombre)
+                        selectedItems: Array.from(mergedItems.values()) // Usar la lista de items fusionada
+                    });
                 }
             });
 
-            // --- 2. RECALCULAR el inventario disponible (LA CORRECCIÓN CLAVE) ---
+            // --- 2. RECALCULAR el inventario disponible ---
             const newAvailableProducts = new Map(JSON.parse(JSON.stringify(Array.from(state.masterProductList))));
             
             reconciledComensales.forEach(diner => {
@@ -331,7 +355,6 @@ function billReducer(state, action) {
                         if (item.type === ITEM_TYPES.FULL) {
                             productInMap.quantity -= item.quantity;
                         } else if (item.type === ITEM_TYPES.SHARED) {
-                            // Each shared instance of an item consumes 1 unit from the master list.
                             productInMap.quantity -= 1;
                         }
                     }
@@ -343,7 +366,7 @@ function billReducer(state, action) {
             return {
                 ...localState,
                 comensales: reconciledComensales,
-                availableProducts: newAvailableProducts, // Usar el mapa recalculado y correcto
+                availableProducts: newAvailableProducts,
                 activeSharedInstances: reconciledSharedInstances,
                 lastUpdated: serverStateData.lastUpdated
             };
@@ -359,8 +382,8 @@ function billReducer(state, action) {
         case 'SET_PRODUCTS_AND_ADVANCE':
             return {
                 ...state,
-                masterProductList: new Map(action.payload), // Guardar la lista maestra
-                availableProducts: new Map(action.payload), // Guardar la copia de trabajo
+                masterProductList: new Map(action.payload),
+                availableProducts: new Map(action.payload),
                 currentStep: 'assigning'
             };
         case 'ADD_COMENSAL': {
