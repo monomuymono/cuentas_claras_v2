@@ -364,29 +364,42 @@ function billReducer(state, action) {
                 } else if (!serverDiner && localDiner) {
                     reconciledComensales.push(localDiner);
                 } else if (serverDiner && localDiner) {
-                    const mergedItems = new Map();
-                    (localDiner.selectedItems || []).forEach(item => {
-                        const key = item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id;
-                        mergedItems.set(key, item);
+                    // --- CAMBIO: LÓGICA DE FUSIÓN GRANULAR POR ÍTEM ---
+                    const finalItems = [];
+                    const localItemsMap = new Map((localDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const serverItemsMap = new Map((serverDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const allItemKeys = new Set([...localItemsMap.keys(), ...serverItemsMap.keys()]);
+
+                    allItemKeys.forEach(key => {
+                        const localItem = localItemsMap.get(key);
+                        const serverItem = serverItemsMap.get(key);
+
+                        if (localItem && !serverItem) {
+                            finalItems.push(localItem); // Ítem solo existe localmente
+                        } else if (!localItem && serverItem) {
+                            finalItems.push(serverItem); // Ítem solo existe en el servidor
+                        } else {
+                            // Ítem existe en ambos, comparar fechas y guardar el más nuevo
+                            const localDate = new Date(localItem.modifiedAt);
+                            const serverDate = new Date(serverItem.modifiedAt);
+                            if (serverDate > localDate) {
+                                finalItems.push(serverItem);
+                            } else {
+                                finalItems.push(localItem);
+                            }
+                        }
                     });
-                    (serverDiner.selectedItems || []).forEach(item => {
-                        const key = item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id;
-                        mergedItems.set(key, item);
-                    });
-                    reconciledComensales.push({
-                        ...localDiner,
-                        ...serverDiner,
-                        selectedItems: Array.from(mergedItems.values())
-                    });
+
+                    reconciledComensales.push({ ...serverDiner, selectedItems: finalItems });
                 }
             });
 
             const reconciledSharedInstances = new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
             
             return {
-                ...localState,
+                ...state,
                 comensales: reconciledComensales,
-                activeSharedInstances: reconciledSharedInstances,
+                activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
                 lastUpdated: serverStateData.lastUpdated,
                 availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales),
             };
@@ -402,18 +415,27 @@ function billReducer(state, action) {
                 if (comensal.id === comensalId) {
                     const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
                     const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL);
+                    
                     if (existingItemIndex !== -1) {
                         updatedComensal.selectedItems[existingItemIndex].quantity += 1;
+                        // CAMBIO: Actualizar timestamp al modificar cantidad
+                        updatedComensal.selectedItems[existingItemIndex].modifiedAt = new Date().toISOString();
                     } else {
                         updatedComensal.selectedItems.push({
-                            id: productInStock.id, name: productInStock.name,
-                            originalBasePrice: Number(productInStock.price), quantity: 1, type: ITEM_TYPES.FULL,
+                            id: productInStock.id,
+                            name: productInStock.name,
+                            originalBasePrice: Number(productInStock.price),
+                            quantity: 1,
+                            type: ITEM_TYPES.FULL,
+                            // CAMBIO: Añadir timestamp al crear
+                            modifiedAt: new Date().toISOString(),
                         });
                     }
                     return updatedComensal;
                 }
                 return comensal;
             });
+
             return {
                 ...state,
                 comensales: newComensales,
@@ -423,7 +445,7 @@ function billReducer(state, action) {
         case 'SHARE_ITEM': {
             const { productId, sharingComensalIds } = action.payload;
             const productToShare = state.availableProducts.get(productId);
-            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || Number(productToShare.quantity) <= 0) return state;
+            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0) return state;
 
             const shareInstanceId = Date.now() + Math.random();
             const newActiveSharedInstances = new Map(state.activeSharedInstances).set(shareInstanceId, new Set(sharingComensalIds));
@@ -436,12 +458,15 @@ function billReducer(state, action) {
                         selectedItems: [...comensal.selectedItems, {
                             id: productToShare.id, name: productToShare.name,
                             originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
-                            sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId
+                            sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId,
+                            // CAMBIO: Añadir timestamp al crear ítem compartido
+                            modifiedAt: new Date().toISOString(),
                         }]
                     };
                 }
                 return comensal;
             });
+
             return {
                 ...state,
                 comensales: newComensales,
