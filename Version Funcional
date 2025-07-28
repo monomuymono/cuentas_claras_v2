@@ -297,7 +297,7 @@ function billReducer(state, action) {
             return { ...state, shareId: action.payload };
         case 'SET_SHARE_LINK':
             return { ...state, shareLink: action.payload };
-        case 'APPLY_DISCOUNT': {
+        case 'LY_DISCOUNT': {
             const { percentage, cap } = action.payload;
             return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0 };
         }
@@ -551,6 +551,44 @@ const App = () => {
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
     const lastSyncedTimestamp = useRef(null);
+    const [loadingMessage, setLoadingMessage] = useState('');
+
+    const handleStartNewSession = async () => {
+        setLoadingMessage("Creando sesión...");
+        setIsGeneratingLink(true); // Reutilizamos el modal de carga
+        await handleResetAll(); // Limpiamos cualquier estado previo
+        
+        const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const initialData = {
+            comensales: [],
+            availableProducts: {},
+            masterProductList: {},
+            activeSharedInstances: {},
+            lastUpdated: new Date().toISOString()
+        };
+    
+        try {
+            await saveStateToGoogleSheets(newSessionId, initialData);
+            // Una vez guardado, actualizamos el estado y la URL
+            dispatch({ type: 'SET_SHARE_ID', payload: newSessionId });
+    
+            // --- CAMBIO CLAVE AQUÍ ---
+            // Se reconstruye la URL directamente en lugar de usar la variable 'fullLink' que ya no existe.
+            const newUrl = `${window.location.pathname}?id=${newSessionId}`;
+            window.history.replaceState({ path: newUrl }, '', newUrl);
+            
+            // Avanzamos al siguiente paso
+            dispatch({ type: 'SET_STEP', payload: 'loading' });
+        } catch (error) {
+            console.error("Error creating new session:", error);
+            alert("No se pudo crear la sesión remota. La aplicación funcionará en modo local.");
+            // Si falla, crea una sesión local como respaldo
+            dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` });
+            dispatch({ type: 'SET_STEP', payload: 'loading' });
+        } finally {
+            setIsGeneratingLink(false);
+        }
+    };
 
     // Maneja cambios en los campos de un producto existente (nombre, precio, cantidad)
     const handleProductChange = (productId, field, value) => {
@@ -650,13 +688,17 @@ const App = () => {
     useEffect(() => {
         const performInitialLoad = async () => {
             if (!authReady || !userId || initialLoadDone.current) return;
+            
             const urlParams = new URLSearchParams(window.location.search);
             const idFromUrl = urlParams.get('id');
+            
             if (idFromUrl) {
-                // El estado inicial ya es 'loading_session', solo cargamos los datos
+                // Si hay un ID en la URL, se carga la sesión existente.
                 await loadStateFromGoogleSheets(idFromUrl);
-            } else { 
-                dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` }); 
+            } else {
+                // Si no hay ID, NO se crea una sesión local.
+                // Se queda esperando a que el usuario presione "Empezar".
+                dispatch({ type: 'SET_STEP', payload: 'landing' });
             }
             initialLoadDone.current = true;
         };
@@ -713,36 +755,67 @@ const App = () => {
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
     const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { const newId = generateUniqueId('item'); newProductsMap.set(newId, { id: newId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
-    const handleGenerateShareLink = async () => { if (!userId) { alert("La sesión no está lista."); return; } setIsGeneratingLink(true); const newShareId = `session_${Date.now()}`; justCreatedSessionId.current = newShareId; const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])) }; try { await saveStateToGoogleSheets(newShareId, dataToSave); const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`; dispatch({ type: 'SET_SHARE_ID', payload: newShareId }); dispatch({ type: 'SET_SHARE_LINK', payload: fullLink }); window.history.pushState({ path: fullLink }, '', fullLink); setTimeout(() => { if (justCreatedSessionId.current === newShareId) justCreatedSessionId.current = null; }, 10000); } catch (e) { alert(`Error al generar enlace: ${e.message}`); justCreatedSessionId.current = null; } finally { setIsGeneratingLink(false); } };
+    const handleGenerateShareLink = () => {
+        // CAMBIO: Muestra el modal de carga con el mensaje apropiado
+        setLoadingMessage("Generando enlace...");
+        setIsGeneratingLink(true);
+    
+        if (shareId && !shareId.startsWith('local-')) {
+            const fullLink = `${window.location.origin}${window.location.pathname}?id=${shareId}`;
+            dispatch({ type: 'SET_SHARE_LINK', payload: fullLink });
+        } else {
+            alert("La sesión aún no se ha creado en el servidor.");
+        }
+        
+        // CAMBIO: Oculta el modal después de un breve momento
+        setTimeout(() => {
+            setIsGeneratingLink(false);
+        }, 500); // 500ms para que el usuario perciba la acción
+    };
     const handleOpenSummaryModal = () => { const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0); const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity); const data = comensales.map(comensal => { const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0); const propina = totalSinPropina * TIP_PERCENTAGE; const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0; const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal; const totalConPropina = totalSinPropina + propina - descuentoAplicado; return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina) }; }); setSummaryData(data); setIsSummaryModalOpen(true); };
     const handlePrint = () => { const printContent = document.getElementById('print-source-content'); if (!printContent) return; const printWindow = window.open('', '_blank', 'height=800,width=800'); if (!printWindow) { alert('Permite las ventanas emergentes.'); return; } printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500); };
 
     const renderStep = () => {
         switch (currentStep) {
-            case 'landing': return <LandingStep onStart={() => dispatch({ type: 'SET_STEP', payload: 'loading' })} />;
-            // --- NUEVO CASO DE RENDERIZADO ---
+            case 'landing': 
+                // Pasamos la nueva función al botón "Empezar"
+                return <LandingStep onStart={handleStartNewSession} />;
+            // ... (el resto de los casos no cambia)
             case 'loading_session': return <LoadingSessionStep />;
-            case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
-            case 'reviewing': 
-            return ( 
-                <ReviewStep
-                    // Ahora pasamos el estado central y las nuevas funciones
-                    products={availableProducts}
-                    onProductChange={handleProductChange}
-                    onAddNewProduct={handleAddNewProduct}
-                    onRemoveProduct={handleRemoveProduct}
-                    // La confirmación ahora solo cambia de paso
-                    onConfirm={() => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: availableProducts })}
-                    onBack={handleResetAll}
-                    discountPercentage={discountPercentage} 
-                    discountCap={discountCap} 
-                    dispatch={dispatch}
-                /> 
-            );
-            case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
-            default: return <p>Cargando...</p>;
+            case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: new Map() })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
+            case 'reviewing': 
+            return ( 
+                <ReviewStep
+                    products={availableProducts}
+                    onProductChange={handleProductChange}
+                    onAddNewProduct={handleAddNewProduct}
+                    onRemoveProduct={handleRemoveProduct}
+                    onConfirm={() => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: availableProducts })}
+                    onBack={handleResetAll}
+                    discountPercentage={discountPercentage} 
+                    discountCap={discountCap} 
+                    dispatch={dispatch}
+                /> 
+            );
+            case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
+            default: return <p>Cargando...</p>;
         }
-    };
+
+    return (
+        <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
+        {/* CAMBIO: Se añade un mensaje dinámico al modal. 
+          Usará "Generando enlace..." si el `shareLink` ya está vacío,
+          de lo contrario mostrará "Creando sesión...".
+        */}
+        <LoadingModal 
+            isOpen={isGeneratingLink} 
+            message={loadingMessage} 
+        />
+        <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
+        {/* ... (el resto del JSX no cambia) ... */}
+    </div>
+    );
+};
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
