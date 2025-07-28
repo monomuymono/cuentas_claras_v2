@@ -564,12 +564,16 @@ const App = () => {
             activeSharedInstances: {},
             lastUpdated: new Date().toISOString()
         };
-
+    
         try {
             await saveStateToGoogleSheets(newSessionId, initialData);
             // Una vez guardado, actualizamos el estado y la URL
             dispatch({ type: 'SET_SHARE_ID', payload: newSessionId });
-            window.history.replaceState({ path: fullLink }, '', fullLink);
+    
+            // --- CAMBIO CLAVE AQUÍ ---
+            // Se reconstruye la URL directamente en lugar de usar la variable 'fullLink' que ya no existe.
+            const newUrl = `${window.location.pathname}?id=${newSessionId}`;
+            window.history.replaceState({ path: newUrl }, '', newUrl);
             
             // Avanzamos al siguiente paso
             dispatch({ type: 'SET_STEP', payload: 'loading' });
