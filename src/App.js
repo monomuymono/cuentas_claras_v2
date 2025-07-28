@@ -545,7 +545,7 @@ function billReducer(state, action) {
 // --- Componente principal de la aplicación ---
 const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
-    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
+    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
 
     // ... (El resto de los useState y useRef no cambian) ...
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
@@ -566,6 +566,32 @@ const App = () => {
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
     const lastSyncedTimestamp = useRef(null);
+
+    // Maneja cambios en los campos de un producto existente (nombre, precio, cantidad)
+    const handleProductChange = (productId, field, value) => {
+        const newProducts = new Map(state.availableProducts);
+        const product = newProducts.get(productId);
+        if (product) {
+            newProducts.set(productId, { ...product, [field]: value });
+            // Usa la acción existente para actualizar el estado y disparar el guardado
+            dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
+        }
+    };
+
+    // Maneja la adición de un nuevo producto desde el formulario de ReviewStep
+    const handleAddNewProduct = (newItem) => {
+        const newProducts = new Map(state.availableProducts);
+        const newId = generateUniqueId('item');
+        newProducts.set(newId, { ...newItem, id: newId });
+        dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
+    };
+
+    // Maneja la eliminación de un producto
+    const handleRemoveProduct = (productId) => {
+        const newProducts = new Map(state.availableProducts);
+        newProducts.delete(productId);
+        dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
+    };
 
     // ... (El resto de las funciones de App.js no cambian, excepto las marcadas) ...
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
