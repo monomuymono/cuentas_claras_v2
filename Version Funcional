@@ -5,6 +5,10 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
   window.process = { env: {} };
 }
 
+// --- FUNCIÓN AUXILIAR PARA IDs ÚNICOS ---
+const generateUniqueId = (prefix = 'id') => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+
 // --- CONSTANTES ---
 const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec";
 const TIP_PERCENTAGE = 0.10; // Propina del 10%
@@ -90,11 +94,11 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
       return;
     }
     if (selectedComensalesForShare.length === 1) {
-        setTempShareProductId(parseInt(selectedProductToShare));
+        setTempShareProductId(selectedProductToShare);
         setTempSharingComensalIds(selectedComensalesForShare);
         setIsShareWarningModalOpen(true);
     } else {
-        onShareConfirm(parseInt(selectedProductToShare), selectedComensalesForShare);
+        onShareConfirm(selectedProductToShare, selectedComensalesForShare);
         onClose();
     }
   };
@@ -127,7 +131,7 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
               >
                 <option value="" disabled>Selecciona un producto</option>
                 {sharableProducts.map(product => (
-                  <option key={String(product.id)} value={product.id}>
+                  <option key={product.id} value={product.id}>
                     {product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})
                   </option>
                 ))}
@@ -139,7 +143,7 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
               </label>
               <div className="grid grid-cols-2 gap-3 border p-3 rounded-md bg-gray-50">
                 {comensales.map(comensal => (
-                  <div key={String(comensal.id)}
+                  <div key={comensal.id}
                        className={`flex items-center p-3 rounded-lg cursor-pointer transition-all ${selectedComensalesForShare.includes(comensal.id) ? 'bg-blue-100 ring-2 ring-blue-500' : 'bg-white'}`}
                        onClick={() => handleComensalToggle(comensal.id)}>
                     <input
@@ -257,6 +261,7 @@ const initialState = {
     userId: null,
     shareId: null,
     shareLink: '',
+    masterProductList: new Map(),
     availableProducts: new Map(),
     comensales: [],
     activeSharedInstances: new Map(),
@@ -264,8 +269,26 @@ const initialState = {
     discountCap: 0,
 };
 
+// Reemplaza tu función billReducer completa con esta versión
 function billReducer(state, action) {
+    // --- FUNCIÓN AUXILIAR PARA RECALCULAR EL INVENTARIO ---
+    const recalculateAvailableProducts = (masterList, comensales) => {
+        if (!masterList || masterList.size === 0) return new Map();
+        const newAvailableProducts = new Map(JSON.parse(JSON.stringify(Array.from(masterList))));
+        comensales.forEach(diner => {
+            (diner.selectedItems || []).forEach(item => {
+                const productInMap = newAvailableProducts.get(item.id);
+                if (productInMap) {
+                    const quantityToRemove = item.type === ITEM_TYPES.SHARED ? 1 : item.quantity;
+                    productInMap.quantity -= quantityToRemove;
+                }
+            });
+        });
+        return newAvailableProducts;
+    };
+
     switch (action.type) {
+        // --- ACCIONES DE ESTADO GENERAL ---
         case 'SET_STEP':
             return { ...state, currentStep: action.payload };
         case 'SET_USER_ID':
@@ -276,27 +299,51 @@ function billReducer(state, action) {
             return { ...state, shareLink: action.payload };
         case 'APPLY_DISCOUNT': {
             const { percentage, cap } = action.payload;
-            return {
-                ...state,
-                discountPercentage: parseFloat(percentage) || 0,
-                discountCap: parseFloat(cap) || 0,
-            };
+            return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0 };
         }
-        // --- ACCIÓN MODIFICADA: ya no fuerza el cambio de pantalla ---
+        case 'ADD_COMENSAL': {
+            if (state.comensales.length >= MAX_COMENSALES) return state;
+            const newComensalId = generateUniqueId('diner');
+            const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 };
+            return { ...state, comensales: [...state.comensales, newComensal] };
+        }
+        case 'REMOVE_COMENSAL': {
+            const comensalIdToRemove = action.payload;
+            const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove);
+            return { ...state, comensales: newComensales };
+        }
+
+        // --- LÓGICA DE SINCRONIZACIÓN Y ESTADO INICIAL ---
         case 'LOAD_STATE': {
-            const { comensales, availableProducts, activeSharedInstances, shareId } = action.payload;
+            const serverData = action.payload;
+            
+            // CAMBIO CLAVE: Lógica robusta para manejar datos de versiones anteriores.
+            const finalMasterList = serverData.masterProductList && Object.keys(serverData.masterProductList).length > 0
+                ? new Map(Object.entries(serverData.masterProductList))
+                : new Map(Object.entries(serverData.availableProducts || {}));
+            
             return {
                 ...state,
-                comensales,
-                availableProducts,
-                activeSharedInstances,
-                shareId,
+                comensales: serverData.comensales || [],
+                activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
+                shareId: serverData.shareId,
+                lastUpdated: serverData.lastUpdated || null,
+                masterProductList: finalMasterList,
+                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || [])
             };
         }
+        case 'UPDATE_AVAILABLE_PRODUCTS':
+            return {
+                ...state,
+                availableProducts: action.payload,
+            };
+        
         case 'SET_PRODUCTS_FOR_REVIEW':
             return {
                 ...state,
                 availableProducts: action.payload,
+                // NO borra los comensales, solo resetea lo necesario
+                masterProductList: new Map(action.payload),
                 discountPercentage: 0,
                 discountCap: 0,
                 currentStep: 'reviewing'
@@ -304,207 +351,173 @@ function billReducer(state, action) {
         case 'SET_PRODUCTS_AND_ADVANCE':
             return {
                 ...state,
-                availableProducts: action.payload,
+                masterProductList: new Map(action.payload),
+                availableProducts: new Map(action.payload),
                 currentStep: 'assigning'
             };
-        case 'ADD_COMENSAL': {
-            if (state.comensales.length >= MAX_COMENSALES) return state;
-            const newComensalId = state.comensales.length > 0 ? Math.max(0, ...state.comensales.map(c => c.id)) + 1 : 1;
-            const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 };
-            return { ...state, comensales: [...state.comensales, newComensal] };
+        case 'SYNC_STATE': {
+            const serverStateData = action.payload;
+            const localState = state;
+            const serverComensalesMap = new Map((serverStateData.comensales || []).map(c => [c.id, c]));
+            const localComensalesMap = new Map(localState.comensales.map(c => [c.id, c]));
+            const reconciledComensales = [];
+            const allDinerIds = new Set([...serverComensalesMap.keys(), ...localComensalesMap.keys()]);
+
+            allDinerIds.forEach(id => {
+                const serverDiner = serverComensalesMap.get(id);
+                const localDiner = localComensalesMap.get(id);
+
+                if (serverDiner && !localDiner) {
+                    reconciledComensales.push(serverDiner);
+                } else if (!serverDiner && localDiner) {
+                    reconciledComensales.push(localDiner);
+                } else if (serverDiner && localDiner) {
+                    const finalItems = [];
+                    const localItemsMap = new Map((localDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const serverItemsMap = new Map((serverDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const allItemKeys = new Set([...localItemsMap.keys(), ...serverItemsMap.keys()]);
+
+                    allItemKeys.forEach(key => {
+                        const localItem = localItemsMap.get(key);
+                        const serverItem = serverItemsMap.get(key);
+                        if (localItem && !serverItem) {
+                            finalItems.push(localItem);
+                        } else if (!localItem && serverItem) {
+                            finalItems.push(serverItem);
+                        } else {
+                            const localDate = new Date(localItem.modifiedAt || 0);
+                            const serverDate = new Date(serverItem.modifiedAt || 0);
+                            finalItems.push(serverDate > localDate ? serverItem : localItem);
+                        }
+                    });
+                    reconciledComensales.push({ ...serverDiner, selectedItems: finalItems });
+                }
+            });
+
+            return {
+                ...state,
+                comensales: reconciledComensales,
+                activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
+                lastUpdated: serverStateData.lastUpdated,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales),
+            };
         }
+
+        // --- ACCIONES LOCALES ---
         case 'ADD_ITEM': {
             const { comensalId, productId } = action.payload;
             const productInStock = state.availableProducts.get(productId);
             if (!productInStock || Number(productInStock.quantity) <= 0) return state;
-            
-            const newProductsMap = new Map(state.availableProducts);
-            newProductsMap.set(productId, { ...productInStock, quantity: Number(productInStock.quantity) - 1 });
 
             const newComensales = state.comensales.map(comensal => {
                 if (comensal.id === comensalId) {
-                    const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
+                    const updatedComensal = { ...comensal, selectedItems: JSON.parse(JSON.stringify(comensal.selectedItems)) };
                     const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL);
-                    
                     if (existingItemIndex !== -1) {
                         updatedComensal.selectedItems[existingItemIndex].quantity += 1;
+                        updatedComensal.selectedItems[existingItemIndex].modifiedAt = new Date().toISOString();
                     } else {
                         updatedComensal.selectedItems.push({
-                            id: productInStock.id,
-                            name: productInStock.name,
-                            originalBasePrice: Number(productInStock.price),
-                            quantity: 1,
-                            type: ITEM_TYPES.FULL,
+                            id: productInStock.id, name: productInStock.name,
+                            originalBasePrice: Number(productInStock.price), quantity: 1, type: ITEM_TYPES.FULL,
+                            modifiedAt: new Date().toISOString(),
                         });
                     }
                     return updatedComensal;
                 }
                 return comensal;
             });
-
-            return { ...state, availableProducts: newProductsMap, comensales: newComensales };
+            return {
+                ...state,
+                comensales: newComensales,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+            };
         }
         case 'SHARE_ITEM': {
             const { productId, sharingComensalIds } = action.payload;
             const productToShare = state.availableProducts.get(productId);
-            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || Number(productToShare.quantity) <= 0) return state;
-
-            const newProductsMap = new Map(state.availableProducts);
-            newProductsMap.set(productId, { ...productToShare, quantity: Number(productToShare.quantity) - 1 });
+            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || state.availableProducts.get(productId).quantity < 1) return state;
 
             const shareInstanceId = Date.now() + Math.random();
-            const newActiveSharedInstances = new Map(state.activeSharedInstances);
-            newActiveSharedInstances.set(shareInstanceId, new Set(sharingComensalIds));
-
+            const newActiveSharedInstances = new Map(state.activeSharedInstances).set(shareInstanceId, new Set(sharingComensalIds));
             const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
+            const newItemData = {
+                id: productToShare.id, name: productToShare.name,
+                originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
+                sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId,
+                modifiedAt: new Date().toISOString(),
+            };
 
             const newComensales = state.comensales.map(comensal => {
                 if (sharingComensalIds.includes(comensal.id)) {
-                    const updatedItems = [...comensal.selectedItems, {
-                        id: productToShare.id, name: productToShare.name,
-                        originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
-                        sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId
-                    }];
-                    return { ...comensal, selectedItems: updatedItems };
+                    return { ...comensal, selectedItems: [...comensal.selectedItems, newItemData] };
                 }
                 return comensal;
             });
-            
-            return { ...state, comensales: newComensales, availableProducts: newProductsMap, activeSharedInstances: newActiveSharedInstances };
+            return {
+                ...state,
+                comensales: newComensales,
+                activeSharedInstances: newActiveSharedInstances,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+            };
         }
         case 'REMOVE_ITEM_FROM_COMENSAL': {
             const { comensalId, itemIdentifier } = action.payload;
             let comensalTarget = state.comensales.find(c => c.id === comensalId);
             if (!comensalTarget) return state;
-
-            const itemIndex = comensalTarget.selectedItems.findIndex(item =>
-                (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) ||
-                (item.type === ITEM_TYPES.FULL && item.id === Number(itemIdentifier))
-            );
+            const itemIndex = comensalTarget.selectedItems.findIndex(item => (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || (item.type === ITEM_TYPES.FULL && item.id === itemIdentifier));
             if (itemIndex === -1) return state;
 
             const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
-            let updatedComensales = [...state.comensales];
-            let updatedProducts = new Map(state.availableProducts);
-            let updatedSharedInstances = new Map(state.activeSharedInstances);
+            let newComensales = [...state.comensales];
+            let newSharedInstances = new Map(state.activeSharedInstances);
 
             if (itemToRemove.type === ITEM_TYPES.FULL) {
-                updatedComensales = state.comensales.map(c => {
+                newComensales = state.comensales.map(c => {
                     if (c.id === comensalId) {
-                        const updatedItems = [...c.selectedItems];
-                        if (updatedItems[itemIndex].quantity > 1) {
-                            updatedItems[itemIndex].quantity -= 1;
-                        } else {
-                            updatedItems.splice(itemIndex, 1);
-                        }
+                        const updatedItems = c.selectedItems.filter((_, idx) => idx !== itemIndex);
                         return { ...c, selectedItems: updatedItems };
                     }
                     return c;
                 });
-                const product = updatedProducts.get(itemToRemove.id);
-                if (product) updatedProducts.set(itemToRemove.id, { ...product, quantity: product.quantity + 1 });
-            }
-
-            if (itemToRemove.type === ITEM_TYPES.SHARED) {
-                const { shareInstanceId, id: originalProductId } = itemToRemove;
-                const shareGroup = updatedSharedInstances.get(shareInstanceId);
-                if (!shareGroup) return state;
-
-                shareGroup.delete(comensalId);
-                
-                if (shareGroup.size === 0) {
-                    updatedSharedInstances.delete(shareInstanceId);
-                    const product = updatedProducts.get(originalProductId);
-                    if (product) updatedProducts.set(originalProductId, { ...product, quantity: product.quantity + 1 });
+            } else { // SHARED
+                const { shareInstanceId } = itemToRemove;
+                const shareGroup = newSharedInstances.get(shareInstanceId);
+                if (shareGroup) {
+                    shareGroup.delete(comensalId);
+                    if (shareGroup.size === 0) {
+                        newSharedInstances.delete(shareInstanceId);
+                    }
                 }
-
-                updatedComensales = state.comensales.map(c => {
-                    let comensalToUpdate = { ...c };
-                    if (c.id === comensalId) {
-                        comensalToUpdate.selectedItems = c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId));
-                    }
-                    if (shareGroup.size > 0 && shareGroup.has(c.id)) {
-                        const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
-                        const newSharerCount = shareGroup.size;
-                        const newBasePricePerShare = totalItemBasePrice / newSharerCount;
-                        
-                        comensalToUpdate.selectedItems = comensalToUpdate.selectedItems.map(item => {
-                            if (String(item.shareInstanceId) === String(shareInstanceId)) {
-                                return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: newSharerCount };
-                            }
-                            return item;
-                        });
-                    }
-                    return comensalToUpdate;
-                });
+                newComensales = state.comensales.map(c => ({
+                    ...c,
+                    selectedItems: c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
+                }));
             }
 
-            return { ...state, comensales: updatedComensales, availableProducts: updatedProducts, activeSharedInstances: updatedSharedInstances };
+            return {
+                ...state,
+                comensales: newComensales,
+                activeSharedInstances: newSharedInstances,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+            };
         }
         case 'CLEAR_COMENSAL_ITEMS': {
-            const comensalIdToClear = action.payload;
-            const comensalToClear = state.comensales.find(c => c.id === comensalIdToClear);
-            if (!comensalToClear || comensalToClear.selectedItems.length === 0) return state;
-
-            const newProducts = new Map(state.availableProducts);
-            const newSharedInstances = new Map(state.activeSharedInstances);
-            const sharedGroupsToUpdate = new Map();
-
-            comensalToClear.selectedItems.forEach(item => {
-                if (item.type === ITEM_TYPES.FULL) {
-                    const product = newProducts.get(item.id);
-                    if (product) newProducts.set(item.id, { ...product, quantity: item.quantity + (product.quantity || 0) });
-                } else if (item.type === ITEM_TYPES.SHARED) {
-                    const shareGroup = newSharedInstances.get(item.shareInstanceId);
-                    if (!shareGroup) return;
-                    shareGroup.delete(comensalIdToClear);
-                    if (shareGroup.size === 0) {
-                        newSharedInstances.delete(item.shareInstanceId);
-                        const product = newProducts.get(item.id);
-                        if (product) newProducts.set(item.id, { ...product, quantity: product.quantity + 1 });
-                    } else {
-                        sharedGroupsToUpdate.set(item.shareInstanceId, {
-                            totalBasePrice: item.originalBasePrice * item.sharedByCount,
-                            newSharerCount: shareGroup.size
-                        });
-                    }
-                }
-            });
-
-            const finalComensales = state.comensales.map(comensal => {
-                if (comensal.id === comensalIdToClear) {
-                    return { ...comensal, selectedItems: [], total: 0 };
-                }
-                let needsRecalculation = false;
-                const updatedItems = comensal.selectedItems.map(item => {
-                    if (item.type === ITEM_TYPES.SHARED && sharedGroupsToUpdate.has(item.shareInstanceId)) {
-                        needsRecalculation = true;
-                        const updateInfo = sharedGroupsToUpdate.get(item.shareInstanceId);
-                        const newBasePricePerShare = updateInfo.totalBasePrice / updateInfo.newSharerCount;
-                        return { ...item, originalBasePrice: newBasePricePerShare, sharedByCount: updateInfo.newSharerCount };
-                    }
-                    return item;
-                });
-                if (needsRecalculation) {
-                    return { ...comensal, selectedItems: updatedItems };
-                }
-                return comensal;
-            });
-
-            return { ...state, comensales: finalComensales, availableProducts: newProducts, activeSharedInstances: newSharedInstances };
-        }
-        case 'REMOVE_COMENSAL': {
-             const comensalIdToRemove = action.payload;
-             const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove);
-             return { ...state, comensales: newComensales };
+            const { comensalId } = action.payload;
+            const newComensales = state.comensales.map(c => c.id === comensalId ? { ...c, selectedItems: [] } : c);
+            return {
+                ...state,
+                comensales: newComensales,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+            };
         }
         case 'RESET_SESSION': {
             const url = new URL(window.location.href);
             url.searchParams.delete('id');
             window.history.replaceState({}, document.title, url.toString());
-            return { 
-                ...initialState, 
-                currentStep: 'landing', 
+            return {
+                ...initialState,
+                currentStep: 'landing',
                 userId: state.userId,
                 shareId: `local-session-${Date.now()}`
             };
@@ -517,7 +530,7 @@ function billReducer(state, action) {
 // --- Componente principal de la aplicación ---
 const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
-    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
+    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
 
     // ... (El resto de los useState y useRef no cambian) ...
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
@@ -537,6 +550,33 @@ const App = () => {
     const initialLoadDone = useRef(false);
     const isLoadingFromServer = useRef(false);
     const justCreatedSessionId = useRef(null);
+    const lastSyncedTimestamp = useRef(null);
+
+    // Maneja cambios en los campos de un producto existente (nombre, precio, cantidad)
+    const handleProductChange = (productId, field, value) => {
+        const newProducts = new Map(state.availableProducts);
+        const product = newProducts.get(productId);
+        if (product) {
+            newProducts.set(productId, { ...product, [field]: value });
+            // Usa la acción existente para actualizar el estado y disparar el guardado
+            dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
+        }
+    };
+
+    // Maneja la adición de un nuevo producto desde el formulario de ReviewStep
+    const handleAddNewProduct = (newItem) => {
+        const newProducts = new Map(state.availableProducts);
+        const newId = generateUniqueId('item');
+        newProducts.set(newId, { ...newItem, id: newId });
+        dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
+    };
+
+    // Maneja la eliminación de un producto
+    const handleRemoveProduct = (productId) => {
+        const newProducts = new Map(state.availableProducts);
+        newProducts.delete(productId);
+        dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
+    };
 
     // ... (El resto de las funciones de App.js no cambian, excepto las marcadas) ...
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
@@ -555,30 +595,47 @@ const App = () => {
         try {
             const data = await promise;
             if (data && data.status !== "not_found") {
-                if (hasPendingChanges.current && !initialLoadDone.current) return;
-                isLoadingFromServer.current = true;
-                const loadedProducts = new Map(Object.entries(data.availableProducts || {}).map(([key, value]) => [Number(key), value]));
-                const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
-                
-                // Primero, actualiza el estado con los datos
-                dispatch({ type: 'LOAD_STATE', payload: { comensales: data.comensales || [], availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances, shareId: idToLoad } });
+                // --- LÓGICA DE SINCRONIZACIÓN MEJORADA ---
 
-                // --- LÓGICA MODIFICADA: Solo cambia el paso en la carga inicial ---
+                // Si es la carga inicial, cargamos el estado completamente.
                 if (!initialLoadDone.current) {
+                    isLoadingFromServer.current = true;
+                    const loadedProducts = new Map(Object.entries(data.availableProducts || {}));
+                    const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
+                    
+                    dispatch({ type: 'LOAD_STATE', payload: { ...data, availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances } });
+                    lastSyncedTimestamp.current = data.lastUpdated; // Establecer la fecha inicial
+
                     if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
                         dispatch({ type: 'SET_STEP', payload: 'assigning' });
                     } else {
-                        // Si la sesión está vacía, llevar a la pantalla de carga de ítems
                         dispatch({ type: 'SET_STEP', payload: 'reviewing' });
+                    }
+                } else {
+                    // Si es un sondeo (polling), comparamos las fechas antes de actualizar.
+                    const isServerStateNewer = !lastSyncedTimestamp.current || new Date(data.lastUpdated) > new Date(lastSyncedTimestamp.current);
+                    
+                    if (isServerStateNewer && !hasPendingChanges.current) {
+                        isLoadingFromServer.current = true;
+                        dispatch({ type: 'SYNC_STATE', payload: data });
+                        lastSyncedTimestamp.current = data.lastUpdated; // Actualizar a la nueva fecha
                     }
                 }
             } else {
-                if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura."); return; }
-                alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
-                handleResetAll();
+                 if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura."); return; }
+                 alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
+                 handleResetAll();
             }
         } catch (error) { console.error("Error al cargar con JSONP:", error);
-        } finally { setTimeout(() => { isLoadingFromServer.current = false; }, 0); }
+        } finally { 
+            // Usamos un timeout para asegurar que el flag se desactive después de que el render se complete
+            setTimeout(() => { 
+                isLoadingFromServer.current = false; 
+                if (!initialLoadDone.current) {
+                    initialLoadDone.current = true;
+                }
+            }, 0); 
+        }
     }, [handleResetAll]);
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
@@ -611,24 +668,41 @@ const App = () => {
         let isCancelled = false; const pollTimeout = 5000; let pollTimer;
         const poll = () => {
             if (isCancelled) return;
-            if (!hasPendingChanges.current) { loadStateFromGoogleSheets(shareId).finally(() => { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); });
-            } else { if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); }
+            // No llamar si hay cambios locales pendientes de guardar
+            if (!hasPendingChanges.current) { 
+                loadStateFromGoogleSheets(shareId).finally(() => { 
+                    if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); 
+                });
+            } else { 
+                if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); 
+            }
         };
         pollTimer = setTimeout(poll, pollTimeout);
         return () => { isCancelled = true; clearTimeout(pollTimer); };
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
+
+    // --- PEGA ESTE BLOQUE NUEVO EN EL LUGAR DEL ANTIGUO ---
     useEffect(() => {
-        if (isLoadingFromServer.current) return;
-        if ((!initialLoadDone.current && currentStep !== 'landing') || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
+        // La condición ahora permite guardar desde el paso 'reviewing'
+        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
+    
         hasPendingChanges.current = true;
         const handler = setTimeout(() => {
-            const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), lastUpdated: new Date().toISOString() };
+            const dataToSave = { 
+                comensales, 
+                availableProducts: Object.fromEntries(availableProducts), 
+                masterProductList: Object.fromEntries(state.masterProductList), // Asegúrate de guardar la lista maestra también
+                activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), 
+                lastUpdated: new Date().toISOString()
+            };
             saveStateToGoogleSheets(shareId, dataToSave)
                 .catch((e) => { console.error("El guardado falló:", e.message); alert(`No se pudieron guardar los últimos cambios: ${e.message}`); })
                 .finally(() => { hasPendingChanges.current = false; });
-        }, 1000);
+        }, 1200); // Aumentamos ligeramente el debounce para la edición de texto
+    
         return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, currentStep]);
+    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.masterProductList]);
+
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
     const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
@@ -638,7 +712,7 @@ const App = () => {
     const confirmRemoveComensal = () => { if (comensalToRemoveId !== null) { dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId }); dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId }); } setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
-    const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); let currentMaxId = 0; (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { currentMaxId++; newProductsMap.set(currentMaxId, { id: currentMaxId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
+    const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { const newId = generateUniqueId('item'); newProductsMap.set(newId, { id: newId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
     const handleGenerateShareLink = async () => { if (!userId) { alert("La sesión no está lista."); return; } setIsGeneratingLink(true); const newShareId = `session_${Date.now()}`; justCreatedSessionId.current = newShareId; const dataToSave = { comensales, availableProducts: Object.fromEntries(availableProducts), activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])) }; try { await saveStateToGoogleSheets(newShareId, dataToSave); const fullLink = `${window.location.origin}${window.location.pathname}?id=${newShareId}`; dispatch({ type: 'SET_SHARE_ID', payload: newShareId }); dispatch({ type: 'SET_SHARE_LINK', payload: fullLink }); window.history.pushState({ path: fullLink }, '', fullLink); setTimeout(() => { if (justCreatedSessionId.current === newShareId) justCreatedSessionId.current = null; }, 10000); } catch (e) { alert(`Error al generar enlace: ${e.message}`); justCreatedSessionId.current = null; } finally { setIsGeneratingLink(false); } };
     const handleOpenSummaryModal = () => { const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0); const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity); const data = comensales.map(comensal => { const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0); const propina = totalSinPropina * TIP_PERCENTAGE; const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0; const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal; const totalConPropina = totalSinPropina + propina - descuentoAplicado; return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina) }; }); setSummaryData(data); setIsSummaryModalOpen(true); };
     const handlePrint = () => { const printContent = document.getElementById('print-source-content'); if (!printContent) return; const printWindow = window.open('', '_blank', 'height=800,width=800'); if (!printWindow) { alert('Permite las ventanas emergentes.'); return; } printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500); };
@@ -649,7 +723,22 @@ const App = () => {
             // --- NUEVO CASO DE RENDERIZADO ---
             case 'loading_session': return <LoadingSessionStep />;
             case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
-            case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts })} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
+            case 'reviewing': 
+            return ( 
+                <ReviewStep
+                    // Ahora pasamos el estado central y las nuevas funciones
+                    products={availableProducts}
+                    onProductChange={handleProductChange}
+                    onAddNewProduct={handleAddNewProduct}
+                    onRemoveProduct={handleRemoveProduct}
+                    // La confirmación ahora solo cambia de paso
+                    onConfirm={() => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: availableProducts })}
+                    onBack={handleResetAll}
+                    discountPercentage={discountPercentage} 
+                    discountCap={discountCap} 
+                    dispatch={dispatch}
+                /> 
+            );
             case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
             default: return <p>Cargando...</p>;
         }
@@ -694,54 +783,55 @@ const App = () => {
 const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
 const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
 
-const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, discountCap, dispatch }) => {
-    const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
+const ReviewStep = ({
+    products,
+    onProductChange,
+    onAddNewProduct,
+    onRemoveProduct,
+    onConfirm,
+    onBack,
+    discountPercentage,
+    discountCap,
+    dispatch
+}) => {
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
 
-    useEffect(() => { setLocalProducts(new Map(initialProducts)); }, [initialProducts]);
-    
-    const total = Array.from(localProducts.values()).reduce((sum, p) => (sum + (parseFloat(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
-    const potentialDiscount = total * (discountPercentage / 100);
-    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
-    const tip = total * TIP_PERCENTAGE;
-    const grandTotal = total + tip - actualDiscount;
-
-    const handleProductChange = (id, field, value) => { setLocalProducts(prev => { const newMap = new Map(prev); const product = newMap.get(id); if (product) newMap.set(id, { ...product, [field]: value }); return newMap; }); };
-    const handleRemoveProduct = (id) => { setLocalProducts(prev => { const newMap = new Map(prev); newMap.delete(id); return newMap; }); };
-    
-    const handleAddNewItem = () => {
+    const handleAddNewItemClick = () => {
         if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
-        const price = parseFloat(newItem.price); const quantity = parseInt(newItem.quantity, 10);
+        const price = parseFloat(newItem.price);
+        const quantity = parseInt(newItem.quantity, 10);
         if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            const newId = (prev.size > 0 ? Math.max(0, ...Array.from(prev.keys())) : 0) + 1;
-            newMap.set(newId, { id: newId, name: newItem.name.trim(), price: price, quantity: quantity });
-            return newMap;
-        });
-        setNewItem({ name: '', price: '', quantity: '1' });
+
+        onAddNewProduct({ name: newItem.name.trim(), price, quantity });
+        setNewItem({ name: '', price: '', quantity: '1' }); // Resetea el formulario local
     };
-    
+
     const handleDiscountChange = (e) => {
         const { name, value } = e.target;
         const newPercentage = name === 'percentage' ? value : discountPercentage;
         const newCap = name === 'cap' ? value : discountCap;
-        dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: newPercentage, cap: newCap }});
+        dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: newPercentage, cap: newCap } });
     };
+
+    const total = Array.from(products.values()).reduce((sum, p) => (sum + (parseFloat(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
+    const potentialDiscount = total * (discountPercentage / 100);
+    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
+    const tip = total * TIP_PERCENTAGE;
+    const grandTotal = total + tip - actualDiscount;
     
     return (
         <div className="p-4 pb-20">
             <header className="text-center mb-6"> <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1> <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p> </header>
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
                 <h2 className="text-lg font-bold">Ítems Cargados</h2>
-                {Array.from(localProducts.values()).map(p => (
+                {Array.from(products.values()).map(p => (
                     <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
-                        <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" aria-label="Nombre"/>
-                        <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
+                        <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" aria-label="Nombre"/>
+                        <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
                         <span className="col-span-1 text-center self-center">$</span>
-                        <input type="number" value={p.price} onChange={e => handleProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" aria-label="Precio" min="0"/>
-                        <button onClick={() => handleRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700" aria-label={`Eliminar ${p.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg> </button>
+                        <input type="number" value={p.price} onChange={e => onProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" aria-label="Precio" min="0"/>
+                        <button onClick={() => onRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700" aria-label={`Eliminar ${p.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg> </button>
                     </div>
                 ))}
                 <div className="grid grid-cols-12 gap-2 items-center pt-3">
@@ -749,7 +839,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
                     <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad nuevo ítem" min="1"/>
                     <span className="col-span-1 text-center self-center">$</span>
                     <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="col-span-3 p-2 border rounded-md" aria-label="Precio nuevo ítem" min="0"/>
-                    <button onClick={handleAddNewItem} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center" aria-label="Agregar ítem"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg> </button>
+                    <button onClick={handleAddNewItemClick} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center" aria-label="Agregar ítem"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg> </button>
                 </div>
             </div>
             <div className="bg-white p-4 rounded-xl shadow-md mb-6">
@@ -767,7 +857,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
                 <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
-                <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
+                <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
             </div>
         </div>
     );
@@ -794,9 +884,9 @@ const AssigningStep = ({
                 <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
                 <div className="mb-4">
                     <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
-                    <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, parseInt(e.target.value, 10))} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
+                    <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
                         <option value="" disabled>Selecciona un producto</option>
-                        {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={String(product.id)} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
+                        {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={product.id} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
                     </select>
                 </div>
                 <div className="flex-grow min-h-[80px]">
