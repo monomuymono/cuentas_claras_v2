@@ -290,7 +290,7 @@ function billReducer(state, action) {
     };
 
     switch (action.type) {
-        // --- ACCIONES DE ESTADO GENERAL (SIN CAMBIOS) ---
+        // --- ACCIONES DE ESTADO GENERAL ---
         case 'SET_STEP':
             return { ...state, currentStep: action.payload };
         case 'SET_USER_ID':
@@ -317,18 +317,21 @@ function billReducer(state, action) {
 
         // --- LÓGICA DE SINCRONIZACIÓN Y ESTADO INICIAL ---
         case 'LOAD_STATE': {
-            const { comensales, availableProducts, masterProductList, activeSharedInstances, shareId, lastUpdated } = action.payload;
-            const productsMap = new Map(Object.entries(availableProducts || {}));
-            const masterList = new Map(JSON.parse(JSON.stringify(Array.from(productsMap))));
-            const finalMasterList = masterProductList ? new Map(Object.entries(masterProductList)) : new Map(Object.entries(availableProducts || {}));
+            const serverData = action.payload;
+            
+            // CAMBIO CLAVE: Lógica robusta para manejar datos de versiones anteriores.
+            const finalMasterList = serverData.masterProductList && Object.keys(serverData.masterProductList).length > 0
+                ? new Map(Object.entries(serverData.masterProductList))
+                : new Map(Object.entries(serverData.availableProducts || {}));
+            
             return {
                 ...state,
-                comensales,
-                activeSharedInstances: new Map(Object.entries(activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
-                shareId,
-                lastUpdated: lastUpdated || null,
+                comensales: serverData.comensales || [],
+                activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
+                shareId: serverData.shareId,
+                lastUpdated: serverData.lastUpdated || null,
                 masterProductList: finalMasterList,
-                availableProducts: recalculateAvailableProducts(finalMasterList, comensales)
+                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || [])
             };
         }
         case 'SET_PRODUCTS_FOR_REVIEW':
@@ -336,7 +339,7 @@ function billReducer(state, action) {
                 ...state,
                 availableProducts: action.payload,
                 masterProductList: new Map(),
-                comensales: [],
+                comensales: [], // Mantenemos los comensales si ya existen
                 discountPercentage: 0,
                 discountCap: 0,
                 currentStep: 'reviewing'
@@ -396,7 +399,7 @@ function billReducer(state, action) {
             };
         }
 
-        // --- ACCIONES LOCALES QUE RECALCULAN EL INVENTARIO ---
+        // --- ACCIONES LOCALES ---
         case 'ADD_ITEM': {
             const { comensalId, productId } = action.payload;
             const productInStock = state.availableProducts.get(productId);
@@ -468,13 +471,7 @@ function billReducer(state, action) {
             if (itemToRemove.type === ITEM_TYPES.FULL) {
                 newComensales = state.comensales.map(c => {
                     if (c.id === comensalId) {
-                        const updatedItems = [...c.selectedItems];
-                        if (updatedItems[itemIndex].quantity > 1) {
-                            updatedItems[itemIndex].quantity -= 1;
-                            updatedItems[itemIndex].modifiedAt = new Date().toISOString();
-                        } else {
-                            updatedItems.splice(itemIndex, 1);
-                        }
+                        const updatedItems = c.selectedItems.filter((_, idx) => idx !== itemIndex);
                         return { ...c, selectedItems: updatedItems };
                     }
                     return c;
@@ -482,33 +479,16 @@ function billReducer(state, action) {
             } else { // SHARED
                 const { shareInstanceId } = itemToRemove;
                 const shareGroup = newSharedInstances.get(shareInstanceId);
-                if (!shareGroup) return state;
-                shareGroup.delete(comensalId);
-                
-                let tempComensales = state.comensales.map(c => ({
+                if (shareGroup) {
+                    shareGroup.delete(comensalId);
+                    if (shareGroup.size === 0) {
+                        newSharedInstances.delete(shareInstanceId);
+                    }
+                }
+                newComensales = state.comensales.map(c => ({
                     ...c,
                     selectedItems: c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
                 }));
-                
-                if (shareGroup.size === 0) {
-                    newSharedInstances.delete(shareInstanceId);
-                } else {
-                    const totalItemBasePrice = itemToRemove.originalBasePrice * itemToRemove.sharedByCount;
-                    const newBasePricePerShare = totalItemBasePrice / shareGroup.size;
-                    const updatedItemData = {
-                        ...itemToRemove,
-                        originalBasePrice: newBasePricePerShare,
-                        sharedByCount: shareGroup.size,
-                        modifiedAt: new Date().toISOString()
-                    };
-                    tempComensales = tempComensales.map(c => {
-                        if (shareGroup.has(c.id)) {
-                            return { ...c, selectedItems: [...c.selectedItems, updatedItemData] };
-                        }
-                        return c;
-                    });
-                }
-                newComensales = tempComensales;
             }
 
             return {
