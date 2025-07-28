@@ -789,7 +789,6 @@ const App = () => {
             case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
             default: return <p>Cargando...</p>;
         }
-    };
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
