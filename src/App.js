@@ -752,14 +752,20 @@ const App = () => {
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
     const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { const newId = generateUniqueId('item'); newProductsMap.set(newId, { id: newId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
     const handleGenerateShareLink = () => {
+        // CAMBIO: Muestra el modal de carga con el mensaje apropiado
+        setIsGeneratingLink(true);
+    
         if (shareId && !shareId.startsWith('local-')) {
-            // Si ya tenemos un ID de sesión remota, simplemente lo mostramos.
             const fullLink = `${window.location.origin}${window.location.pathname}?id=${shareId}`;
             dispatch({ type: 'SET_SHARE_LINK', payload: fullLink });
         } else {
-            // Este caso ya no debería ocurrir con el nuevo flujo, pero lo dejamos como respaldo.
             alert("La sesión aún no se ha creado en el servidor.");
         }
+        
+        // CAMBIO: Oculta el modal después de un breve momento
+        setTimeout(() => {
+            setIsGeneratingLink(false);
+        }, 500); // 500ms para que el usuario perciba la acción
     };
     const handleOpenSummaryModal = () => { const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0); const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity); const data = comensales.map(comensal => { const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0); const propina = totalSinPropina * TIP_PERCENTAGE; const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0; const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal; const totalConPropina = totalSinPropina + propina - descuentoAplicado; return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina) }; }); setSummaryData(data); setIsSummaryModalOpen(true); };
     const handlePrint = () => { const printContent = document.getElementById('print-source-content'); if (!printContent) return; const printWindow = window.open('', '_blank', 'height=800,width=800'); if (!printWindow) { alert('Permite las ventanas emergentes.'); return; } printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500); };
@@ -792,11 +798,17 @@ const App = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-            {/* Reutilizamos el modal existente para mostrar "Creando sesión..." */}
-            <LoadingModal isOpen={isGeneratingLink} message="Creando sesión..." />
-            <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
-            {/* ... (el resto del JSX no cambia) ... */}
-        </div>
+        {/* CAMBIO: Se añade un mensaje dinámico al modal. 
+          Usará "Generando enlace..." si el `shareLink` ya está vacío,
+          de lo contrario mostrará "Creando sesión...".
+        */}
+        <LoadingModal 
+            isOpen={isGeneratingLink} 
+            message={shareLink ? "Generando enlace..." : "Creando sesión..."} 
+        />
+        <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
+        {/* ... (el resto del JSX no cambia) ... */}
+    </div>
     );
 };
 
