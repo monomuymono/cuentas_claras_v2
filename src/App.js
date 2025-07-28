@@ -569,8 +569,6 @@ const App = () => {
             await saveStateToGoogleSheets(newSessionId, initialData);
             // Una vez guardado, actualizamos el estado y la URL
             dispatch({ type: 'SET_SHARE_ID', payload: newSessionId });
-            const fullLink = `${window.location.origin}${window.location.pathname}?id=${newSessionId}`;
-            dispatch({ type: 'SET_SHARE_LINK', payload: fullLink });
             window.history.replaceState({ path: fullLink }, '', fullLink);
             
             // Avanzamos al siguiente paso
