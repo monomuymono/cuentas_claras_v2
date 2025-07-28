@@ -317,17 +317,18 @@ function billReducer(state, action) {
 
         // --- LÓGICA DE SINCRONIZACIÓN Y ESTADO INICIAL ---
         case 'LOAD_STATE': {
-            const { comensales, availableProducts, activeSharedInstances, shareId, lastUpdated } = action.payload;
+            const { comensales, availableProducts, masterProductList, activeSharedInstances, shareId, lastUpdated } = action.payload;
             const productsMap = new Map(Object.entries(availableProducts || {}));
             const masterList = new Map(JSON.parse(JSON.stringify(Array.from(productsMap))));
+            const finalMasterList = masterProductList ? new Map(Object.entries(masterProductList)) : new Map(Object.entries(availableProducts || {}));
             return {
                 ...state,
                 comensales,
                 activeSharedInstances: new Map(Object.entries(activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
                 shareId,
                 lastUpdated: lastUpdated || null,
-                masterProductList: masterList,
-                availableProducts: recalculateAvailableProducts(masterList, comensales)
+                masterProductList: finalMasterList,
+                availableProducts: recalculateAvailableProducts(finalMasterList, comensales)
             };
         }
         case 'SET_PRODUCTS_FOR_REVIEW':
