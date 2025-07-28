@@ -670,24 +670,27 @@ const App = () => {
         return () => { isCancelled = true; clearTimeout(pollTimer); };
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
 
+    // --- PEGA ESTE BLOQUE NUEVO EN EL LUGAR DEL ANTIGUO ---
     useEffect(() => {
-        if (isLoadingFromServer.current) return;
-        if (!initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
-        
+        // La condición ahora permite guardar desde el paso 'reviewing'
+        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
+    
         hasPendingChanges.current = true;
         const handler = setTimeout(() => {
             const dataToSave = { 
                 comensales, 
                 availableProducts: Object.fromEntries(availableProducts), 
+                masterProductList: Object.fromEntries(state.masterProductList), // Asegúrate de guardar la lista maestra también
                 activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), 
-                lastUpdated: new Date().toISOString() // Incluir siempre la fecha de la última modificación
+                lastUpdated: new Date().toISOString()
             };
             saveStateToGoogleSheets(shareId, dataToSave)
                 .catch((e) => { console.error("El guardado falló:", e.message); alert(`No se pudieron guardar los últimos cambios: ${e.message}`); })
                 .finally(() => { hasPendingChanges.current = false; });
-        }, 1000);
+        }, 1200); // Aumentamos ligeramente el debounce para la edición de texto
+    
         return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
+    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.masterProductList]);
 
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
@@ -709,7 +712,22 @@ const App = () => {
             // --- NUEVO CASO DE RENDERIZADO ---
             case 'loading_session': return <LoadingSessionStep />;
             case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
-            case 'reviewing': return ( <ReviewStep initialProducts={availableProducts} onConfirm={(updatedProducts) => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: updatedProducts })} onBack={handleResetAll} discountPercentage={discountPercentage} discountCap={discountCap} dispatch={dispatch} /> );
+            case 'reviewing': 
+            return ( 
+                <ReviewStep
+                    // Ahora pasamos el estado central y las nuevas funciones
+                    products={availableProducts}
+                    onProductChange={handleProductChange}
+                    onAddNewProduct={handleAddNewProduct}
+                    onRemoveProduct={handleRemoveProduct}
+                    // La confirmación ahora solo cambia de paso
+                    onConfirm={() => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: availableProducts })}
+                    onBack={handleResetAll}
+                    discountPercentage={discountPercentage} 
+                    discountCap={discountCap} 
+                    dispatch={dispatch}
+                /> 
+            );
             case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
             default: return <p>Cargando...</p>;
         }
@@ -754,54 +772,55 @@ const App = () => {
 const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
 const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
 
-const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, discountCap, dispatch }) => {
-    const [localProducts, setLocalProducts] = useState(() => new Map(initialProducts));
+const ReviewStep = ({
+    products,
+    onProductChange,
+    onAddNewProduct,
+    onRemoveProduct,
+    onConfirm,
+    onBack,
+    discountPercentage,
+    discountCap,
+    dispatch
+}) => {
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
 
-    useEffect(() => { setLocalProducts(new Map(initialProducts)); }, [initialProducts]);
-    
-    const total = Array.from(localProducts.values()).reduce((sum, p) => (sum + (parseFloat(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
-    const potentialDiscount = total * (discountPercentage / 100);
-    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
-    const tip = total * TIP_PERCENTAGE;
-    const grandTotal = total + tip - actualDiscount;
-
-    const handleProductChange = (id, field, value) => { setLocalProducts(prev => { const newMap = new Map(prev); const product = newMap.get(id); if (product) newMap.set(id, { ...product, [field]: value }); return newMap; }); };
-    const handleRemoveProduct = (id) => { setLocalProducts(prev => { const newMap = new Map(prev); newMap.delete(id); return newMap; }); };
-    
-    const handleAddNewItem = () => {
+    const handleAddNewItemClick = () => {
         if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
-        const price = parseFloat(newItem.price); const quantity = parseInt(newItem.quantity, 10);
+        const price = parseFloat(newItem.price);
+        const quantity = parseInt(newItem.quantity, 10);
         if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
-        setLocalProducts(prev => {
-            const newMap = new Map(prev);
-            const newId = generateUniqueId('item');
-            newMap.set(newId, { id: newId, name: newItem.name.trim(), price: price, quantity: quantity });
-            return newMap;
-        });
-        setNewItem({ name: '', price: '', quantity: '1' });
+
+        onAddNewProduct({ name: newItem.name.trim(), price, quantity });
+        setNewItem({ name: '', price: '', quantity: '1' }); // Resetea el formulario local
     };
-    
+
     const handleDiscountChange = (e) => {
         const { name, value } = e.target;
         const newPercentage = name === 'percentage' ? value : discountPercentage;
         const newCap = name === 'cap' ? value : discountCap;
-        dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: newPercentage, cap: newCap }});
+        dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: newPercentage, cap: newCap } });
     };
+
+    const total = Array.from(products.values()).reduce((sum, p) => (sum + (parseFloat(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
+    const potentialDiscount = total * (discountPercentage / 100);
+    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
+    const tip = total * TIP_PERCENTAGE;
+    const grandTotal = total + tip - actualDiscount;
     
     return (
         <div className="p-4 pb-20">
             <header className="text-center mb-6"> <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1> <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p> </header>
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
                 <h2 className="text-lg font-bold">Ítems Cargados</h2>
-                {Array.from(localProducts.values()).map(p => (
+                {Array.from(products.values()).map(p => (
                     <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
-                        <input type="text" value={p.name} onChange={e => handleProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" aria-label="Nombre"/>
-                        <input type="number" value={p.quantity} onChange={e => handleProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
+                        <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" aria-label="Nombre"/>
+                        <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
                         <span className="col-span-1 text-center self-center">$</span>
-                        <input type="number" value={p.price} onChange={e => handleProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" aria-label="Precio" min="0"/>
-                        <button onClick={() => handleRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700" aria-label={`Eliminar ${p.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg> </button>
+                        <input type="number" value={p.price} onChange={e => onProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" aria-label="Precio" min="0"/>
+                        <button onClick={() => onRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700" aria-label={`Eliminar ${p.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg> </button>
                     </div>
                 ))}
                 <div className="grid grid-cols-12 gap-2 items-center pt-3">
@@ -809,7 +828,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
                     <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad nuevo ítem" min="1"/>
                     <span className="col-span-1 text-center self-center">$</span>
                     <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="col-span-3 p-2 border rounded-md" aria-label="Precio nuevo ítem" min="0"/>
-                    <button onClick={handleAddNewItem} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center" aria-label="Agregar ítem"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg> </button>
+                    <button onClick={handleAddNewItemClick} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center" aria-label="Agregar ítem"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg> </button>
                 </div>
             </div>
             <div className="bg-white p-4 rounded-xl shadow-md mb-6">
@@ -827,7 +846,7 @@ const ReviewStep = ({ initialProducts, onConfirm, onBack, discountPercentage, di
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
                 <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
-                <button onClick={() => onConfirm(localProducts)} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
+                <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
             </div>
         </div>
     );
