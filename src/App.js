@@ -297,7 +297,7 @@ function billReducer(state, action) {
             return { ...state, shareId: action.payload };
         case 'SET_SHARE_LINK':
             return { ...state, shareLink: action.payload };
-        case 'LY_DISCOUNT': {
+        case 'APPLY_DISCOUNT': {
             const { percentage, cap } = action.payload;
             return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0 };
         }
@@ -802,7 +802,7 @@ const App = () => {
         }
 
     return (
-        <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
+        <">
         {/* CAMBIO: Se añade un mensaje dinámico al modal. 
           Usará "Generando enlace..." si el `shareLink` ya está vacío,
           de lo contrario mostrará "Creando sesión...".
