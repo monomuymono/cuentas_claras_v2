@@ -858,7 +858,6 @@ const App = () => {
               }
           });
   
-          dispatch({ type: 'RESET_SESSION' });
           dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
       } catch (error) {
           console.error("Error al analizar:", error);
