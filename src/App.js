@@ -641,16 +641,18 @@ const App = () => {
             }, 0); 
         }
     }, [handleResetAll]);
-    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
+    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave, isNewSession = false) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
             return Promise.reject(new Error("URL de Apps Script inválida."));
         }
         if (!currentShareId || !userId) return Promise.resolve();
     
         // Obtener el estado actual del servidor para verificar el timestamp
-        const currentServerData = await loadStateFromGoogleSheets(currentShareId).catch(() => null);
-        if (currentServerData && currentServerData.lastUpdated && new Date(currentServerData.lastUpdated) > new Date(dataToSave.lastUpdated)) {
-            return Promise.reject(new Error("El estado en el servidor es más reciente. Por favor, recarga la sesión."));
+        if (!isNewSession) {
+            const currentServerData = await loadStateFromGoogleSheets(currentShareId).catch(() => null);
+            if (currentServerData && currentServerData.lastUpdated && new Date(currentServerData.lastUpdated) > new Date(dataToSave.lastUpdated)) {
+                return Promise.reject(new Error("El estado en el servidor es más reciente..."));
+            }
         }
     
         const promiseWithTimeout = new Promise((resolve, reject) => {
