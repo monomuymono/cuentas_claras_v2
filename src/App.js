@@ -702,7 +702,7 @@ const App = () => {
         };
     
         try {
-            await saveStateToGoogleSheets(newSessionId, initialData);
+            await saveStateToGoogleSheets(newSessionId, initialData, true);
             dispatch({ type: 'SET_SHARE_ID', payload: newSessionId });
     
             const newUrl = new URL(window.location.href);
