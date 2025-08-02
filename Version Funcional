@@ -269,11 +269,11 @@ const initialState = {
     activeSharedInstances: new Map(),
     discountPercentage: 0,
     discountCap: 0,
+    lastUpdated: null
 };
 
 // Reemplaza tu función billReducer completa con esta versión
 function billReducer(state, action) {
-    // --- FUNCIÓN AUXILIAR PARA RECALCULAR EL INVENTARIO ---
     const recalculateAvailableProducts = (masterList, comensales) => {
         if (!masterList || masterList.size === 0) return new Map();
         const newAvailableProducts = new Map(JSON.parse(JSON.stringify(Array.from(masterList))));
@@ -290,7 +290,6 @@ function billReducer(state, action) {
     };
 
     switch (action.type) {
-        // --- ACCIONES DE ESTADO GENERAL ---
         case 'SET_STEP':
             return { ...state, currentStep: action.payload };
         case 'SET_USER_ID':
@@ -307,28 +306,23 @@ function billReducer(state, action) {
             if (state.comensales.length >= MAX_COMENSALES) return state;
             const newComensalId = generateUniqueId('diner');
             const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 };
-            return { ...state, comensales: [...state.comensales, newComensal] };
+            return { ...state, comensales: [...state.comensales, newComensal], lastUpdated: new Date().toISOString() };
         }
         case 'REMOVE_COMENSAL': {
             const comensalIdToRemove = action.payload;
             const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove);
-            return { ...state, comensales: newComensales };
+            return { ...state, comensales: newComensales, lastUpdated: new Date().toISOString() };
         }
-
-        // --- LÓGICA DE SINCRONIZACIÓN Y ESTADO INICIAL ---
         case 'LOAD_STATE': {
             const serverData = action.payload;
-            
-            // CAMBIO CLAVE: Lógica robusta para manejar datos de versiones anteriores.
             const finalMasterList = serverData.masterProductList && Object.keys(serverData.masterProductList).length > 0
                 ? new Map(Object.entries(serverData.masterProductList))
                 : new Map(Object.entries(serverData.availableProducts || {}));
-            
             return {
                 ...state,
                 comensales: (serverData.comensales || []).map(diner => ({
                     ...diner,
-                    selectedItems: diner.selectedItems || [] // Asegura que selectedItems siempre sea un array
+                    selectedItems: diner.selectedItems || []
                 })),
                 activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
                 shareId: serverData.shareId,
@@ -341,24 +335,25 @@ function billReducer(state, action) {
             return {
                 ...state,
                 availableProducts: action.payload,
+                lastUpdated: new Date().toISOString()
             };
-        
         case 'SET_PRODUCTS_FOR_REVIEW':
             return {
                 ...state,
                 availableProducts: action.payload,
-                // NO borra los comensales, solo resetea lo necesario
                 masterProductList: new Map(action.payload),
                 discountPercentage: 0,
                 discountCap: 0,
-                currentStep: 'reviewing'
+                currentStep: 'reviewing',
+                lastUpdated: new Date().toISOString()
             };
         case 'SET_PRODUCTS_AND_ADVANCE':
             return {
                 ...state,
                 masterProductList: new Map(action.payload),
                 availableProducts: new Map(action.payload),
-                currentStep: 'assigning'
+                currentStep: 'assigning',
+                lastUpdated: new Date().toISOString()
             };
         case 'SYNC_STATE': {
             const serverStateData = action.payload;
@@ -387,8 +382,8 @@ function billReducer(state, action) {
                         const serverItem = serverItemsMap.get(key);
                         if (localItem && !serverItem) {
                             finalItems.push(localItem);
-                        } else if (!localItem && serverItem) {
-                            finalItems.push(serverItem);
+                        } else if (!serverItem && localItem) {
+                            finalItems.push(localItem);
                         } else {
                             const localDate = new Date(localItem.modifiedAt || 0);
                             const serverDate = new Date(serverItem.modifiedAt || 0);
@@ -404,11 +399,9 @@ function billReducer(state, action) {
                 comensales: reconciledComensales,
                 activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
                 lastUpdated: serverStateData.lastUpdated,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales),
+                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales)
             };
         }
-
-        // --- ACCIONES LOCALES ---
         case 'ADD_ITEM': {
             const { comensalId, productId } = action.payload;
             const productInStock = state.availableProducts.get(productId);
@@ -435,21 +428,21 @@ function billReducer(state, action) {
             return {
                 ...state,
                 comensales: newComensales,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales),
+                lastUpdated: new Date().toISOString()
             };
         }
         case 'SHARE_ITEM': {
             const { productId, sharingComensalIds } = action.payload;
             const productToShare = state.availableProducts.get(productId);
             if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || state.availableProducts.get(productId).quantity < 1) return state;
-        
+
             const shareInstanceId = generateUniqueId('share');
             const newActiveSharedInstances = new Map(state.activeSharedInstances).set(shareInstanceId, new Set(sharingComensalIds));
             const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
-            
+
             const newComensales = state.comensales.map(comensal => {
                 if (sharingComensalIds.includes(comensal.id)) {
-                    // Se crea un objeto NUEVO para cada comensal
                     const newItemData = {
                         id: productToShare.id,
                         name: productToShare.name,
@@ -464,31 +457,31 @@ function billReducer(state, action) {
                 }
                 return comensal;
             });
-        
+
             return {
                 ...state,
                 comensales: newComensales,
                 activeSharedInstances: newActiveSharedInstances,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales),
+                lastUpdated: new Date().toISOString()
             };
         }
         case 'REMOVE_ITEM_FROM_COMENSAL': {
-            const { comensalId, itemIdentifier } = action.payload;
+            const { comensalId, itemIdentifier, saveToServer } = action.payload;
             const comensalTarget = state.comensales.find(c => c.id === comensalId);
             if (!comensalTarget) return state;
-        
+
             const itemIndex = comensalTarget.selectedItems.findIndex(item => 
                 (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || 
                 (item.type === ITEM_TYPES.FULL && item.id === itemIdentifier)
             );
             if (itemIndex === -1) return state;
-        
+
             const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
             let newComensales = [...state.comensales];
             let newSharedInstances = new Map(state.activeSharedInstances);
-        
+
             if (itemToRemove.type === ITEM_TYPES.FULL) {
-                // Caso de ítem completo (no compartido)
                 newComensales = state.comensales.map(c => {
                     if (c.id === comensalId) {
                         const updatedItems = [...c.selectedItems];
@@ -498,29 +491,24 @@ function billReducer(state, action) {
                     return c;
                 });
             } else {
-                // Caso de ítem compartido
                 const { shareInstanceId } = itemToRemove;
                 const shareGroup = newSharedInstances.get(shareInstanceId);
                 if (!shareGroup) return state;
-        
-                // Quitar al comensal del grupo de compartición
+
                 shareGroup.delete(comensalId);
-        
+
                 if (shareGroup.size > 0) {
-                    // Si quedan comensales en el grupo, recalcular el precio por acción
                     const fullProduct = state.masterProductList.get(itemToRemove.id);
                     if (!fullProduct) return state;
                     const newPricePerShare = Number(fullProduct.price) / shareGroup.size;
-        
+
                     newComensales = state.comensales.map(diner => {
                         if (diner.id === comensalId) {
-                            // Eliminar el ítem compartido del comensal
                             return {
                                 ...diner,
                                 selectedItems: diner.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
                             };
                         } else if (shareGroup.has(diner.id)) {
-                            // Actualizar el precio para los comensales restantes en el grupo
                             return {
                                 ...diner,
                                 selectedItems: diner.selectedItems.map(item =>
@@ -538,7 +526,6 @@ function billReducer(state, action) {
                         return diner;
                     });
                 } else {
-                    // Si no quedan comensales en el grupo, eliminar la instancia de compartición
                     newSharedInstances.delete(shareInstanceId);
                     newComensales = state.comensales.map(diner => {
                         if (diner.id === comensalId) {
@@ -551,16 +538,23 @@ function billReducer(state, action) {
                     });
                 }
             }
-        
-            // Recalcular el inventario
+
             const newAvailableProducts = recalculateAvailableProducts(state.masterProductList, newComensales);
-        
-            return {
+
+            const newState = {
                 ...state,
                 comensales: newComensales,
                 activeSharedInstances: newSharedInstances,
-                availableProducts: newAvailableProducts
+                availableProducts: newAvailableProducts,
+                lastUpdated: new Date().toISOString()
             };
+
+            // Forzar guardado inmediato al servidor
+            if (saveToServer) {
+                saveToServer(newState);
+            }
+
+            return newState;
         }
         case 'CLEAR_COMENSAL_ITEMS': {
             const { comensalId } = action.payload;
@@ -568,7 +562,8 @@ function billReducer(state, action) {
             return {
                 ...state,
                 comensales: newComensales,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales),
+                lastUpdated: new Date().toISOString()
             };
         }
         case 'RESET_SESSION': {
@@ -579,7 +574,8 @@ function billReducer(state, action) {
                 ...initialState,
                 currentStep: 'landing',
                 userId: state.userId,
-                shareId: `local-session-${Date.now()}`
+                shareId: `local-session-${Date.now()}`,
+                lastUpdated: new Date().toISOString()
             };
         }
         default:
@@ -612,6 +608,7 @@ const App = () => {
     const justCreatedSessionId = useRef(null);
     const lastSyncedTimestamp = useRef(null);
     const [loadingMessage, setLoadingMessage] = useState('');
+    const isCriticalOperation = useRef(false);
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
 
@@ -646,66 +643,70 @@ const App = () => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
         if (!idToLoad || idToLoad.startsWith('local-')) return;
         const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
-        const promise = new Promise((resolve, reject) => { const script = document.createElement('script'); window[callbackName] = (data) => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; resolve(data); }; script.onerror = () => { if(document.body.contains(script)) document.body.removeChild(script); delete window[callbackName]; reject(new Error('Error al cargar los datos desde Google Sheets.')); }; script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`; document.body.appendChild(script); });
+        const promise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            window[callbackName] = (data) => {
+                if (document.body.contains(script)) document.body.removeChild(script);
+                delete window[callbackName];
+                resolve(data);
+            };
+            script.onerror = () => {
+                if (document.body.contains(script)) document.body.removeChild(script);
+                delete window[callbackName];
+                reject(new Error('Error al cargar los datos desde Google Sheets.'));
+            };
+            script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`;
+            document.body.appendChild(script);
+        });
+
         try {
             const data = await promise;
             if (data && data.status !== "not_found") {
-                // --- LÓGICA DE SINCRONIZACIÓN MEJORADA ---
-
-                // Si es la carga inicial, cargamos el estado completamente.
                 if (!initialLoadDone.current) {
                     isLoadingFromServer.current = true;
                     const loadedProducts = new Map(Object.entries(data.availableProducts || {}));
                     const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
-                    
                     dispatch({ type: 'LOAD_STATE', payload: { ...data, availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances } });
-                    lastSyncedTimestamp.current = data.lastUpdated; // Establecer la fecha inicial
-
+                    lastSyncedTimestamp.current = data.lastUpdated;
                     if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
                         dispatch({ type: 'SET_STEP', payload: 'assigning' });
                     } else {
                         dispatch({ type: 'SET_STEP', payload: 'reviewing' });
                     }
-                } else {
-                    // Si es un sondeo (polling), comparamos las fechas antes de actualizar.
-                    const isServerStateNewer = !lastSyncedTimestamp.current || new Date(data.lastUpdated) > new Date(lastSyncedTimestamp.current);
-                    
-                    if (isServerStateNewer && !hasPendingChanges.current) {
-                        isLoadingFromServer.current = true;
-                        dispatch({ type: 'SYNC_STATE', payload: data });
-                        lastSyncedTimestamp.current = data.lastUpdated; // Actualizar a la nueva fecha
-                    }
+                } else if (!isCriticalOperation.current && (!lastSyncedTimestamp.current || new Date(data.lastUpdated) > new Date(lastSyncedTimestamp.current))) {
+                    isLoadingFromServer.current = true;
+                    dispatch({ type: 'SYNC_STATE', payload: data });
+                    lastSyncedTimestamp.current = data.lastUpdated;
                 }
             } else {
-                 if (idToLoad === justCreatedSessionId.current) { console.warn("La sesión recién creada aún no está disponible para lectura."); return; }
-                 alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
-                 handleResetAll();
+                if (idToLoad === justCreatedSessionId.current) return;
+                alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
+                dispatch({ type: 'RESET_SESSION' });
             }
-        } catch (error) { console.error("Error al cargar con JSONP:", error);
-        } finally { 
-            // Usamos un timeout para asegurar que el flag se desactive después de que el render se complete
-            setTimeout(() => { 
-                isLoadingFromServer.current = false; 
+        } catch (error) {
+            console.error("Error al cargar con JSONP:", error);
+        } finally {
+            setTimeout(() => {
+                isLoadingFromServer.current = false;
                 if (!initialLoadDone.current) {
                     initialLoadDone.current = true;
                 }
-            }, 0); 
+            }, 0);
         }
-    }, [handleResetAll]);
+    }, []);
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave, isNewSession = false) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
             return Promise.reject(new Error("URL de Apps Script inválida."));
         }
         if (!currentShareId || !userId) return Promise.resolve();
-    
-        // Obtener el estado actual del servidor para verificar el timestamp
+
         if (!isNewSession) {
             const currentServerData = await loadStateFromGoogleSheets(currentShareId).catch(() => null);
             if (currentServerData && currentServerData.lastUpdated && new Date(currentServerData.lastUpdated) > new Date(dataToSave.lastUpdated)) {
-                return Promise.reject(new Error("El estado en el servidor es más reciente..."));
+                return Promise.reject(new Error("El estado en el servidor es más reciente."));
             }
         }
-    
+
         const promiseWithTimeout = new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
                 reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
@@ -730,15 +731,17 @@ const App = () => {
             script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
             document.body.appendChild(script);
         });
-    
+
         try {
             const result = await promiseWithTimeout;
             if (result.status === 'error') return Promise.reject(new Error(result.message));
+            lastSyncedTimestamp.current = dataToSave.lastUpdated; // Actualizar timestamp de sincronización
             return Promise.resolve();
         } catch (error) {
             return Promise.reject(error);
         }
-    }, [userId, loadStateFromGoogleSheets]);
+    }, [userId]);
+
 
     const handleStartNewSession = async () => {
         setLoadingMessage("Creando sesión...");
@@ -775,7 +778,8 @@ const App = () => {
     
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
-        if (uniqueSessionUserId) { dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
+        if (uniqueSessionUserId) {
+            dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
         } else {
             const newUniqueId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
             localStorage.setItem('billSplitterUserId', newUniqueId);
@@ -783,19 +787,15 @@ const App = () => {
         }
         setAuthReady(true);
     }, []);
+
     useEffect(() => {
         const performInitialLoad = async () => {
             if (!authReady || !userId || initialLoadDone.current) return;
-            
             const urlParams = new URLSearchParams(window.location.search);
             const idFromUrl = urlParams.get('id');
-            
             if (idFromUrl) {
-                // Si hay un ID en la URL, se carga la sesión existente.
                 await loadStateFromGoogleSheets(idFromUrl);
             } else {
-                // Si no hay ID, NO se crea una sesión local.
-                // Se queda esperando a que el usuario presione "Empezar".
                 dispatch({ type: 'SET_STEP', payload: 'landing' });
             }
             initialLoadDone.current = true;
@@ -804,12 +804,12 @@ const App = () => {
     }, [authReady, userId, loadStateFromGoogleSheets]);
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
-        if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) return;
-    
+        if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || isCriticalOperation.current) return;
+
         let isCancelled = false;
         const pollTimeout = 5000;
         let pollTimer;
-    
+
         const poll = async () => {
             if (isCancelled) return;
             if (!hasPendingChanges.current) {
@@ -828,7 +828,7 @@ const App = () => {
                 }
             }
         };
-    
+
         pollTimer = setTimeout(poll, pollTimeout);
         return () => {
             isCancelled = true;
@@ -836,30 +836,66 @@ const App = () => {
         };
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
 
-    // --- PEGA ESTE BLOQUE NUEVO EN EL LUGAR DEL ANTIGUO ---
     useEffect(() => {
-        // La condición ahora permite guardar desde el paso 'reviewing'
-        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing) return;
-    
+        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing || isCriticalOperation.current) return;
+
         hasPendingChanges.current = true;
         const handler = setTimeout(() => {
-            const dataToSave = { 
-                comensales, 
-                availableProducts: Object.fromEntries(availableProducts), 
-                masterProductList: Object.fromEntries(state.masterProductList), // Asegúrate de guardar la lista maestra también
-                activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])), 
-                lastUpdated: new Date().toISOString()
+            const dataToSave = {
+                comensales,
+                availableProducts: Object.fromEntries(availableProducts),
+                masterProductList: Object.fromEntries(state.masterProductList),
+                activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+                lastUpdated: state.lastUpdated
             };
             saveStateToGoogleSheets(shareId, dataToSave)
-                .catch((e) => { console.error("El guardado falló:", e.message); alert(`No se pudieron guardar los últimos cambios: ${e.message}`); })
-                .finally(() => { hasPendingChanges.current = false; });
-        }, 1200); // Aumentamos ligeramente el debounce para la edición de texto
-    
+                .catch((e) => {
+                    console.error("El guardado falló:", e.message);
+                    alert(`No se pudieron guardar los últimos cambios: ${e.message}`);
+                })
+                .finally(() => {
+                    hasPendingChanges.current = false;
+                });
+        }, 1200);
+
         return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.masterProductList]);
+    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.lastUpdated]);
 
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
-    const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
+    const handleRemoveItem = useCallback((comensalId, itemIdentifier) => {
+        isCriticalOperation.current = true; // Pausar polling durante la eliminación
+        const newState = billReducer(state, {
+            type: 'REMOVE_ITEM_FROM_COMENSAL',
+            payload: { comensalId, itemIdentifier, saveToServer: (newState) => {
+                saveStateToGoogleSheets(shareId, {
+                    comensales: newState.comensales,
+                    availableProducts: Object.fromEntries(newState.availableProducts),
+                    masterProductList: Object.fromEntries(newState.masterProductList),
+                    activeSharedInstances: Object.fromEntries(Array.from(newState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+                    lastUpdated: newState.lastUpdated
+                }).catch((e) => {
+                    console.error("Error al guardar eliminación:", e.message);
+                    alert(`No se pudieron guardar los cambios: ${e.message}`);
+                }).finally(() => {
+                    isCriticalOperation.current = false; // Reanudar polling
+                });
+            }}
+        });
+        dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier, saveToServer: (newState) => {
+            saveStateToGoogleSheets(shareId, {
+                comensales: newState.comensales,
+                availableProducts: Object.fromEntries(newState.availableProducts),
+                masterProductList: Object.fromEntries(newState.masterProductList),
+                activeSharedInstances: Object.fromEntries(Array.from(newState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+                lastUpdated: newState.lastUpdated
+            }).catch((e) => {
+                console.error("Error al guardar eliminación:", e.message);
+                alert(`No se pudieron guardar los cambios: ${e.message}`);
+            }).finally(() => {
+                isCriticalOperation.current = false;
+            });
+        }} });
+    }, [state, shareId, saveStateToGoogleSheets]);
     const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
     const handleAddComensal = () => { if (newComensalName.trim() === '') { setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' }); return; } if (comensales.length >= MAX_COMENSALES) { setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` }); return; } dispatch({ type: 'ADD_COMENSAL', payload: newComensalName }); setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` }); setNewComensalName(''); setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000); };
     const confirmClearComensal = () => { if (comensalToClearId !== null) dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToClearId }); setIsClearComensalModalOpen(false); setComensalToClearId(null); };
