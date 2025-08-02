@@ -443,26 +443,28 @@ function billReducer(state, action) {
             const productToShare = state.availableProducts.get(productId);
             if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || state.availableProducts.get(productId).quantity < 1) return state;
         
-            const shareInstanceId = generateUniqueId('share'); // Usar generateUniqueId
+            const shareInstanceId = generateUniqueId('share');
             const newActiveSharedInstances = new Map(state.activeSharedInstances).set(shareInstanceId, new Set(sharingComensalIds));
             const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
-            const newItemData = {
-                id: productToShare.id,
-                name: productToShare.name,
-                originalBasePrice: basePricePerShare,
-                quantity: 1,
-                type: ITEM_TYPES.SHARED,
-                sharedByCount: Number(sharingComensalIds.length),
-                shareInstanceId: shareInstanceId,
-                modifiedAt: new Date().toISOString(),
-            };
-        
+            
             const newComensales = state.comensales.map(comensal => {
                 if (sharingComensalIds.includes(comensal.id)) {
+                    // Se crea un objeto NUEVO para cada comensal
+                    const newItemData = {
+                        id: productToShare.id,
+                        name: productToShare.name,
+                        originalBasePrice: basePricePerShare,
+                        quantity: 1,
+                        type: ITEM_TYPES.SHARED,
+                        sharedByCount: Number(sharingComensalIds.length),
+                        shareInstanceId: shareInstanceId,
+                        modifiedAt: new Date().toISOString(),
+                    };
                     return { ...comensal, selectedItems: [...comensal.selectedItems, newItemData] };
                 }
                 return comensal;
             });
+        
             return {
                 ...state,
                 comensales: newComensales,
@@ -472,43 +474,92 @@ function billReducer(state, action) {
         }
         case 'REMOVE_ITEM_FROM_COMENSAL': {
             const { comensalId, itemIdentifier } = action.payload;
-            let comensalTarget = state.comensales.find(c => c.id === comensalId);
+            const comensalTarget = state.comensales.find(c => c.id === comensalId);
             if (!comensalTarget) return state;
-            const itemIndex = comensalTarget.selectedItems.findIndex(item => (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || (item.type === ITEM_TYPES.FULL && item.id === itemIdentifier));
+        
+            const itemIndex = comensalTarget.selectedItems.findIndex(item => 
+                (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || 
+                (item.type === ITEM_TYPES.FULL && item.id === itemIdentifier)
+            );
             if (itemIndex === -1) return state;
-
+        
             const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
             let newComensales = [...state.comensales];
             let newSharedInstances = new Map(state.activeSharedInstances);
-
+        
             if (itemToRemove.type === ITEM_TYPES.FULL) {
+                // Caso de ítem completo (no compartido)
                 newComensales = state.comensales.map(c => {
                     if (c.id === comensalId) {
-                        const updatedItems = (c.selectedItems || []).filter((_, idx) => idx !== itemIndex);
+                        const updatedItems = [...c.selectedItems];
+                        updatedItems.splice(itemIndex, 1);
                         return { ...c, selectedItems: updatedItems };
                     }
                     return c;
                 });
-            } else { // SHARED
+            } else {
+                // Caso de ítem compartido
                 const { shareInstanceId } = itemToRemove;
                 const shareGroup = newSharedInstances.get(shareInstanceId);
-                if (shareGroup) {
-                    shareGroup.delete(comensalId);
-                    if (shareGroup.size === 0) {
-                        newSharedInstances.delete(shareInstanceId);
-                    }
+                if (!shareGroup) return state;
+        
+                // Quitar al comensal del grupo de compartición
+                shareGroup.delete(comensalId);
+        
+                if (shareGroup.size > 0) {
+                    // Si quedan comensales en el grupo, recalcular el precio por acción
+                    const fullProduct = state.masterProductList.get(itemToRemove.id);
+                    if (!fullProduct) return state;
+                    const newPricePerShare = Number(fullProduct.price) / shareGroup.size;
+        
+                    newComensales = state.comensales.map(diner => {
+                        if (diner.id === comensalId) {
+                            // Eliminar el ítem compartido del comensal
+                            return {
+                                ...diner,
+                                selectedItems: diner.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
+                            };
+                        } else if (shareGroup.has(diner.id)) {
+                            // Actualizar el precio para los comensales restantes en el grupo
+                            return {
+                                ...diner,
+                                selectedItems: diner.selectedItems.map(item =>
+                                    String(item.shareInstanceId) === String(shareInstanceId)
+                                        ? {
+                                            ...item,
+                                            originalBasePrice: newPricePerShare,
+                                            sharedByCount: shareGroup.size,
+                                            modifiedAt: new Date().toISOString()
+                                        }
+                                        : item
+                                )
+                            };
+                        }
+                        return diner;
+                    });
+                } else {
+                    // Si no quedan comensales en el grupo, eliminar la instancia de compartición
+                    newSharedInstances.delete(shareInstanceId);
+                    newComensales = state.comensales.map(diner => {
+                        if (diner.id === comensalId) {
+                            return {
+                                ...diner,
+                                selectedItems: diner.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
+                            };
+                        }
+                        return diner;
+                    });
                 }
-                newComensales = state.comensales.map(c => ({
-                    ...c,
-                    selectedItems: c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
-                }));
             }
-
+        
+            // Recalcular el inventario
+            const newAvailableProducts = recalculateAvailableProducts(state.masterProductList, newComensales);
+        
             return {
                 ...state,
                 comensales: newComensales,
                 activeSharedInstances: newSharedInstances,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+                availableProducts: newAvailableProducts
             };
         }
         case 'CLEAR_COMENSAL_ITEMS': {
@@ -858,7 +909,6 @@ const App = () => {
               }
           });
   
-          dispatch({ type: 'RESET_SESSION' });
           dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
       } catch (error) {
           console.error("Error al analizar:", error);
