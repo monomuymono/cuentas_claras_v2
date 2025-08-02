@@ -505,7 +505,7 @@ const App = () => {
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
 
     useEffect(() => {
-        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing || currentStep === 'landing' || currentStep === 'loading_session') return;
+        if (isLoadingFromServer.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing || currentStep === 'landing' || currentStep === 'loading_session') return;
     
         hasPendingChanges.current = true;
         const handler = setTimeout(() => {
