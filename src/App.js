@@ -1006,8 +1006,83 @@ const App = () => {
 
 // --- COMPONENTES DE PASOS ---
 const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
-const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
-
+const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError, onRestart }) => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
+        <header className="mb-12">
+            <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1>
+            <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p>
+        </header>
+        <div className="w-full max-w-sm space-y-5">
+            <label
+                htmlFor="file-upload"
+                className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${
+                    isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+            >
+                <svg
+                    className="w-12 h-12 mb-3"
+                    fill="currentColor"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                >
+                    <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" />
+                </svg>
+                <span className="text-lg font-semibold">Escanear Recibo</span>
+                <span className="text-sm">Carga una foto</span>
+                <input
+                    id="file-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={onImageUpload}
+                    disabled={isImageProcessing}
+                />
+            </label>
+            <button
+                onClick={onManualEntry}
+                disabled={isImageProcessing}
+                className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"
+            >
+                Ingresar Manualmente
+            </button>
+            <button
+                onClick={onRestart}
+                disabled={isImageProcessing}
+                className="w-full px-6 py-5 bg-gray-200 text-gray-800 font-semibold rounded-xl shadow-lg hover:bg-gray-300 transition-all disabled:opacity-50"
+            >
+                Empezar de Nuevo
+            </button>
+        </div>
+        {isImageProcessing && (
+            <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center">
+                <svg
+                    className="animate-spin -ml-1 mr-3 h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                >
+                    <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                    ></circle>
+                    <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                </svg>
+                <span>Procesando...</span>
+            </div>
+        )}
+        {imageProcessingError && (
+            <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>
+        )}
+    </div>
+);
 const ReviewStep = ({
     products,
     onProductChange,
