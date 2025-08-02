@@ -109,7 +109,9 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
     onClose();
   };
 
-  const sharableProducts = Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0);
+  const sharableProducts = availableProducts instanceof Map
+    ? Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0)
+    : [];
 
   if (!isOpen) return null;
 
