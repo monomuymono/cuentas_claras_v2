@@ -421,9 +421,9 @@ const App = () => {
                 if (!initialLoadDone.current) {
                     isLoadingFromServer.current = true;
                     const loadedProducts = new Map(
-                      Object.entries(data.masterProductList || data.availableProducts || {}).map(([key, value]) => [Number(key), value])
+                      Object.entries(data.masterProductList || data.availableProducts || {})
                     );
-                    
+                                        
                     const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
                     
                     dispatch({ type: 'LOAD_STATE', payload: { ...data, masterProductList: loadedProducts, activeSharedInstances: loadedSharedInstances } });
@@ -577,9 +577,9 @@ const App = () => {
         dispatch({ type: 'UPDATE_AVAILABLE_PRODUCTS', payload: newProducts });
     };
 
-    const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId: Number(productId) } }); };
+    const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
     const handleRemoveItem = (comensalId, itemIdentifier) => { dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } }); };
-    const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId: Number(productId), sharingComensalIds } }); };
+    const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
     const handleAddComensal = () => { if (newComensalName.trim() === '') { setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' }); return; } if (comensales.length >= MAX_COMENSALES) { setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` }); return; } dispatch({ type: 'ADD_COMENSAL', payload: newComensalName }); setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` }); setNewComensalName(''); setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000); };
     const confirmClearComensal = () => { if (comensalToClearId !== null) dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToClearId }); setIsClearComensalModalOpen(false); setComensalToClearId(null); };
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
