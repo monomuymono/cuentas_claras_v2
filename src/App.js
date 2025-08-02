@@ -326,7 +326,10 @@ function billReducer(state, action) {
             
             return {
                 ...state,
-                comensales: serverData.comensales || [],
+                comensales: (serverData.comensales || []).map(diner => ({
+                    ...diner,
+                    selectedItems: diner.selectedItems || [] // Asegura que selectedItems siempre sea un array
+                })),
                 activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
                 shareId: serverData.shareId,
                 lastUpdated: serverData.lastUpdated || null,
@@ -481,7 +484,7 @@ function billReducer(state, action) {
             if (itemToRemove.type === ITEM_TYPES.FULL) {
                 newComensales = state.comensales.map(c => {
                     if (c.id === comensalId) {
-                        const updatedItems = c.selectedItems.filter((_, idx) => idx !== itemIndex);
+                        const updatedItems = (c.selectedItems || []).filter((_, idx) => idx !== itemIndex);
                         return { ...c, selectedItems: updatedItems };
                     }
                     return c;
