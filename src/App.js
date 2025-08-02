@@ -252,33 +252,51 @@ function billReducer(state, action) {
             };
         }
         case 'ADD_ITEM': {
-            const { comensalId, productId } = action.payload;
-            const productInStock = state.availableProducts.get(productId);
-            if (!productInStock || Number(productInStock.quantity) <= 0) return state;
-
-            const newComensales = state.comensales.map(comensal => {
-                if (comensal.id === comensalId) {
-                    const updatedComensal = { ...comensal, selectedItems: JSON.parse(JSON.stringify(comensal.selectedItems)) };
-                    const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL);
-                    if (existingItemIndex !== -1) {
-                        updatedComensal.selectedItems[existingItemIndex].quantity += 1;
-                        updatedComensal.selectedItems[existingItemIndex].modifiedAt = new Date().toISOString();
-                    } else {
-                        updatedComensal.selectedItems.push({
-                            id: productInStock.id, name: productInStock.name,
-                            originalBasePrice: Number(productInStock.price), quantity: 1, type: ITEM_TYPES.FULL,
-                            modifiedAt: new Date().toISOString(),
-                        });
-                    }
-                    return updatedComensal;
-                }
-                return comensal;
-            });
-            return {
-                ...state,
-                comensales: newComensales,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
-            };
+          const { comensalId, productId } = action.payload;
+          console.log('Attempting to add item:', { comensalId, productId });
+          const productInStock = state.availableProducts.get(productId);
+          if (!productInStock) {
+            console.warn('Product not found in availableProducts:', productId);
+            return state;
+          }
+          if (Number(productInStock.quantity) <= 0) {
+            console.warn('Product out of stock:', productId, productInStock);
+            return state;
+          }
+        
+          const newComensales = state.comensales.map(comensal => {
+            if (comensal.id === comensalId) {
+              const updatedComensal = { ...comensal, selectedItems: [...comensal.selectedItems] };
+              const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL);
+              if (existingItemIndex !== -1) {
+                updatedComensal.selectedItems[existingItemIndex] = {
+                  ...updatedComensal.selectedItems[existingItemIndex],
+                  quantity: updatedComensal.selectedItems[existingItemIndex].quantity + 1,
+                  modifiedAt: new Date().toISOString(),
+                };
+              } else {
+                updatedComensal.selectedItems.push({
+                  id: productInStock.id,
+                  name: productInStock.name,
+                  originalBasePrice: Number(productInStock.price),
+                  quantity: 1,
+                  type: ITEM_TYPES.FULL,
+                  modifiedAt: new Date().toISOString(),
+                });
+              }
+              return updatedComensal;
+            }
+            return comensal;
+          });
+        
+          const updatedAvailableProducts = recalculateAvailableProducts(state.masterProductList, newComensales);
+          console.log('Updated available products:', Array.from(updatedAvailableProducts.entries()));
+        
+          return {
+            ...state,
+            comensales: newComensales,
+            availableProducts: updatedAvailableProducts,
+          };
         }
         case 'SHARE_ITEM': {
             const { productId, sharingComensalIds } = action.payload;
