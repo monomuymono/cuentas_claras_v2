@@ -848,85 +848,117 @@ const App = () => {
     };
 
     const renderStep = () => {
-        switch (currentStep) {
-            case 'landing': 
-                return <LandingStep onStart={handleStartNewSession} />;
-            case 'loading_session': return <LoadingSessionStep />;
-            case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: new Map() })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} onRestart={handleResetAll} /> );
-            case 'reviewing': 
-            return ( 
-                <ReviewStep
-                    products={availableProducts}
-                    onProductChange={handleProductChange}
-                    onAddNewProduct={handleAddNewProduct}
-                    onRemoveProduct={handleRemoveProduct}
-                    onConfirm={() => {
-                        dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: availableProducts })
-                    }}
-                    onBack={handleResetAll}
-                    discountPercentage={discountPercentage} 
-                    discountCap={discountCap} 
-                    dispatch={dispatch}
-                /> 
-            );
-            case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
-            default: return <p>Cargando...</p>;
-        }
-    };
+    switch (currentStep) {
+      case 'landing':
+        return <LandingStep onStart={handleStartNewSession} />;
+      case 'loading_session':
+        return <LoadingSessionStep />;
+      case 'loading':
+        return (
+          <LoadingStep
+            onImageUpload={handleImageUpload}
+            onManualEntry={() => dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: new Map() })}
+            isImageProcessing={isImageProcessing}
+            imageProcessingError={imageProcessingError}
+            onRestart={handleResetAll}
+          />
+        );
+      case 'reviewing':
+        return (
+          <ReviewStep
+            products={availableProducts}
+            onProductChange={handleProductChange}
+            onAddNewProduct={handleAddNewProduct}
+            onRemoveProduct={handleRemoveProduct}
+            onConfirm={() => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: availableProducts })}
+            onBack={handleResetAll}
+            discountPercentage={discountPercentage}
+            discountCap={discountCap}
+            dispatch={dispatch}
+          />
+        );
+      case 'assigning':
+        return (
+          <AssigningStep
+            availableProducts={availableProducts}
+            comensales={comensales}
+            newComensalName={newComensalName}
+            setNewComensalName={setNewComensalName}
+            addComensalMessage={addComensalMessage}
+            onAddComensal={handleAddComensal}
+            onAddItem={handleAddItem}
+            onRemoveItem={handleRemoveItem}
+            onOpenClearComensalModal={openClearComensalModal}
+            onOpenRemoveComensalModal={openRemoveComensalModal}
+            onOpenShareModal={() => setIsShareModalOpen(true)}
+            onOpenSummary={handleOpenSummaryModal}
+            onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })}
+            onGenerateLink={handleGenerateShareLink}
+            onRestart={handleResetAll}
+            shareLink={shareLink}
+            discountPercentage={discountPercentage}
+            discountCap={discountCap}
+            assignmentError={assignmentError} // Pasar la nueva prop
+          />
+        );
+      default:
+        return <p>Cargando...</p>;
+    }
+  };
 
-    return (
-        <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-            <LoadingModal isOpen={isGeneratingLink} message={loadingMessage} />
-            <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
-            <div style={{ display: 'none' }}>
-                <div id="print-source-content">
-                    <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
-                    <div className="space-y-6">
-                        {summaryData.map(diner => {
-                            const originalComensal = comensales.find(c => c.id === diner.id);
-                            return (
-                                <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
-                                    <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
-                                    {originalComensal && originalComensal.selectedItems.length > 0 && (
-                                        <div className="pl-4 mb-2 border-l-2 border-gray-200">
-                                            <h4 className="text-sm font-semibold text-gray-600 mb-1">Items Consumidos:</h4>
-                                            <ul className="list-disc pl-5 text-sm text-gray-700">
-                                                {originalComensal.selectedItems.map((item, index) => (
-                                                    <li key={`${item.id}-${index}`} className="flex justify-between">
-                                                        <span>
-                                                            {item.type === 'shared' ? `(Compartido 1/${item.sharedByCount})` : `${item.quantity}x`} {item.name}
-                                                        </span>
-                                                        <span>
-                                                            ${(item.originalBasePrice * item.quantity).toLocaleString('es-CL')}
-                                                        </span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-                                    <div className="flex justify-between text-gray-600"><span>Consumo (sin propina):</span><span>${diner.totalSinPropina.toLocaleString('es-CL')}</span></div>
-                                    {diner.descuentoAplicado > 0 && (<div className="flex justify-between text-green-600"><span>Descuento:</span><span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span></div>)}
-                                    <div className="flex justify-between text-gray-600"><span>Propina (10%):</span><span>${diner.propina.toLocaleString('es-CL')}</span></div>
-                                    <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200"><span>TOTAL A PAGAR:</span><span>${diner.totalConPropina.toLocaleString('es-CL')}</span></div>
-                                </div>
-                            );
-                        })}
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
+      <LoadingModal isOpen={isGeneratingLink} message={loadingMessage} />
+      <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
+      <div style={{ display: 'none' }}>
+        <div id="print-source-content">
+          <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Resumen de la Cuenta</h2>
+          <div className="space-y-6">
+            {summaryData.map(diner => {
+              const originalComensal = comensales.find(c => c.id === diner.id);
+              return (
+                <div key={diner.id} className="border-b border-dashed border-gray-300 pb-4 last:border-b-0" style={{ pageBreakInside: 'avoid' }}>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
+                  {originalComensal && originalComensal.selectedItems.length > 0 && (
+                    <div className="pl-4 mb-2 border-l-2 border-gray-200">
+                      <h4 className="text-sm font-semibold text-gray-600 mb-1">Items Consumidos:</h4>
+                      <ul className="list-disc pl-5 text-sm text-gray-700">
+                        {originalComensal.selectedItems.map((item, index) => (
+                          <li key={`${item.id}-${index}`} className="flex justify-between">
+                            <span>
+                              {item.type === 'shared' ? `(Compartido 1/${item.sharedByCount})` : `${item.quantity}x`} {item.name}
+                            </span>
+                            <span>
+                              ${(item.originalBasePrice * item.quantity).toLocaleString('es-CL')}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
-                        <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
-                        <div className="flex justify-between text-lg text-gray-700"><span>Total Consumo (sin propina):</span><span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span></div>
-                        <div className="flex justify-between text-lg text-green-600"><span>Total Descuento:</span><span>-${summaryData.reduce((sum, d) => sum + d.descuentoAplicado, 0).toLocaleString('es-CL')}</span></div>
-                        <div className="flex justify-between text-lg text-gray-700"><span>Total Propina:</span><span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span></div>
-                        <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300"><span>GRAN TOTAL A PAGAR:</span><span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span></div>
-                    </div>
+                  )}
+                  <div className="flex justify-between text-gray-600"><span>Consumo (sin propina):</span><span>${diner.totalSinPropina.toLocaleString('es-CL')}</span></div>
+                  {diner.descuentoAplicado > 0 && (<div className="flex justify-between text-green-600"><span>Descuento:</span><span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span></div>)}
+                  <div className="flex justify-between text-gray-600"><span>Propina (10%):</span><span>${diner.propina.toLocaleString('es-CL')}</span></div>
+                  <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200"><span>TOTAL A PAGAR:</span><span>${diner.totalConPropina.toLocaleString('es-CL')}</span></div>
                 </div>
-            </div>
-            <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
-            <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Seguro que deseas limpiar el consumo de este comensal?" confirmText="Limpiar" />
-            <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Seguro que deseas eliminar a este comensal?" confirmText="Eliminar" />
-            <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
+              );
+            })}
+          </div>
+          <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
+            <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
+            <div className="flex justify-between text-lg text-gray-700"><span>Total Consumo (sin propina):</span><span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span></div>
+            <div className="flex justify-between text-lg text-green-600"><span>Total Descuento:</span><span>-${summaryData.reduce((sum, d) => sum + d.descuentoAplicado, 0).toLocaleString('es-CL')}</span></div>
+            <div className="flex justify-between text-lg text-gray-700"><span>Total Propina:</span><span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span></div>
+            <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300"><span>GRAN TOTAL A PAGAR:</span><span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span></div>
+          </div>
         </div>
-    );
+      </div>
+      <SummaryModal isOpen={isSummaryModalOpen} onClose={() => setIsSummaryModalOpen(false)} summaryData={summaryData} onPrint={handlePrint} />
+      <ConfirmationModal isOpen={isClearComensalModalOpen} onClose={() => setIsClearComensalModalOpen(false)} onConfirm={confirmClearComensal} message="¿Seguro que deseas limpiar el consumo de este comensal?" confirmText="Limpiar" />
+      <ConfirmationModal isOpen={isRemoveComensalModalOpen} onClose={() => setIsRemoveComensalModalOpen(false)} onConfirm={confirmRemoveComensal} message="¿Seguro que deseas eliminar a este comensal?" confirmText="Eliminar" />
+      <ShareItemModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} availableProducts={availableProducts} comensales={comensales} onShareConfirm={handleShareItem} />
+    </div>
+  );
 };
 
 export default App;
