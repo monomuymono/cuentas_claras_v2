@@ -183,10 +183,11 @@ function billReducer(state, action) {
             };
         }
         case 'UPDATE_AVAILABLE_PRODUCTS':
-            return {
-                ...state,
-                availableProducts: action.payload,
-            };
+              return {
+                  ...state,
+                  availableProducts: action.payload,
+                  masterProductList: new Map(action.payload) // <-- AÑADE ESTA LÍNEA
+              };
         case 'SET_PRODUCTS_FOR_REVIEW':
             return {
                 ...state,
