@@ -622,52 +622,6 @@ const App = () => {
     };
 
     // ... (El resto de las funciones de App.js no cambian, excepto las marcadas) ...
-    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
-            return Promise.reject(new Error("URL de Apps Script inválida."));
-        }
-        if (!currentShareId || !userId) return Promise.resolve();
-    
-        // Obtener el estado actual del servidor para verificar el timestamp
-        const currentServerData = await loadStateFromGoogleSheets(currentShareId).catch(() => null);
-        if (currentServerData && currentServerData.lastUpdated && new Date(currentServerData.lastUpdated) > new Date(dataToSave.lastUpdated)) {
-            return Promise.reject(new Error("El estado en el servidor es más reciente. Por favor, recarga la sesión."));
-        }
-    
-        const promiseWithTimeout = new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
-            }, 8000);
-            const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
-            const script = document.createElement('script');
-            const cleanup = () => {
-                clearTimeout(timeoutId);
-                if (document.body.contains(script)) document.body.removeChild(script);
-                delete window[callbackName];
-            };
-            window[callbackName] = (data) => {
-                cleanup();
-                resolve(data);
-            };
-            script.onerror = () => {
-                cleanup();
-                reject(new Error('Error de red al guardar los datos en Google Sheets.'));
-            };
-            const dataString = JSON.stringify(dataToSave);
-            const encodedData = encodeURIComponent(dataString);
-            script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
-            document.body.appendChild(script);
-        });
-    
-        try {
-            const result = await promiseWithTimeout;
-            if (result.status === 'error') return Promise.reject(new Error(result.message));
-            return Promise.resolve();
-        } catch (error) {
-            return Promise.reject(error);
-        }
-    }, [userId, loadStateFromGoogleSheets]);
-    const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
     const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
         if (!idToLoad || idToLoad.startsWith('local-')) return;
@@ -718,6 +672,53 @@ const App = () => {
             }, 0); 
         }
     }, [handleResetAll]);
+    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave) => {
+        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
+            return Promise.reject(new Error("URL de Apps Script inválida."));
+        }
+        if (!currentShareId || !userId) return Promise.resolve();
+    
+        // Obtener el estado actual del servidor para verificar el timestamp
+        const currentServerData = await loadStateFromGoogleSheets(currentShareId).catch(() => null);
+        if (currentServerData && currentServerData.lastUpdated && new Date(currentServerData.lastUpdated) > new Date(dataToSave.lastUpdated)) {
+            return Promise.reject(new Error("El estado en el servidor es más reciente. Por favor, recarga la sesión."));
+        }
+    
+        const promiseWithTimeout = new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
+            }, 8000);
+            const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
+            const script = document.createElement('script');
+            const cleanup = () => {
+                clearTimeout(timeoutId);
+                if (document.body.contains(script)) document.body.removeChild(script);
+                delete window[callbackName];
+            };
+            window[callbackName] = (data) => {
+                cleanup();
+                resolve(data);
+            };
+            script.onerror = () => {
+                cleanup();
+                reject(new Error('Error de red al guardar los datos en Google Sheets.'));
+            };
+            const dataString = JSON.stringify(dataToSave);
+            const encodedData = encodeURIComponent(dataString);
+            script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
+            document.body.appendChild(script);
+        });
+    
+        try {
+            const result = await promiseWithTimeout;
+            if (result.status === 'error') return Promise.reject(new Error(result.message));
+            return Promise.resolve();
+        } catch (error) {
+            return Promise.reject(error);
+        }
+    }, [userId, loadStateFromGoogleSheets]);
+    const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
+    
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
         if (uniqueSessionUserId) { dispatch({ type: 'SET_USER_ID', payload: uniqueSessionUserId });
