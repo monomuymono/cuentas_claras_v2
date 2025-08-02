@@ -746,6 +746,7 @@ const App = () => {
     const handleStartNewSession = async () => {
         setLoadingMessage("Creando sesión...");
         setIsGeneratingLink(true);
+    
         await handleResetAll();
     
         const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
