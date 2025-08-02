@@ -561,6 +561,8 @@ const App = () => {
     const justCreatedSessionId = useRef(null);
     const lastSyncedTimestamp = useRef(null);
     const [loadingMessage, setLoadingMessage] = useState('');
+    
+    const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
 
     const handleStartNewSession = async () => {
         setLoadingMessage("Creando sesión...");
@@ -717,7 +719,6 @@ const App = () => {
             return Promise.reject(error);
         }
     }, [userId, loadStateFromGoogleSheets]);
-    const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
     
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
