@@ -911,6 +911,7 @@ const App = () => {
                         onManualEntry={() => dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: new Map() })}
                         isImageProcessing={isImageProcessing}
                         imageProcessingError={imageProcessingError}
+                        onRestart={handleResetAll}
                     />
                 );
             case 'reviewing': 
