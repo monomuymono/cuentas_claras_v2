@@ -297,7 +297,7 @@ function billReducer(state, action) {
             return { ...state, shareId: action.payload };
         case 'SET_SHARE_LINK':
             return { ...state, shareLink: action.payload };
-        case 'LY_DISCOUNT': {
+        case 'APPLY_DISCOUNT': {
             const { percentage, cap } = action.payload;
             return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0 };
         }
