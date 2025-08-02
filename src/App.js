@@ -239,11 +239,9 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
   );
 };
 
-// ***** INICIO DE LA SECCIÓN MOVIDA *****
 // --- COMPONENTES DE PASOS ---
 const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
 const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <header className="mb-12"> <h1 className="text-4xl font-extrabold text-blue-700 mb-2">Cargar la Cuenta</h1> <p className="text-lg text-gray-600">¿Cómo quieres ingresar los ítems?</p> </header> <div className="w-full max-w-sm space-y-5"> <label htmlFor="file-upload" className={`w-full flex flex-col items-center px-6 py-8 bg-blue-600 text-white rounded-xl shadow-lg tracking-wide uppercase border border-blue-600 cursor-pointer hover:bg-blue-700 transition-all ${isImageProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}> <svg className="w-12 h-12 mb-3" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z" /> </svg> <span className="text-lg font-semibold">Escanear Recibo</span> <span className="text-sm">Carga una foto</span> <input id="file-upload" type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isImageProcessing} /> </label> <button onClick={onManualEntry} disabled={isImageProcessing} className="w-full px-6 py-5 bg-white text-blue-600 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-100 transition-all disabled:opacity-50"> Ingresar Manualmente </button> </div> {isImageProcessing && ( <div className="mt-6 text-blue-600 font-semibold flex items-center justify-center"> <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> <span>Procesando...</span> </div> )} {imageProcessingError && <p className="mt-4 text-red-600">Error: {imageProcessingError}</p>} </div> );
-
 const ReviewStep = ({
     products,
     onProductChange,
@@ -265,7 +263,7 @@ const ReviewStep = ({
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
 
         onAddNewProduct({ name: newItem.name.trim(), price, quantity });
-        setNewItem({ name: '', price: '', quantity: '1' }); // Resetea el formulario local
+        setNewItem({ name: '', price: '', quantity: '1' });
     };
 
     const handleDiscountChange = (e) => {
@@ -419,7 +417,275 @@ const AssigningStep = ({
 
 
 // --- LÓGICA DE ESTADO CENTRALIZADA (REDUCER) ---
-// (El reducer, initialState, etc., están arriba)
+const getInitialStep = () => {
+    if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('id')) {
+            return 'loading_session';
+        }
+    }
+    return 'landing';
+};
+
+const initialState = {
+    currentStep: getInitialStep(),
+    userId: null,
+    shareId: null,
+    shareLink: '',
+    masterProductList: new Map(),
+    availableProducts: new Map(),
+    comensales: [],
+    activeSharedInstances: new Map(),
+    discountPercentage: 0,
+    discountCap: 0,
+};
+
+function billReducer(state, action) {
+    const recalculateAvailableProducts = (masterList, comensales) => {
+        if (!masterList || masterList.size === 0) return new Map();
+        const newAvailableProducts = new Map(JSON.parse(JSON.stringify(Array.from(masterList))));
+        comensales.forEach(diner => {
+            (diner.selectedItems || []).forEach(item => {
+                const productInMap = newAvailableProducts.get(item.id);
+                if (productInMap) {
+                    const quantityToRemove = item.type === ITEM_TYPES.SHARED ? 1 : item.quantity;
+                    productInMap.quantity -= quantityToRemove;
+                }
+            });
+        });
+        return newAvailableProducts;
+    };
+
+    switch (action.type) {
+        case 'SET_STEP':
+            return { ...state, currentStep: action.payload };
+        case 'SET_USER_ID':
+            return { ...state, userId: action.payload };
+        case 'SET_SHARE_ID':
+            return { ...state, shareId: action.payload };
+        case 'SET_SHARE_LINK':
+            return { ...state, shareLink: action.payload };
+        case 'APPLY_DISCOUNT': {
+            const { percentage, cap } = action.payload;
+            return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0 };
+        }
+        case 'ADD_COMENSAL': {
+            if (state.comensales.length >= MAX_COMENSALES) return state;
+            const newComensalId = generateUniqueId('diner');
+            const newComensal = { id: newComensalId, name: action.payload.trim(), selectedItems: [], total: 0 };
+            return { ...state, comensales: [...state.comensales, newComensal] };
+        }
+        case 'REMOVE_COMENSAL': {
+            const comensalIdToRemove = action.payload;
+            const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove);
+            return { ...state, comensales: newComensales };
+        }
+        case 'LOAD_STATE': {
+            const serverData = action.payload;
+            const finalMasterList = serverData.masterProductList && Object.keys(serverData.masterProductList).length > 0
+                ? new Map(Object.entries(serverData.masterProductList))
+                : new Map(Object.entries(serverData.availableProducts || {}));
+            
+            return {
+                ...state,
+                comensales: serverData.comensales || [],
+                activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
+                shareId: serverData.shareId,
+                lastUpdated: serverData.lastUpdated || null,
+                masterProductList: finalMasterList,
+                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || [])
+            };
+        }
+        case 'UPDATE_AVAILABLE_PRODUCTS':
+            return {
+                ...state,
+                availableProducts: action.payload,
+            };
+        case 'SET_PRODUCTS_FOR_REVIEW':
+            return {
+                ...state,
+                availableProducts: action.payload,
+                masterProductList: new Map(action.payload),
+                discountPercentage: 0,
+                discountCap: 0,
+                currentStep: 'reviewing'
+            };
+        case 'SET_PRODUCTS_AND_ADVANCE':
+            return {
+                ...state,
+                masterProductList: new Map(action.payload),
+                availableProducts: new Map(action.payload),
+                currentStep: 'assigning'
+            };
+        case 'SYNC_STATE': {
+            const serverStateData = action.payload;
+            const localState = state;
+            const serverComensalesMap = new Map((serverStateData.comensales || []).map(c => [c.id, c]));
+            const localComensalesMap = new Map(localState.comensales.map(c => [c.id, c]));
+            const reconciledComensales = [];
+            const allDinerIds = new Set([...serverComensalesMap.keys(), ...localComensalesMap.keys()]);
+
+            allDinerIds.forEach(id => {
+                const serverDiner = serverComensalesMap.get(id);
+                const localDiner = localComensalesMap.get(id);
+
+                if (serverDiner && !localDiner) {
+                    reconciledComensales.push(serverDiner);
+                } else if (!serverDiner && localDiner) {
+                    reconciledComensales.push(localDiner);
+                } else if (serverDiner && localDiner) {
+                    const finalItems = [];
+                    const localItemsMap = new Map((localDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const serverItemsMap = new Map((serverDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const allItemKeys = new Set([...localItemsMap.keys(), ...serverItemsMap.keys()]);
+
+                    allItemKeys.forEach(key => {
+                        const localItem = localItemsMap.get(key);
+                        const serverItem = serverItemsMap.get(key);
+                        if (localItem && !serverItem) {
+                            finalItems.push(localItem);
+                        } else if (!localItem && serverItem) {
+                            finalItems.push(serverItem);
+                        } else {
+                            const localDate = new Date(localItem.modifiedAt || 0);
+                            const serverDate = new Date(serverItem.modifiedAt || 0);
+                            finalItems.push(serverDate > localDate ? serverItem : localItem);
+                        }
+                    });
+                    reconciledComensales.push({ ...serverDiner, selectedItems: finalItems });
+                }
+            });
+
+            return {
+                ...state,
+                comensales: reconciledComensales,
+                activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
+                lastUpdated: serverStateData.lastUpdated,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales),
+            };
+        }
+        case 'ADD_ITEM': {
+            const { comensalId, productId } = action.payload;
+            const productInStock = state.availableProducts.get(productId);
+            if (!productInStock || Number(productInStock.quantity) <= 0) return state;
+
+            const newComensales = state.comensales.map(comensal => {
+                if (comensal.id === comensalId) {
+                    const updatedComensal = { ...comensal, selectedItems: JSON.parse(JSON.stringify(comensal.selectedItems)) };
+                    const existingItemIndex = updatedComensal.selectedItems.findIndex(item => item.id === productId && item.type === ITEM_TYPES.FULL);
+                    if (existingItemIndex !== -1) {
+                        updatedComensal.selectedItems[existingItemIndex].quantity += 1;
+                        updatedComensal.selectedItems[existingItemIndex].modifiedAt = new Date().toISOString();
+                    } else {
+                        updatedComensal.selectedItems.push({
+                            id: productInStock.id, name: productInStock.name,
+                            originalBasePrice: Number(productInStock.price), quantity: 1, type: ITEM_TYPES.FULL,
+                            modifiedAt: new Date().toISOString(),
+                        });
+                    }
+                    return updatedComensal;
+                }
+                return comensal;
+            });
+            return {
+                ...state,
+                comensales: newComensales,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+            };
+        }
+        case 'SHARE_ITEM': {
+            const { productId, sharingComensalIds } = action.payload;
+            const productToShare = state.availableProducts.get(productId);
+            if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || state.availableProducts.get(productId).quantity < 1) return state;
+
+            const shareInstanceId = Date.now() + Math.random();
+            const newActiveSharedInstances = new Map(state.activeSharedInstances).set(shareInstanceId, new Set(sharingComensalIds));
+            const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
+            const newItemData = {
+                id: productToShare.id, name: productToShare.name,
+                originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
+                sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId,
+                modifiedAt: new Date().toISOString(),
+            };
+
+            const newComensales = state.comensales.map(comensal => {
+                if (sharingComensalIds.includes(comensal.id)) {
+                    return { ...comensal, selectedItems: [...comensal.selectedItems, newItemData] };
+                }
+                return comensal;
+            });
+            return {
+                ...state,
+                comensales: newComensales,
+                activeSharedInstances: newActiveSharedInstances,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+            };
+        }
+        case 'REMOVE_ITEM_FROM_COMENSAL': {
+            const { comensalId, itemIdentifier } = action.payload;
+            let comensalTarget = state.comensales.find(c => c.id === comensalId);
+            if (!comensalTarget) return state;
+            const itemIndex = comensalTarget.selectedItems.findIndex(item => (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || (item.type === ITEM_TYPES.FULL && item.id === itemIdentifier));
+            if (itemIndex === -1) return state;
+
+            const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
+            let newComensales = [...state.comensales];
+            let newSharedInstances = new Map(state.activeSharedInstances);
+
+            if (itemToRemove.type === ITEM_TYPES.FULL) {
+                newComensales = state.comensales.map(c => {
+                    if (c.id === comensalId) {
+                        const updatedItems = c.selectedItems.filter((_, idx) => idx !== itemIndex);
+                        return { ...c, selectedItems: updatedItems };
+                    }
+                    return c;
+                });
+            } else { // SHARED
+                const { shareInstanceId } = itemToRemove;
+                const shareGroup = newSharedInstances.get(shareInstanceId);
+                if (shareGroup) {
+                    shareGroup.delete(comensalId);
+                    if (shareGroup.size === 0) {
+                        newSharedInstances.delete(shareInstanceId);
+                    }
+                }
+                newComensales = state.comensales.map(c => ({
+                    ...c,
+                    selectedItems: c.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
+                }));
+            }
+
+            return {
+                ...state,
+                comensales: newComensales,
+                activeSharedInstances: newSharedInstances,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+            };
+        }
+        case 'CLEAR_COMENSAL_ITEMS': {
+            const comensalId = action.payload;
+            const newComensales = state.comensales.map(c => c.id === comensalId ? { ...c, selectedItems: [] } : c);
+            return {
+                ...state,
+                comensales: newComensales,
+                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+            };
+        }
+        case 'RESET_SESSION': {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('id');
+            window.history.replaceState({}, document.title, url.toString());
+            return {
+                ...initialState,
+                currentStep: 'landing',
+                userId: state.userId,
+                shareId: `local-session-${Date.now()}`
+            };
+        }
+        default:
+            return state;
+    }
+}
 
 
 // --- Componente principal de la aplicación ---
