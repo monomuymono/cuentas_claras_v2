@@ -477,7 +477,10 @@ function billReducer(state, action) {
             const comensalTarget = state.comensales.find(c => c.id === comensalId);
             if (!comensalTarget) return state;
         
-            const itemIndex = comensalTarget.selectedItems.findIndex(item => (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || (item.type === ITEM_TYPES.FULL && item.id === itemIdentifier));
+            const itemIndex = comensalTarget.selectedItems.findIndex(item => 
+                (item.type === ITEM_TYPES.SHARED && String(item.shareInstanceId) === String(itemIdentifier)) || 
+                (item.type === ITEM_TYPES.FULL && item.id === itemIdentifier)
+            );
             if (itemIndex === -1) return state;
         
             const itemToRemove = { ...comensalTarget.selectedItems[itemIndex] };
@@ -485,38 +488,49 @@ function billReducer(state, action) {
             let newSharedInstances = new Map(state.activeSharedInstances);
         
             if (itemToRemove.type === ITEM_TYPES.FULL) {
+                // Caso de ítem completo (no compartido)
                 newComensales = state.comensales.map(c => {
                     if (c.id === comensalId) {
-                        const updatedItems = (c.selectedItems || []).filter((_, idx) => idx !== itemIndex);
+                        const updatedItems = [...c.selectedItems];
+                        updatedItems.splice(itemIndex, 1);
                         return { ...c, selectedItems: updatedItems };
                     }
                     return c;
                 });
-            } else { // SHARED
+            } else {
+                // Caso de ítem compartido
                 const { shareInstanceId } = itemToRemove;
                 const shareGroup = newSharedInstances.get(shareInstanceId);
                 if (!shareGroup) return state;
         
-                // Quitar al comensal del grupo
+                // Quitar al comensal del grupo de compartición
                 shareGroup.delete(comensalId);
         
                 if (shareGroup.size > 0) {
-                    // Si quedan comensales, recalcular y actualizar
+                    // Si quedan comensales en el grupo, recalcular el precio por acción
                     const fullProduct = state.masterProductList.get(itemToRemove.id);
                     if (!fullProduct) return state;
                     const newPricePerShare = Number(fullProduct.price) / shareGroup.size;
         
                     newComensales = state.comensales.map(diner => {
                         if (diner.id === comensalId) {
-                            // Al comensal que se va, le quitamos el ítem
-                            return { ...diner, selectedItems: diner.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId)) };
-                        } else if (shareGroup.has(diner.id)) {
-                            // A los que quedan, les actualizamos el precio
+                            // Eliminar el ítem compartido del comensal
                             return {
                                 ...diner,
-                                selectedItems: diner.selectedItems.map(item => 
+                                selectedItems: diner.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
+                            };
+                        } else if (shareGroup.has(diner.id)) {
+                            // Actualizar el precio para los comensales restantes en el grupo
+                            return {
+                                ...diner,
+                                selectedItems: diner.selectedItems.map(item =>
                                     String(item.shareInstanceId) === String(shareInstanceId)
-                                        ? { ...item, originalBasePrice: newPricePerShare, sharedByCount: shareGroup.size, modifiedAt: new Date().toISOString() }
+                                        ? {
+                                            ...item,
+                                            originalBasePrice: newPricePerShare,
+                                            sharedByCount: shareGroup.size,
+                                            modifiedAt: new Date().toISOString()
+                                        }
                                         : item
                                 )
                             };
@@ -524,22 +538,28 @@ function billReducer(state, action) {
                         return diner;
                     });
                 } else {
-                    // Si era el último, simplemente lo eliminamos de su lista
+                    // Si no quedan comensales en el grupo, eliminar la instancia de compartición
                     newSharedInstances.delete(shareInstanceId);
                     newComensales = state.comensales.map(diner => {
                         if (diner.id === comensalId) {
-                            return { ...diner, selectedItems: diner.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId)) };
+                            return {
+                                ...diner,
+                                selectedItems: diner.selectedItems.filter(i => String(i.shareInstanceId) !== String(shareInstanceId))
+                            };
                         }
                         return diner;
                     });
                 }
             }
         
+            // Recalcular el inventario
+            const newAvailableProducts = recalculateAvailableProducts(state.masterProductList, newComensales);
+        
             return {
                 ...state,
                 comensales: newComensales,
                 activeSharedInstances: newSharedInstances,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, newComensales)
+                availableProducts: newAvailableProducts
             };
         }
         case 'CLEAR_COMENSAL_ITEMS': {
