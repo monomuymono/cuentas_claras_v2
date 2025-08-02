@@ -564,39 +564,6 @@ const App = () => {
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
 
-    const handleStartNewSession = async () => {
-        setLoadingMessage("Creando sesión...");
-        setIsGeneratingLink(true);
-        await handleResetAll();
-    
-        const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        const initialData = {
-            comensales: [],
-            availableProducts: {},
-            masterProductList: {},
-            activeSharedInstances: {},
-            lastUpdated: new Date().toISOString()
-        };
-    
-        try {
-            await saveStateToGoogleSheets(newSessionId, initialData);
-            dispatch({ type: 'SET_SHARE_ID', payload: newSessionId });
-    
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.set('id', newSessionId);
-            window.history.replaceState({ path: newUrl.toString() }, '', newUrl.toString());
-    
-            dispatch({ type: 'SET_STEP', payload: 'loading' });
-        } catch (error) {
-            console.error("Error creating new session:", error);
-            alert("No se pudo crear la sesión remota. La aplicación funcionará en modo local.");
-            dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` });
-            dispatch({ type: 'SET_STEP', payload: 'loading' });
-        } finally {
-            setIsGeneratingLink(false);
-        }
-    };
-
     // Maneja cambios en los campos de un producto existente (nombre, precio, cantidad)
     const handleProductChange = (productId, field, value) => {
         const newProducts = new Map(state.availableProducts);
@@ -719,6 +686,39 @@ const App = () => {
             return Promise.reject(error);
         }
     }, [userId, loadStateFromGoogleSheets]);
+
+    const handleStartNewSession = async () => {
+        setLoadingMessage("Creando sesión...");
+        setIsGeneratingLink(true);
+        await handleResetAll();
+    
+        const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const initialData = {
+            comensales: [],
+            availableProducts: {},
+            masterProductList: {},
+            activeSharedInstances: {},
+            lastUpdated: new Date().toISOString()
+        };
+    
+        try {
+            await saveStateToGoogleSheets(newSessionId, initialData);
+            dispatch({ type: 'SET_SHARE_ID', payload: newSessionId });
+    
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.set('id', newSessionId);
+            window.history.replaceState({ path: newUrl.toString() }, '', newUrl.toString());
+    
+            dispatch({ type: 'SET_STEP', payload: 'loading' });
+        } catch (error) {
+            console.error("Error creating new session:", error);
+            alert("No se pudo crear la sesión remota. La aplicación funcionará en modo local.");
+            dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` });
+            dispatch({ type: 'SET_STEP', payload: 'loading' });
+        } finally {
+            setIsGeneratingLink(false);
+        }
+    };
     
     useEffect(() => {
         const uniqueSessionUserId = localStorage.getItem('billSplitterUserId');
