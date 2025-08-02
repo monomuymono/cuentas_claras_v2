@@ -437,17 +437,21 @@ function billReducer(state, action) {
             const { productId, sharingComensalIds } = action.payload;
             const productToShare = state.availableProducts.get(productId);
             if (!productToShare || !sharingComensalIds || sharingComensalIds.length === 0 || state.availableProducts.get(productId).quantity < 1) return state;
-
-            const shareInstanceId = Date.now() + Math.random();
+        
+            const shareInstanceId = generateUniqueId('share'); // Usar generateUniqueId
             const newActiveSharedInstances = new Map(state.activeSharedInstances).set(shareInstanceId, new Set(sharingComensalIds));
             const basePricePerShare = Number(productToShare.price) / Number(sharingComensalIds.length);
             const newItemData = {
-                id: productToShare.id, name: productToShare.name,
-                originalBasePrice: basePricePerShare, quantity: 1, type: ITEM_TYPES.SHARED,
-                sharedByCount: Number(sharingComensalIds.length), shareInstanceId: shareInstanceId,
+                id: productToShare.id,
+                name: productToShare.name,
+                originalBasePrice: basePricePerShare,
+                quantity: 1,
+                type: ITEM_TYPES.SHARED,
+                sharedByCount: Number(sharingComensalIds.length),
+                shareInstanceId: shareInstanceId,
                 modifiedAt: new Date().toISOString(),
             };
-
+        
             const newComensales = state.comensales.map(comensal => {
                 if (sharingComensalIds.includes(comensal.id)) {
                     return { ...comensal, selectedItems: [...comensal.selectedItems, newItemData] };
@@ -741,20 +745,35 @@ const App = () => {
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
         if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE")) return;
-        let isCancelled = false; const pollTimeout = 5000; let pollTimer;
-        const poll = () => {
+    
+        let isCancelled = false;
+        const pollTimeout = 5000;
+        let pollTimer;
+    
+        const poll = async () => {
             if (isCancelled) return;
-            // No llamar si hay cambios locales pendientes de guardar
-            if (!hasPendingChanges.current) { 
-                loadStateFromGoogleSheets(shareId).finally(() => { 
-                    if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); 
-                });
-            } else { 
-                if (!isCancelled) pollTimer = setTimeout(poll, pollTimeout); 
+            if (!hasPendingChanges.current) {
+                try {
+                    await loadStateFromGoogleSheets(shareId);
+                } catch (error) {
+                    console.warn("Error en polling:", error.message);
+                } finally {
+                    if (!isCancelled) {
+                        pollTimer = setTimeout(poll, pollTimeout);
+                    }
+                }
+            } else {
+                if (!isCancelled) {
+                    pollTimer = setTimeout(poll, pollTimeout);
+                }
             }
         };
+    
         pollTimer = setTimeout(poll, pollTimeout);
-        return () => { isCancelled = true; clearTimeout(pollTimer); };
+        return () => {
+            isCancelled = true;
+            clearTimeout(pollTimer);
+        };
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
 
     // --- PEGA ESTE BLOQUE NUEVO EN EL LUGAR DEL ANTIGUO ---
@@ -788,8 +807,58 @@ const App = () => {
     const confirmRemoveComensal = () => { if (comensalToRemoveId !== null) { dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId }); dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId }); } setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
-    const analyzeImageWithGemini = async (base64ImageData, mimeType) => { try { const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`; const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } } }; const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U"; if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini."); const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await response.json(); if (result.candidates && result.candidates[0].content.parts[0].text) { const parsedData = JSON.parse(result.candidates[0].content.parts[0].text); const newProductsMap = new Map(); (parsedData.items || []).forEach(item => { const name = item.name.trim(); const price = parseFloat(String(item.price).replace(/\./g, '')); const quantity = parseInt(item.quantity, 10); if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) { const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price); if (existing) { newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity }); } else { const newId = generateUniqueId('item'); newProductsMap.set(newId, { id: newId, name, price, quantity }); } } }); dispatch({ type: 'RESET_SESSION' }); dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap }); } else { throw new Error(result.error?.message || "No se pudo extraer información."); } } catch (error) { console.error("Error al analizar:", error); setImageProcessingError(error.message); } finally { setIsImageProcessing(false); } };
-    const handleGenerateShareLink = () => {
+    const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
+      try {
+          const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`;
+          const payload = {
+              contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
+              generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "NUMBER" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } }
+          };
+          const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
+          if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini.");
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+          const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          
+          if (!response.ok) {
+              throw new Error(`Error en la API de Gemini: ${response.statusText}`);
+          }
+  
+          const result = await response.json();
+          if (!result.candidates || !result.candidates[0]?.content?.parts?.[0]?.text) {
+              throw new Error(result.error?.message || "No se pudo extraer información válida de la imagen.");
+          }
+  
+          const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
+          if (!parsedData.items || !Array.isArray(parsedData.items)) {
+              throw new Error("La respuesta de la API no contiene una lista de ítems válida.");
+          }
+  
+          const newProductsMap = new Map();
+          parsedData.items.forEach(item => {
+              const name = item.name?.trim();
+              const price = parseFloat(String(item.price).replace(/\./g, ''));
+              const quantity = parseInt(item.quantity, 10);
+              if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
+                  const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
+                  if (existing) {
+                      newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
+                  } else {
+                      const newId = generateUniqueId('item');
+                      newProductsMap.set(newId, { id: newId, name, price, quantity });
+                  }
+              }
+          });
+  
+          dispatch({ type: 'RESET_SESSION' });
+          dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
+      } catch (error) {
+          console.error("Error al analizar:", error);
+          setImageProcessingError(error.message);
+      } finally {
+          setIsImageProcessing(false);
+      }
+  };
+  const handleGenerateShareLink = () => {
         // CAMBIO: Muestra el modal de carga con el mensaje apropiado
         setLoadingMessage("Generando enlace...");
         setIsGeneratingLink(true);
@@ -812,44 +881,59 @@ const App = () => {
     const renderStep = () => {
         switch (currentStep) {
             case 'landing': 
-                // Pasamos la nueva función al botón "Empezar"
                 return <LandingStep onStart={handleStartNewSession} />;
-            // ... (el resto de los casos no cambia)
-            case 'loading_session': return <LoadingSessionStep />;
-            case 'loading': return ( <LoadingStep onImageUpload={handleImageUpload} onManualEntry={() => dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: new Map() })} isImageProcessing={isImageProcessing} imageProcessingError={imageProcessingError} /> );
-            case 'reviewing': 
-            return ( 
-                <ReviewStep
-                    products={availableProducts}
-                    onProductChange={handleProductChange}
-                    onAddNewProduct={handleAddNewProduct}
-                    onRemoveProduct={handleRemoveProduct}
-                    onConfirm={() => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: availableProducts })}
-                    onBack={handleResetAll}
-                    discountPercentage={discountPercentage} 
-                    discountCap={discountCap} 
-                    dispatch={dispatch}
-                /> 
-            );
-            case 'assigning': return ( <AssigningStep availableProducts={availableProducts} comensales={comensales} newComensalName={newComensalName} setNewComensalName={setNewComensalName} addComensalMessage={addComensalMessage} onAddComensal={handleAddComensal} onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onOpenClearComensalModal={openClearComensalModal} onOpenRemoveComensalModal={openRemoveComensalModal} onOpenShareModal={() => setIsShareModalOpen(true)} onOpenSummary={handleOpenSummaryModal} onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })} onGenerateLink={handleGenerateShareLink} onRestart={handleResetAll} shareLink={shareLink} discountPercentage={discountPercentage} discountCap={discountCap} /> );
-            default: return <p>Cargando...</p>;
+            case 'loading_session':
+                return <LoadingSessionStep />;
+            case 'loading':
+                return (
+                    <LoadingStep
+                        onImageUpload={handleImageUpload}
+                        onManualEntry={() => dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: new Map() })}
+                        isImageProcessing={isImageProcessing}
+                        imageProcessingError={imageProcessingError}
+                    />
+                );
+            case 'reviewing': 
+                return (
+                    <ReviewStep
+                        products={availableProducts}
+                        onProductChange={handleProductChange}
+                        onAddNewProduct={handleAddNewProduct}
+                        onRemoveProduct={handleRemoveProduct}
+                        onConfirm={() => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: availableProducts })}
+                        onBack={handleResetAll}
+                        discountPercentage={discountPercentage}
+                        discountCap={discountCap}
+                        dispatch={dispatch}
+                    />
+                );
+            case 'assigning':
+                return (
+                    <AssigningStep
+                        availableProducts={availableProducts}
+                        comensales={comensales}
+                        newComensalName={newComensalName}
+                        setNewComensalName={setNewComensalName}
+                        addComensalMessage={addComensalMessage}
+                        onAddComensal={handleAddComensal}
+                        onAddItem={handleAddItem}
+                        onRemoveItem={handleRemoveItem}
+                        onOpenClearComensalModal={openClearComensalModal}
+                        onOpenRemoveComensalModal={openRemoveComensalModal}
+                        onOpenShareModal={() => setIsShareModalOpen(true)}
+                        onOpenSummary={handleOpenSummaryModal}
+                        onGoBack={() => dispatch({ type: 'SET_STEP', payload: 'reviewing' })}
+                        onGenerateLink={handleGenerateShareLink}
+                        onRestart={handleResetAll}
+                        shareLink={shareLink}
+                        discountPercentage={discountPercentage}
+                        discountCap={discountCap}
+                    />
+                );
+            default:
+                return <p>Cargando...</p>;
         }
-
-    return (
-        <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-        {/* CAMBIO: Se añade un mensaje dinámico al modal. 
-          Usará "Generando enlace..." si el `shareLink` ya está vacío,
-          de lo contrario mostrará "Creando sesión...".
-        */}
-        <LoadingModal 
-            isOpen={isGeneratingLink} 
-            message={loadingMessage} 
-        />
-        <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
-        {/* ... (el resto del JSX no cambia) ... */}
-    </div>
-    );
-};
+    };
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
