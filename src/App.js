@@ -555,9 +555,9 @@ const App = () => {
 
     const handleStartNewSession = async () => {
         setLoadingMessage("Creando sesión...");
-        setIsGeneratingLink(true); // Reutilizamos el modal de carga
-        await handleResetAll(); // Limpiamos cualquier estado previo
-        
+        setIsGeneratingLink(true);
+        await handleResetAll();
+    
         const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const initialData = {
             comensales: [],
@@ -569,20 +569,16 @@ const App = () => {
     
         try {
             await saveStateToGoogleSheets(newSessionId, initialData);
-            // Una vez guardado, actualizamos el estado y la URL
             dispatch({ type: 'SET_SHARE_ID', payload: newSessionId });
     
-            // --- CAMBIO CLAVE AQUÍ ---
-            // Se reconstruye la URL directamente en lugar de usar la variable 'fullLink' que ya no existe.
-            const newUrl = `${window.location.pathname}?id=${newSessionId}`;
-            window.history.replaceState({ path: newUrl }, '', newUrl);
-            
-            // Avanzamos al siguiente paso
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.set('id', newSessionId);
+            window.history.replaceState({ path: newUrl.toString() }, '', newUrl.toString());
+    
             dispatch({ type: 'SET_STEP', payload: 'loading' });
         } catch (error) {
             console.error("Error creating new session:", error);
             alert("No se pudo crear la sesión remota. La aplicación funcionará en modo local.");
-            // Si falla, crea una sesión local como respaldo
             dispatch({ type: 'SET_SHARE_ID', payload: `local-session-${Date.now()}` });
             dispatch({ type: 'SET_STEP', payload: 'loading' });
         } finally {
