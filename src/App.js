@@ -802,22 +802,6 @@ const App = () => {
         }
 
     return (
-        <">
-        {/* CAMBIO: Se añade un mensaje dinámico al modal. 
-          Usará "Generando enlace..." si el `shareLink` ya está vacío,
-          de lo contrario mostrará "Creando sesión...".
-        */}
-        <LoadingModal 
-            isOpen={isGeneratingLink} 
-            message={loadingMessage} 
-        />
-        <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
-        {/* ... (el resto del JSX no cambia) ... */}
-    </div>
-    );
-};
-
-    return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
             <LoadingModal isOpen={isGeneratingLink} message="Generando enlace..." />
             <div className="max-w-4xl mx-auto p-4">{renderStep()}</div>
