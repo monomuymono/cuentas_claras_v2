@@ -755,7 +755,10 @@ const App = () => {
             if (data && data.status !== "not_found") {
                 if (!initialLoadDone.current) {
                     isLoadingFromServer.current = true;
-                    const loadedProducts = new Map(Object.entries(data.masterProductList || data.availableProducts || {}));
+                    const loadedProducts = new Map(
+                      Object.entries(data.masterProductList || data.availableProducts || {}).map(([key, value]) => [Number(key), value])
+                    );
+                
                     const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
                     
                     dispatch({ type: 'LOAD_STATE', payload: { ...data, masterProductList: loadedProducts, activeSharedInstances: loadedSharedInstances } });
@@ -984,14 +987,16 @@ const App = () => {
     };
 
     const handlePrint = () => {
-        const printContent = document.getElementById('print-source-content');
-        if (!printContent) return;
-        const printWindow = window.open('', '_blank', 'height=800,width=800');
-        if (!printWindow) { alert('Permite las ventanas emergentes.'); return; }
-        printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`);
-        printWindow.document.close();
-        setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500);
-    };
+    const printContent = document.getElementById('print-source-content');
+    if (!printContent) return;
+    const printWindow = window.open('', '_blank', 'height=800,width=800');
+    if (!printWindow) {
+        alert('Permite las ventanas emergentes.');
+        return;
+    }
+    printWindow.document.write(`<html><head><title>Resumen</title><script src="https://cdn.tailwindcss.com"></script></head><body class="p-8">${printContent.innerHTML}</body></html>`);
+    printWindow.document.close();
+};
 
     const renderStep = () => {
         switch (currentStep) {
