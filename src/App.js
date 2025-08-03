@@ -325,8 +325,18 @@ function billReducer(state, action) {
         }
         case 'REMOVE_COMENSAL': {
             const comensalIdToRemove = action.payload;
+            // 1. Filtramos para quitar al comensal
             const newComensales = state.comensales.filter(c => c.id !== comensalIdToRemove);
-            return { ...state, comensales: newComensales, lastUpdated: new Date().toISOString() };
+            
+            // 2. Recalculamos los productos. Al ya no estar el comensal, sus ítems se "devuelven" al pool.
+            const newAvailableProducts = recalculateAvailableProducts(state.masterProductList, newComensales);
+        
+            return { 
+                ...state, 
+                comensales: newComensales, 
+                availableProducts: newAvailableProducts, // <-- Añadimos esto
+                lastUpdated: new Date().toISOString() 
+            };
         }
         case 'LOAD_STATE': {
             const serverData = action.payload;
@@ -1038,9 +1048,83 @@ const App = () => {
             isCriticalOperation.current = false;
         }
     }, [state, shareId, saveStateToGoogleSheets, newComensalName, comensales.length]);
-    const confirmClearComensal = () => { if (comensalToClearId !== null) dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToClearId }); setIsClearComensalModalOpen(false); setComensalToClearId(null); };
+    const confirmClearComensal = useCallback(async () => {
+        if (comensalToClearId === null) return;
+    
+        // 1. Pausar y mostrar estado de guardado
+        isCriticalOperation.current = true;
+        setSaveStatus('saving');
+    
+        const actionPayload = { comensalId: comensalToClearId };
+        
+        // 2. Actualizar estado local
+        dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: actionPayload });
+    
+        // 3. Calcular estado siguiente
+        const nextState = billReducer(state, { type: 'CLEAR_COMENSAL_ITEMS', payload: actionPayload });
+        
+        // 4. Preparar datos para guardar
+        const dataToSave = {
+            comensales: nextState.comensales,
+            availableProducts: Object.fromEntries(nextState.availableProducts),
+            masterProductList: Object.fromEntries(nextState.masterProductList),
+            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            lastUpdated: nextState.lastUpdated
+        };
+    
+        // 5. Guardar
+        try {
+            await saveStateToGoogleSheets(shareId, dataToSave);
+            setSaveStatus('saved');
+        } catch (e) {
+            console.error("Error al limpiar ítems del comensal:", e.message);
+            setSaveStatus('error');
+        } finally {
+            // 6. Limpiar y reanudar
+            setIsClearComensalModalOpen(false);
+            setComensalToClearId(null);
+            isCriticalOperation.current = false;
+        }
+    }, [state, shareId, saveStateToGoogleSheets, comensalToClearId]);
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
-    const confirmRemoveComensal = () => { if (comensalToRemoveId !== null) { dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId }); dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId }); } setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null); };
+    const confirmRemoveComensal = useCallback(async () => {
+        if (comensalToRemoveId === null) return;
+    
+        // 1. Pausar y mostrar estado de guardado
+        isCriticalOperation.current = true;
+        setSaveStatus('saving');
+    
+        const actionPayload = comensalToRemoveId;
+    
+        // 2. Actualizar estado local (ahora con una sola acción)
+        dispatch({ type: 'REMOVE_COMENSAL', payload: actionPayload });
+    
+        // 3. Calcular estado siguiente
+        const nextState = billReducer(state, { type: 'REMOVE_COMENSAL', payload: actionPayload });
+    
+        // 4. Preparar datos para guardar
+        const dataToSave = {
+            comensales: nextState.comensales,
+            availableProducts: Object.fromEntries(nextState.availableProducts),
+            masterProductList: Object.fromEntries(nextState.masterProductList),
+            activeSharedInstances: Object.fromEntries(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            lastUpdated: nextState.lastUpdated
+        };
+    
+        // 5. Guardar
+        try {
+            await saveStateToGoogleSheets(shareId, dataToSave);
+            setSaveStatus('saved');
+        } catch (e) {
+            console.error("Error al eliminar comensal:", e.message);
+            setSaveStatus('error');
+        } finally {
+            // 6. Limpiar y reanudar
+            setIsRemoveComensalModalOpen(false);
+            setComensalToRemoveId(null);
+            isCriticalOperation.current = false;
+        }
+    }, [state, shareId, saveStateToGoogleSheets, comensalToRemoveId]);
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
     const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
