@@ -1332,7 +1332,35 @@ const AssigningStep = ({
     
     return (
         <div className="pb-24">
-            <header className="mb-6 text-center"> <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1> <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p> <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">&larr; Volver y Editar Ítems</button> </header>
+            <header className="mb-6 text-center"> <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1> <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p> 
+            <div className="h-6 mt-2 flex justify-center items-center">
+                {saveStatus === 'saving' && (
+                    <div className="flex items-center text-sm text-gray-500">
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Guardando...
+                    </div>
+                )}
+                {saveStatus === 'saved' && (
+                    <div className="flex items-center text-sm text-green-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Guardado ✓
+                    </div>
+                )}
+                {saveStatus === 'error' && (
+                    <div className="flex items-center text-sm text-red-600">
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Error al guardar ✗
+                    </div>
+                )}
+            </div>
+            <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">&larr; Volver y Editar Ítems</button> </header>
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
                 <div className="flex flex-col sm:flex-row gap-3 items-center">
