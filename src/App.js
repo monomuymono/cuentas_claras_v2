@@ -953,8 +953,91 @@ const App = () => {
             isCriticalOperation.current = false; // Reanuda el polling
         }
     }, [state, shareId, saveStateToGoogleSheets]);
-    const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
-    const handleAddComensal = () => { if (newComensalName.trim() === '') { setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' }); return; } if (comensales.length >= MAX_COMENSALES) { setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` }); return; } dispatch({ type: 'ADD_COMENSAL', payload: newComensalName }); setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` }); setNewComensalName(''); setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000); };
+    const handleShareItem = useCallback(async (productId, sharingComensalIds) => {
+        // 1. Pausar otros procesos y mostrar estado de guardado
+        isCriticalOperation.current = true;
+        setSaveStatus('saving');
+    
+        const actionPayload = { productId, sharingComensalIds };
+        
+        // 2. Actualizar estado local
+        dispatch({ type: 'SHARE_ITEM', payload: actionPayload });
+    
+        // 3. Calcular el estado siguiente para el guardado
+        const nextState = billReducer(state, { type: 'SHARE_ITEM', payload: actionPayload });
+    
+        // 4. Preparar los datos para guardar
+        const dataToSave = {
+            comensales: nextState.comensales,
+            availableProducts: Object.fromEntries(nextState.availableProducts),
+            masterProductList: Object.fromEntries(nextState.masterProductList),
+            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            lastUpdated: nextState.lastUpdated
+        };
+    
+        // 5. Guardar inmediatamente
+        try {
+            await saveStateToGoogleSheets(shareId, dataToSave);
+            setSaveStatus('saved');
+        } catch (e) {
+            console.error("Error al guardar ítem compartido:", e.message);
+            setSaveStatus('error');
+        } finally {
+            // 6. Reanudar procesos
+            isCriticalOperation.current = false;
+        }
+    }, [state, shareId, saveStateToGoogleSheets]);
+    const handleAddComensal = useCallback(async () => {
+        // 1. Validación (sin cambios)
+        if (newComensalName.trim() === '') {
+            setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' });
+            return;
+        }
+        if (comensales.length >= MAX_COMENSALES) {
+            setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` });
+            return;
+        }
+    
+        // 2. Pausar otros procesos y mostrar estado de guardado
+        isCriticalOperation.current = true;
+        setSaveStatus('saving');
+    
+        const actionPayload = newComensalName;
+        
+        // 3. Actualizar estado local
+        dispatch({ type: 'ADD_COMENSAL', payload: actionPayload });
+        
+        // 4. Calcular el estado siguiente para el guardado
+        const nextState = billReducer(state, { type: 'ADD_COMENSAL', payload: actionPayload });
+    
+        // 5. Preparar los datos para guardar
+        const dataToSave = {
+            comensales: nextState.comensales,
+            availableProducts: Object.fromEntries(nextState.availableProducts),
+            masterProductList: Object.fromEntries(nextState.masterProductList),
+            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            lastUpdated: nextState.lastUpdated
+        };
+        
+        // 6. Guardar inmediatamente
+        try {
+            await saveStateToGoogleSheets(shareId, dataToSave);
+            setSaveStatus('saved');
+            
+            // Actualizar UI solo después del guardado exitoso
+            setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
+            setNewComensalName('');
+            setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
+    
+        } catch (e) {
+            console.error("Error al guardar nuevo comensal:", e.message);
+            setSaveStatus('error');
+            // Opcional: Revertir el estado si el guardado falla
+        } finally {
+            // 7. Reanudar procesos
+            isCriticalOperation.current = false;
+        }
+    }, [state, shareId, saveStateToGoogleSheets, newComensalName, comensales.length]);
     const confirmClearComensal = () => { if (comensalToClearId !== null) dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToClearId }); setIsClearComensalModalOpen(false); setComensalToClearId(null); };
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
     const confirmRemoveComensal = () => { if (comensalToRemoveId !== null) { dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: comensalToRemoveId }); dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId }); } setIsRemoveComensalModalOpen(false); setComensalToRemoveId(null); };
