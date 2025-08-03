@@ -882,7 +882,44 @@ const App = () => {
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.lastUpdated]);
 
-    const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
+    const handleAddItem = useCallback(async (comensalId, productId) => {
+        // No hacer nada si no se selecciona un producto
+        if (!productId) return;
+    
+        // Pausar otros procesos de guardado y polling
+        isCriticalOperation.current = true;
+        setSaveStatus('saving'); // Mostramos "Guardando..." inmediatamente
+    
+        const actionPayload = { comensalId, productId };
+    
+        // 1. Actualizar el estado local
+        dispatch({ type: 'ADD_ITEM', payload: actionPayload });
+    
+        // 2. Calcular el estado que resultará de la acción para enviarlo al servidor
+        const nextState = billReducer(state, { type: 'ADD_ITEM', payload: actionPayload });
+    
+        // 3. Preparar los datos para el guardado
+        const dataToSave = {
+            comensales: nextState.comensales,
+            availableProducts: Object.fromEntries(nextState.availableProducts),
+            masterProductList: Object.fromEntries(nextState.masterProductList),
+            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            lastUpdated: nextState.lastUpdated
+        };
+    
+        // 4. Guardar inmediatamente en el servidor
+        try {
+            await saveStateToGoogleSheets(shareId, dataToSave);
+            setSaveStatus('saved');
+        } catch (e) {
+            console.error("Error al guardar nuevo ítem:", e.message);
+            setSaveStatus('error');
+            // Considera mostrar un error más específico si lo deseas
+        } finally {
+            // 5. Reanudar los procesos normales
+            isCriticalOperation.current = false;
+        }
+    }, [state, shareId, saveStateToGoogleSheets]); // Añadimos dependencias para useCallback
     const handleRemoveItem = useCallback(async (comensalId, itemIdentifier) => {
         isCriticalOperation.current = true; // Pausa el polling
     
