@@ -380,11 +380,11 @@ function billReducer(state, action) {
                     allItemKeys.forEach(key => {
                         const localItem = localItemsMap.get(key);
                         const serverItem = serverItemsMap.get(key);
-                        if (localItem && !serverItem) {
+                        if (localItem && !serverItem) { // Existe localmente, no en el servidor (fue eliminado remotamente o añadido localmente)
                             finalItems.push(localItem);
-                        } else if (!serverItem && localItem) {
-                            finalItems.push(localItem);
-                        } else {
+                        } else if (serverItem && !localItem) { // Existe en el servidor, no localmente (fue añadido remotamente)
+                            finalItems.push(serverItem);
+                        } else if (serverItem && localItem) { // Existe en ambos, comparar timestamps
                             const localDate = new Date(localItem.modifiedAt || 0);
                             const serverDate = new Date(serverItem.modifiedAt || 0);
                             finalItems.push(serverDate > localDate ? serverItem : localItem);
@@ -863,39 +863,38 @@ const App = () => {
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.lastUpdated]);
 
     const handleAddItem = (comensalId, productId) => { dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } }); };
-    const handleRemoveItem = useCallback((comensalId, itemIdentifier) => {
-        isCriticalOperation.current = true; // Pausar polling durante la eliminación
-        const newState = billReducer(state, {
-            type: 'REMOVE_ITEM_FROM_COMENSAL',
-            payload: { comensalId, itemIdentifier, saveToServer: (newState) => {
-                saveStateToGoogleSheets(shareId, {
-                    comensales: newState.comensales,
-                    availableProducts: Object.fromEntries(newState.availableProducts),
-                    masterProductList: Object.fromEntries(newState.masterProductList),
-                    activeSharedInstances: Object.fromEntries(Array.from(newState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-                    lastUpdated: newState.lastUpdated
-                }).catch((e) => {
-                    console.error("Error al guardar eliminación:", e.message);
-                    alert(`No se pudieron guardar los cambios: ${e.message}`);
-                }).finally(() => {
-                    isCriticalOperation.current = false; // Reanudar polling
-                });
-            }}
-        });
-        dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier, saveToServer: (newState) => {
-            saveStateToGoogleSheets(shareId, {
-                comensales: newState.comensales,
-                availableProducts: Object.fromEntries(newState.availableProducts),
-                masterProductList: Object.fromEntries(newState.masterProductList),
-                activeSharedInstances: Object.fromEntries(Array.from(newState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-                lastUpdated: newState.lastUpdated
-            }).catch((e) => {
-                console.error("Error al guardar eliminación:", e.message);
-                alert(`No se pudieron guardar los cambios: ${e.message}`);
-            }).finally(() => {
-                isCriticalOperation.current = false;
-            });
-        }} });
+    const handleRemoveItem = useCallback(async (comensalId, itemIdentifier) => {
+        isCriticalOperation.current = true; // Pausa el polling
+    
+        // 1. Prepara el payload de la acción.
+        const actionPayload = { comensalId, itemIdentifier };
+        
+        // 2. Ejecuta la acción para actualizar el estado local.
+        dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: actionPayload });
+    
+        // 3. Calcula el estado SIGUIENTE para enviarlo al servidor.
+        // Usamos el reducer para simular la actualización y obtener el resultado.
+        const nextState = billReducer(state, { type: 'REMOVE_ITEM_FROM_COMENSAL', payload: actionPayload });
+    
+        // 4. Prepara los datos para guardar.
+        const dataToSave = {
+            comensales: nextState.comensales,
+            availableProducts: Object.fromEntries(nextState.availableProducts),
+            masterProductList: Object.fromEntries(nextState.masterProductList),
+            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            lastUpdated: nextState.lastUpdated
+        };
+    
+        // 5. Guarda inmediatamente en el servidor.
+        try {
+            await saveStateToGoogleSheets(shareId, dataToSave);
+        } catch (e) {
+            console.error("Error al guardar eliminación:", e.message);
+            alert(`No se pudieron guardar los cambios: ${e.message}`);
+            // Considera revertir el estado si el guardado falla.
+        } finally {
+            isCriticalOperation.current = false; // Reanuda el polling
+        }
     }, [state, shareId, saveStateToGoogleSheets]);
     const handleShareItem = (productId, sharingComensalIds) => { dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } }); };
     const handleAddComensal = () => { if (newComensalName.trim() === '') { setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' }); return; } if (comensales.length >= MAX_COMENSALES) { setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` }); return; } dispatch({ type: 'ADD_COMENSAL', payload: newComensalName }); setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` }); setNewComensalName(''); setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000); };
