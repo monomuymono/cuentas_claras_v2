@@ -276,16 +276,31 @@ const initialState = {
 function billReducer(state, action) {
     const recalculateAvailableProducts = (masterList, comensales) => {
         if (!masterList || masterList.size === 0) return new Map();
+        
+        // Hacemos una copia profunda para no mutar el estado maestro.
         const newAvailableProducts = new Map(JSON.parse(JSON.stringify(Array.from(masterList))));
+        
+        // Usamos un Set para registrar los grupos de ítems compartidos que ya hemos contado.
+        const processedShareInstances = new Set();
+    
         comensales.forEach(diner => {
             (diner.selectedItems || []).forEach(item => {
                 const productInMap = newAvailableProducts.get(item.id);
                 if (productInMap) {
-                    const quantityToRemove = item.type === ITEM_TYPES.SHARED ? 1 : item.quantity;
-                    productInMap.quantity -= quantityToRemove;
+                    if (item.type === ITEM_TYPES.SHARED) {
+                        // Si es un ítem compartido, solo lo descontamos una vez por grupo.
+                        if (!processedShareInstances.has(item.shareInstanceId)) {
+                            productInMap.quantity -= 1; // Se descuenta solo 1 unidad.
+                            processedShareInstances.add(item.shareInstanceId); // Lo marcamos como procesado.
+                        }
+                    } else {
+                        // Si es un ítem completo, descontamos su cantidad.
+                        productInMap.quantity -= item.quantity;
+                    }
                 }
             });
         });
+    
         return newAvailableProducts;
     };
 
@@ -609,6 +624,7 @@ const App = () => {
     const lastSyncedTimestamp = useRef(null);
     const [loadingMessage, setLoadingMessage] = useState('');
     const isCriticalOperation = useRef(false);
+    const [saveStatus, setSaveStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
 
@@ -842,6 +858,7 @@ const App = () => {
 
         hasPendingChanges.current = true;
         const handler = setTimeout(() => {
+            setSaveStatus('saving');
             const dataToSave = {
                 comensales,
                 availableProducts: Object.fromEntries(availableProducts),
@@ -850,14 +867,17 @@ const App = () => {
                 lastUpdated: state.lastUpdated
             };
             saveStateToGoogleSheets(shareId, dataToSave)
+                .then(() => {
+                    setSaveStatus('saved'); // Muestra "Guardado ✓"
+                })
                 .catch((e) => {
                     console.error("El guardado falló:", e.message);
-                    alert(`No se pudieron guardar los últimos cambios: ${e.message}`);
+                    setSaveStatus('error');
                 })
                 .finally(() => {
                     hasPendingChanges.current = false;
                 });
-        }, 1200);
+        }, 2500);
 
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.lastUpdated]);
@@ -1035,6 +1055,7 @@ const App = () => {
                         shareLink={shareLink}
                         discountPercentage={discountPercentage}
                         discountCap={discountCap}
+                        saveStatus={saveStatus}
                     />
                 );
             default:
@@ -1253,7 +1274,7 @@ const ReviewStep = ({
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
-    onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap
+    onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus 
 }) => {
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
     const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
