@@ -1107,8 +1107,8 @@ const App = () => {
             comensales: nextState.comensales,
             availableProducts: Object.fromEntries(nextState.availableProducts),
             masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
+            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            lastUpdated: nextState.lastUpdated,
         };
     
         // 5. Guardar
