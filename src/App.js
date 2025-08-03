@@ -1259,6 +1259,8 @@ const AssigningStep = ({
     const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
     const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
     const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
+    const unassignedItems = Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0);
+    const totalUnassignedQuantity = unassignedItems.reduce((sum, item) => sum + Number(item.quantity), 0);
 
     const ComensalCard = ({ comensal }) => {
         const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * item.quantity), 0);
@@ -1335,7 +1337,11 @@ const AssigningStep = ({
                 <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
                     <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105 flex flex-col items-center">
                         <span className="text-lg">Ver Resumen Final</span>
-                        {Math.round(remainingToAssign) > 0 && ( <span className="text-xs font-normal opacity-90"> Faltan ${Math.round(remainingToAssign).toLocaleString('es-CL')} por asignar </span> )}
+                        {totalUnassignedQuantity > 0 && (
+                            <span className="text-xs font-normal opacity-90">
+                                Faltan {totalUnassignedQuantity} {totalUnassignedQuantity > 1 ? 'ítems' : 'ítem'} por asignar
+                            </span>
+                        )}
                     </button>
                 </div>
             )}
