@@ -883,6 +883,8 @@ const App = () => {
         }
     }, [saveStatus]);
 
+    // En tu componente App.js
+
     useEffect(() => {
         // Si la carga inicial no ha terminado, si estamos en una operación crítica
         // o si no hay un ID de sesión para guardar, no hacemos nada.
@@ -890,7 +892,7 @@ const App = () => {
             return;
         }
         
-        // Si state.lastUpdated es nulo, significa que no hay cambios para guardar.
+        // Si state.lastUpdated es nulo (estado inicial), no hay nada que guardar.
         if (!state.lastUpdated) {
             return;
         }
@@ -902,11 +904,11 @@ const App = () => {
         // hace muchos clics rápidos. 500ms es un buen balance.
         const handler = setTimeout(() => {
             const dataToSave = {
-                comensales,
+                comensales, // <-- Aún tienes acceso a la versión más reciente
                 availableProducts: Object.fromEntries(availableProducts),
                 masterProductList: Object.fromEntries(state.masterProductList),
                 activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-                lastUpdated: state.lastUpdated // <-- Usamos el timestamp del estado
+                lastUpdated: state.lastUpdated
             };
     
             saveStateToGoogleSheets(shareId, dataToSave)
@@ -917,14 +919,15 @@ const App = () => {
                     console.error("El guardado falló:", e.message);
                     setSaveStatus('error'); // Error: Error al guardar ✗
                 });
-        }, 500); // Debounce de 500ms
+        }, 500);
     
         // Limpiamos el timeout si el componente se desmonta o si el efecto se vuelve a ejecutar.
         return () => clearTimeout(handler);
     
-    // La dependencia clave aquí es state.lastUpdated. Cada vez que el reducer actualiza
-    // el estado, cambia este timestamp, lo que dispara este efecto.
-    }, [state.lastUpdated, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, comensales, availableProducts, activeSharedInstances]);
+    //  ▼▼▼ LA CLAVE ESTÁ AQUÍ ▼▼▼
+    // El efecto SÓLO se activa cuando estas variables cambian.
+    // Ya no depende directamente de los datos que guarda.
+    }, [state.lastUpdated, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
     const handleAddItem = useCallback((comensalId, productId) => {
         if (!productId) return;
