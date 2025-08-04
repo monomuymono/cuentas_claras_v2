@@ -315,7 +315,12 @@ function billReducer(state, action) {
             return { ...state, shareLink: action.payload };
         case 'APPLY_DISCOUNT': {
             const { percentage, cap } = action.payload;
-            return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0 };
+            return {
+                ...state,
+                discountPercentage: parseFloat(percentage) || 0,
+                discountCap: parseFloat(cap) || 0,
+                lastUpdated: new Date().toISOString() // <-- LA LÍNEA CRÍTICA QUE FALTABA
+            };
         }
         case 'ADD_COMENSAL': {
             if (state.comensales.length >= MAX_COMENSALES) return state;
