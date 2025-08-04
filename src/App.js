@@ -637,7 +637,6 @@ const App = () => {
     const [saveStatus, setSaveStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
-    const [stateToSave, setStateToSave] = useState(null);
 
     // Maneja cambios en los campos de un producto existente (nombre, precio, cantidad)
     const handleProductChange = (productId, field, value) => {
@@ -873,70 +872,7 @@ const App = () => {
         };
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
 
-    useEffect(() => {
-        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing || isCriticalOperation.current) return;
 
-        hasPendingChanges.current = true;
-        const handler = setTimeout(() => {
-            setSaveStatus('saving');
-            const dataToSave = {
-                comensales,
-                availableProducts: Object.fromEntries(availableProducts),
-                masterProductList: Object.fromEntries(state.masterProductList),
-                activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-                lastUpdated: state.lastUpdated
-            };
-            saveStateToGoogleSheets(shareId, dataToSave)
-                .then(() => {
-                    setSaveStatus('saved'); // Muestra "Guardado ✓"
-                })
-                .catch((e) => {
-                    console.error("El guardado falló:", e.message);
-                    setSaveStatus('error');
-                })
-                .finally(() => {
-                    hasPendingChanges.current = false;
-                });
-        }, 2500);
-
-        return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.lastUpdated]);
-
-    useEffect(() => {
-        // Si no hay nada que guardar, no hagas nada.
-        if (stateToSave === null) return;
-    
-        // Inicia el proceso de guardado en segundo plano.
-        setSaveStatus('saving');
-        isCriticalOperation.current = true;
-    
-        const dataToSave = {
-            comensales: stateToSave.comensales,
-            availableProducts: Object.fromEntries(stateToSave.availableProducts),
-            masterProductList: Object.fromEntries(stateToSave.masterProductList),
-            activeSharedInstances: Object.fromEntries(
-                Array.from(stateToSave.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])
-            ),
-            lastUpdated: stateToSave.lastUpdated
-        };
-    
-        saveStateToGoogleSheets(shareId, dataToSave)
-            .then(() => {
-                setSaveStatus('saved');
-                // Restablecer explícitamente el estado después de un guardado exitoso
-                setStateToSave(null);
-                isCriticalOperation.current = false;
-            })
-            .catch((e) => {
-                console.error("Error en el guardado centralizado:", e.message);
-                setSaveStatus('error');
-                // Mostrar una alerta al usuario para informar del error
-                alert(`Error al guardar: ${e.message}. Por favor, intenta de nuevo.`);
-                // Restablecer explícitamente el estado incluso en caso de error
-                setStateToSave(null);
-                isCriticalOperation.current = false;
-            });
-    }, [stateToSave, shareId, saveStateToGoogleSheets]);
 
     useEffect(() => {
         if (saveStatus === 'error') {
@@ -947,24 +883,61 @@ const App = () => {
         }
     }, [saveStatus]);
 
-    const createAndTriggerSave = (action) => {
-        const nextState = billReducer(state, action);
-        dispatch(action);
-        setStateToSave(nextState);
-    };
+    useEffect(() => {
+        // Si la carga inicial no ha terminado, si estamos en una operación crítica
+        // o si no hay un ID de sesión para guardar, no hacemos nada.
+        if (!initialLoadDone.current || isLoadingFromServer.current || isCriticalOperation.current || !shareId || shareId.startsWith('local-')) {
+            return;
+        }
+        
+        // Si state.lastUpdated es nulo, significa que no hay cambios para guardar.
+        if (!state.lastUpdated) {
+            return;
+        }
+    
+        // Inmediatamente mostramos que estamos guardando para dar feedback al usuario.
+        setSaveStatus('saving');
+    
+        // Usamos un debounce para evitar enviar demasiadas solicitudes si el usuario
+        // hace muchos clics rápidos. 500ms es un buen balance.
+        const handler = setTimeout(() => {
+            const dataToSave = {
+                comensales,
+                availableProducts: Object.fromEntries(availableProducts),
+                masterProductList: Object.fromEntries(state.masterProductList),
+                activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+                lastUpdated: state.lastUpdated // <-- Usamos el timestamp del estado
+            };
+    
+            saveStateToGoogleSheets(shareId, dataToSave)
+                .then(() => {
+                    setSaveStatus('saved'); // Éxito: Guardado ✓
+                })
+                .catch((e) => {
+                    console.error("El guardado falló:", e.message);
+                    setSaveStatus('error'); // Error: Error al guardar ✗
+                });
+        }, 500); // Debounce de 500ms
+    
+        // Limpiamos el timeout si el componente se desmonta o si el efecto se vuelve a ejecutar.
+        return () => clearTimeout(handler);
+    
+    // La dependencia clave aquí es state.lastUpdated. Cada vez que el reducer actualiza
+    // el estado, cambia este timestamp, lo que dispara este efecto.
+    }, [state.lastUpdated, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, comensales, availableProducts, activeSharedInstances]);
 
     const handleAddItem = useCallback((comensalId, productId) => {
         if (!productId) return;
-        createAndTriggerSave({ type: 'ADD_ITEM', payload: { comensalId, productId } });
-    }, [state]);
-
+        dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } });
+    }, [dispatch]); // <-- Dependencia solo de dispatch
+    
     const handleRemoveItem = useCallback((comensalId, itemIdentifier) => {
-        createAndTriggerSave({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } });
-    }, [state]);
-
+        dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } });
+    }, [dispatch]); // <-- Dependencia solo de dispatch
+    
     const handleShareItem = useCallback((productId, sharingComensalIds) => {
-        createAndTriggerSave({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } });
-    }, [state]);
+        dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } });
+    }, [dispatch]); // <-- Dependencia solo de dispatch
 
     const handleAddComensal = useCallback(() => {
         if (newComensalName.trim() === '') {
@@ -975,25 +948,27 @@ const App = () => {
             setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` });
             return;
         }
-        createAndTriggerSave({ type: 'ADD_COMENSAL', payload: newComensalName });
+        dispatch({ type: 'ADD_COMENSAL', payload: newComensalName });
         setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
         setNewComensalName('');
         setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
-    }, [state, newComensalName, comensales.length]);
-
+    }, [newComensalName, comensales.length, dispatch]);
+    
+    
     const confirmClearComensal = useCallback(() => {
         if (comensalToClearId === null) return;
-        createAndTriggerSave({ type: 'CLEAR_COMENSAL_ITEMS', payload: { comensalId: comensalToClearId } });
+        dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: { comensalId: comensalToClearId } });
         setIsClearComensalModalOpen(false);
         setComensalToClearId(null);
-    }, [state, comensalToClearId]);
-
+    }, [comensalToClearId, dispatch]);
+    
+    
     const confirmRemoveComensal = useCallback(() => {
         if (comensalToRemoveId === null) return;
-        createAndTriggerSave({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId });
+        dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId });
         setIsRemoveComensalModalOpen(false);
         setComensalToRemoveId(null);
-    }, [state, comensalToRemoveId]);
+    }, [comensalToRemoveId, dispatch]);
     
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
