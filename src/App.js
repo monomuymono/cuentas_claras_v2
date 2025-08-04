@@ -1106,7 +1106,6 @@ const App = () => {
                         discountPercentage={discountPercentage}
                         discountCap={discountCap}
                         saveStatus={saveStatus}
-                        setStateToSave={setStateToSave} // Agregar esta prop
                         state={state} // Agregar esta prop
                     />
                 );
