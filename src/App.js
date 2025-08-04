@@ -721,19 +721,20 @@ const App = () => {
             }, 0);
         }
     }, []);
-    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave, isNewSession = false) => {
+    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave, isNewSession = false, retryCount = 0) => {
+        const MAX_RETRIES = 3;
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
             return Promise.reject(new Error("URL de Apps Script inválida."));
         }
         if (!currentShareId || !userId) return Promise.resolve();
-
+    
         if (!isNewSession) {
             const currentServerData = await loadStateFromGoogleSheets(currentShareId).catch(() => null);
             if (currentServerData && currentServerData.lastUpdated && new Date(currentServerData.lastUpdated) > new Date(dataToSave.lastUpdated)) {
                 return Promise.reject(new Error("El estado en el servidor es más reciente."));
             }
         }
-
+    
         const promiseWithTimeout = new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
                 reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
@@ -758,16 +759,23 @@ const App = () => {
             script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
             document.body.appendChild(script);
         });
-
+    
         try {
             const result = await promiseWithTimeout;
-            if (result.status === 'error') return Promise.reject(new Error(result.message));
-            lastSyncedTimestamp.current = dataToSave.lastUpdated; // Actualizar timestamp de sincronización
+            if (result.status === 'error') {
+                throw new Error(result.message || 'Error desconocido al guardar en Google Sheets.');
+            }
+            lastSyncedTimestamp.current = dataToSave.lastUpdated;
             return Promise.resolve();
         } catch (error) {
+            if (retryCount < MAX_RETRIES && error.message.includes('Error de red') || error.message.includes('timeout')) {
+                // Reintentar en caso de errores de red o timeout
+                await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Backoff exponencial
+                return saveStateToGoogleSheets(currentShareId, dataToSave, isNewSession, retryCount + 1);
+            }
             return Promise.reject(error);
         }
-    }, [userId]);
+    }, [userId, loadStateFromGoogleSheets]);
 
 
     const handleStartNewSession = async () => {
@@ -830,6 +838,7 @@ const App = () => {
         };
         performInitialLoad();
     }, [authReady, userId, loadStateFromGoogleSheets]);
+  
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
         if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || isCriticalOperation.current) return;
@@ -905,24 +914,38 @@ const App = () => {
             comensales: stateToSave.comensales,
             availableProducts: Object.fromEntries(stateToSave.availableProducts),
             masterProductList: Object.fromEntries(stateToSave.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(stateToSave.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            activeSharedInstances: Object.fromEntries(
+                Array.from(stateToSave.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])
+            ),
             lastUpdated: stateToSave.lastUpdated
         };
     
         saveStateToGoogleSheets(shareId, dataToSave)
             .then(() => {
                 setSaveStatus('saved');
+                // Restablecer explícitamente el estado después de un guardado exitoso
+                setStateToSave(null);
+                isCriticalOperation.current = false;
             })
             .catch((e) => {
                 console.error("Error en el guardado centralizado:", e.message);
                 setSaveStatus('error');
-            })
-            .finally(() => {
+                // Mostrar una alerta al usuario para informar del error
+                alert(`Error al guardar: ${e.message}. Por favor, intenta de nuevo.`);
+                // Restablecer explícitamente el estado incluso en caso de error
+                setStateToSave(null);
                 isCriticalOperation.current = false;
-                setStateToSave(null); // Limpiamos para el próximo guardado
             });
-    
     }, [stateToSave, shareId, saveStateToGoogleSheets]);
+
+    useEffect(() => {
+        if (saveStatus === 'error') {
+            const resetStatusTimeout = setTimeout(() => {
+                setSaveStatus('idle');
+            }, 5000); // Restablecer después de 5 segundos
+            return () => clearTimeout(resetStatusTimeout);
+        }
+    }, [saveStatus]);
 
     const createAndTriggerSave = (action) => {
         const nextState = billReducer(state, action);
@@ -1382,37 +1405,51 @@ const AssigningStep = ({
         )
     };
     
+    const handleRetrySave = () => {
+        // Reintentar guardar el estado actual
+        setStateToSave(state);
+    };
+    
     return (
         <div className="pb-24">
-            <header className="mb-6 text-center"> <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1> <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p> 
-            <div className="h-6 mt-2 flex justify-center items-center">
-                {saveStatus === 'saving' && (
-                    <div className="flex items-center text-sm text-gray-500">
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Guardando...
-                    </div>
-                )}
-                {saveStatus === 'saved' && (
-                    <div className="flex items-center text-sm text-green-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                        </svg>
-                        Guardado ✓
-                    </div>
-                )}
-                {saveStatus === 'error' && (
-                    <div className="flex items-center text-sm text-red-600">
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        Error al guardar ✗
-                    </div>
-                )}
-            </div>
-            <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">&larr; Volver y Editar Ítems</button> </header>
+            <header className="mb-6 text-center">
+                <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
+                <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p> 
+                <div className="h-6 mt-2 flex justify-center items-center">
+                    {saveStatus === 'saving' && (
+                        <div className="flex items-center text-sm text-gray-500">
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Guardando...
+                        </div>
+                    )}
+                    {saveStatus === 'saved' && (
+                        <div className="flex items-center text-sm text-green-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Guardado ✓
+                        </div>
+                    )}
+                    {saveStatus === 'error' && (
+                        <div className="flex items-center text-sm text-red-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Error al guardar ✗
+                            <button
+                                onClick={handleRetrySave}
+                                className="ml-2 px-2 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
+                            >
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+                </div>
+                <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">&larr; Volver y Editar Ítems</button>
+            </header>
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
                 <div className="flex flex-col sm:flex-row gap-3 items-center">
