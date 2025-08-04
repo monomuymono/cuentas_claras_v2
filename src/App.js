@@ -637,6 +637,7 @@ const App = () => {
     const [saveStatus, setSaveStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
+    const [stateToSave, setStateToSave] = useState(null);
 
     // Maneja cambios en los campos de un producto existente (nombre, precio, cantidad)
     const handleProductChange = (productId, field, value) => {
@@ -892,93 +893,55 @@ const App = () => {
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.lastUpdated]);
 
-    const handleAddItem = useCallback((comensalId, productId) => {
-        if (!productId) return;
-
-        const actionPayload = { comensalId, productId };
-        const nextState = billReducer(state, { type: 'ADD_ITEM', payload: actionPayload });
-
-        // 1. Actualización Optimista: La UI cambia al instante.
-        dispatch({ type: 'ADD_ITEM', payload: actionPayload });
-
-        // 2. Guardado seguro en segundo plano.
+    useEffect(() => {
+        // Si no hay nada que guardar, no hagas nada.
+        if (stateToSave === null) return;
+    
+        // Inicia el proceso de guardado en segundo plano.
         setSaveStatus('saving');
         isCriticalOperation.current = true;
-        
+    
         const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
+            comensales: stateToSave.comensales,
+            availableProducts: Object.fromEntries(stateToSave.availableProducts),
+            masterProductList: Object.fromEntries(stateToSave.masterProductList),
+            activeSharedInstances: Object.fromEntries(Array.from(stateToSave.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+            lastUpdated: stateToSave.lastUpdated
         };
-
+    
         saveStateToGoogleSheets(shareId, dataToSave)
-            .then(() => setSaveStatus('saved'))
+            .then(() => {
+                setSaveStatus('saved');
+            })
             .catch((e) => {
-                console.error("Error al guardar nuevo ítem:", e.message);
+                console.error("Error en el guardado centralizado:", e.message);
                 setSaveStatus('error');
             })
             .finally(() => {
                 isCriticalOperation.current = false;
+                setStateToSave(null); // Limpiamos para el próximo guardado
             });
-    }, [state, shareId, saveStateToGoogleSheets]);
+    
+    }, [stateToSave, shareId, saveStateToGoogleSheets]);
+
+    const createAndTriggerSave = (action) => {
+        const nextState = billReducer(state, action);
+        dispatch(action);
+        setStateToSave(nextState);
+    };
+
+    const handleAddItem = useCallback((comensalId, productId) => {
+        if (!productId) return;
+        createAndTriggerSave({ type: 'ADD_ITEM', payload: { comensalId, productId } });
+    }, [state]);
 
     const handleRemoveItem = useCallback((comensalId, itemIdentifier) => {
-        const actionPayload = { comensalId, itemIdentifier };
-        const nextState = billReducer(state, { type: 'REMOVE_ITEM_FROM_COMENSAL', payload: actionPayload });
-        
-        dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: actionPayload });
-
-        setSaveStatus('saving');
-        isCriticalOperation.current = true;
-        
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-
-        saveStateToGoogleSheets(shareId, dataToSave)
-            .then(() => setSaveStatus('saved'))
-            .catch((e) => {
-                console.error("Error al guardar eliminación:", e.message);
-                setSaveStatus('error');
-            })
-            .finally(() => {
-                isCriticalOperation.current = false;
-            });
-    }, [state, shareId, saveStateToGoogleSheets]);
+        createAndTriggerSave({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } });
+    }, [state]);
 
     const handleShareItem = useCallback((productId, sharingComensalIds) => {
-        const actionPayload = { productId, sharingComensalIds };
-        const nextState = billReducer(state, { type: 'SHARE_ITEM', payload: actionPayload });
-
-        dispatch({ type: 'SHARE_ITEM', payload: actionPayload });
-
-        setSaveStatus('saving');
-        isCriticalOperation.current = true;
-
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-
-        saveStateToGoogleSheets(shareId, dataToSave)
-            .then(() => setSaveStatus('saved'))
-            .catch((e) => {
-                console.error("Error al guardar ítem compartido:", e.message);
-                setSaveStatus('error');
-            })
-            .finally(() => {
-                isCriticalOperation.current = false;
-            });
-    }, [state, shareId, saveStateToGoogleSheets]);
+        createAndTriggerSave({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } });
+    }, [state]);
 
     const handleAddComensal = useCallback(() => {
         if (newComensalName.trim() === '') {
@@ -989,100 +952,25 @@ const App = () => {
             setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` });
             return;
         }
-
-        const actionPayload = newComensalName;
-        const nextState = billReducer(state, { type: 'ADD_COMENSAL', payload: actionPayload });
-
-        dispatch({ type: 'ADD_COMENSAL', payload: actionPayload });
+        createAndTriggerSave({ type: 'ADD_COMENSAL', payload: newComensalName });
         setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
         setNewComensalName('');
         setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
-
-        setSaveStatus('saving');
-        isCriticalOperation.current = true;
-        
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-        
-        saveStateToGoogleSheets(shareId, dataToSave)
-            .then(() => setSaveStatus('saved'))
-            .catch((e) => {
-                console.error("Error al guardar nuevo comensal:", e.message);
-                setSaveStatus('error');
-            })
-            .finally(() => {
-                isCriticalOperation.current = false;
-            });
-    }, [state, shareId, saveStateToGoogleSheets, newComensalName, comensales.length]);
+    }, [state, newComensalName, comensales.length]);
 
     const confirmClearComensal = useCallback(() => {
         if (comensalToClearId === null) return;
-
-        const actionPayload = { comensalId: comensalToClearId };
-        const nextState = billReducer(state, { type: 'CLEAR_COMENSAL_ITEMS', payload: actionPayload });
-
-        dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: actionPayload });
+        createAndTriggerSave({ type: 'CLEAR_COMENSAL_ITEMS', payload: { comensalId: comensalToClearId } });
         setIsClearComensalModalOpen(false);
         setComensalToClearId(null);
-
-        setSaveStatus('saving');
-        isCriticalOperation.current = true;
-
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-
-        saveStateToGoogleSheets(shareId, dataToSave)
-            .then(() => setSaveStatus('saved'))
-            .catch((e) => {
-                console.error("Error al limpiar ítems del comensal:", e.message);
-                setSaveStatus('error');
-            })
-            .finally(() => {
-                isCriticalOperation.current = false;
-            });
-    }, [state, shareId, saveStateToGoogleSheets, comensalToClearId]);
+    }, [state, comensalToClearId]);
 
     const confirmRemoveComensal = useCallback(() => {
         if (comensalToRemoveId === null) return;
-
-        const actionPayload = comensalToRemoveId;
-        const nextState = billReducer(state, { type: 'REMOVE_COMENSAL', payload: actionPayload });
-
-        dispatch({ type: 'REMOVE_COMENSAL', payload: actionPayload });
+        createAndTriggerSave({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId });
         setIsRemoveComensalModalOpen(false);
         setComensalToRemoveId(null);
-        
-        setSaveStatus('saving');
-        isCriticalOperation.current = true;
-        
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated,
-        };
-        
-        saveStateToGoogleSheets(shareId, dataToSave)
-            .then(() => setSaveStatus('saved'))
-            .catch((e) => {
-                console.error("Error al eliminar comensal:", e.message);
-                setSaveStatus('error');
-            })
-            .finally(() => {
-                isCriticalOperation.current = false;
-            });
-    }, [state, shareId, saveStateToGoogleSheets, comensalToRemoveId]);
+    }, [state, comensalToRemoveId]);
     
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
