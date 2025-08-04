@@ -895,15 +895,16 @@ const App = () => {
     const handleAddItem = useCallback((comensalId, productId) => {
         if (!productId) return;
 
-        // 1. Actualiza la UI inmediatamente (Actualización Optimista)
         const actionPayload = { comensalId, productId };
+        const nextState = billReducer(state, { type: 'ADD_ITEM', payload: actionPayload });
+
+        // 1. Actualización Optimista: La UI cambia al instante.
         dispatch({ type: 'ADD_ITEM', payload: actionPayload });
 
-        // 2. Inicia el guardado en segundo plano
+        // 2. Guardado seguro en segundo plano.
         setSaveStatus('saving');
         isCriticalOperation.current = true;
-
-        const nextState = billReducer(state, { type: 'ADD_ITEM', payload: actionPayload });
+        
         const dataToSave = {
             comensales: nextState.comensales,
             availableProducts: Object.fromEntries(nextState.availableProducts),
@@ -917,24 +918,21 @@ const App = () => {
             .catch((e) => {
                 console.error("Error al guardar nuevo ítem:", e.message);
                 setSaveStatus('error');
-                // Opcional: Aquí podrías despachar una acción para revertir el cambio en la UI
             })
             .finally(() => {
                 isCriticalOperation.current = false;
             });
-
     }, [state, shareId, saveStateToGoogleSheets]);
 
     const handleRemoveItem = useCallback((comensalId, itemIdentifier) => {
-        // 1. Actualización Optimista de la UI
         const actionPayload = { comensalId, itemIdentifier };
+        const nextState = billReducer(state, { type: 'REMOVE_ITEM_FROM_COMENSAL', payload: actionPayload });
+        
         dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: actionPayload });
 
-        // 2. Guardado en segundo plano
         setSaveStatus('saving');
         isCriticalOperation.current = true;
         
-        const nextState = billReducer(state, { type: 'REMOVE_ITEM_FROM_COMENSAL', payload: actionPayload });
         const dataToSave = {
             comensales: nextState.comensales,
             availableProducts: Object.fromEntries(nextState.availableProducts),
@@ -955,15 +953,14 @@ const App = () => {
     }, [state, shareId, saveStateToGoogleSheets]);
 
     const handleShareItem = useCallback((productId, sharingComensalIds) => {
-        // 1. Actualización Optimista
         const actionPayload = { productId, sharingComensalIds };
+        const nextState = billReducer(state, { type: 'SHARE_ITEM', payload: actionPayload });
+
         dispatch({ type: 'SHARE_ITEM', payload: actionPayload });
 
-        // 2. Guardado en segundo plano
         setSaveStatus('saving');
         isCriticalOperation.current = true;
 
-        const nextState = billReducer(state, { type: 'SHARE_ITEM', payload: actionPayload });
         const dataToSave = {
             comensales: nextState.comensales,
             availableProducts: Object.fromEntries(nextState.availableProducts),
@@ -993,18 +990,17 @@ const App = () => {
             return;
         }
 
-        // 1. Actualización Optimista
         const actionPayload = newComensalName;
+        const nextState = billReducer(state, { type: 'ADD_COMENSAL', payload: actionPayload });
+
         dispatch({ type: 'ADD_COMENSAL', payload: actionPayload });
         setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
         setNewComensalName('');
         setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
 
-        // 2. Guardado en segundo plano
         setSaveStatus('saving');
         isCriticalOperation.current = true;
         
-        const nextState = billReducer(state, { type: 'ADD_COMENSAL', payload: actionPayload });
         const dataToSave = {
             comensales: nextState.comensales,
             availableProducts: Object.fromEntries(nextState.availableProducts),
@@ -1027,17 +1023,16 @@ const App = () => {
     const confirmClearComensal = useCallback(() => {
         if (comensalToClearId === null) return;
 
-        // 1. Actualización Optimista
         const actionPayload = { comensalId: comensalToClearId };
+        const nextState = billReducer(state, { type: 'CLEAR_COMENSAL_ITEMS', payload: actionPayload });
+
         dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: actionPayload });
         setIsClearComensalModalOpen(false);
         setComensalToClearId(null);
 
-        // 2. Guardado en segundo plano
         setSaveStatus('saving');
         isCriticalOperation.current = true;
 
-        const nextState = billReducer(state, { type: 'CLEAR_COMENSAL_ITEMS', payload: actionPayload });
         const dataToSave = {
             comensales: nextState.comensales,
             availableProducts: Object.fromEntries(nextState.availableProducts),
@@ -1060,17 +1055,16 @@ const App = () => {
     const confirmRemoveComensal = useCallback(() => {
         if (comensalToRemoveId === null) return;
 
-        // 1. Actualización Optimista
         const actionPayload = comensalToRemoveId;
+        const nextState = billReducer(state, { type: 'REMOVE_COMENSAL', payload: actionPayload });
+
         dispatch({ type: 'REMOVE_COMENSAL', payload: actionPayload });
         setIsRemoveComensalModalOpen(false);
         setComensalToRemoveId(null);
         
-        // 2. Guardado en segundo plano
         setSaveStatus('saving');
         isCriticalOperation.current = true;
         
-        const nextState = billReducer(state, { type: 'REMOVE_COMENSAL', payload: actionPayload });
         const dataToSave = {
             comensales: nextState.comensales,
             availableProducts: Object.fromEntries(nextState.availableProducts),
