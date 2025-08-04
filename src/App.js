@@ -897,14 +897,14 @@ const App = () => {
             return;
         }
     
-        // Inmediatamente mostramos que estamos guardando para dar feedback al usuario.
+        // ▼▼▼ CAMBIO 1: Marcar que hay cambios pendientes ▼▼▼
+        hasPendingChanges.current = true;
         setSaveStatus('saving');
     
-        // Usamos un debounce para evitar enviar demasiadas solicitudes si el usuario
-        // hace muchos clics rápidos. 500ms es un buen balance.
+        // Usamos un debounce para evitar enviar demasiadas solicitudes.
         const handler = setTimeout(() => {
             const dataToSave = {
-                comensales, // <-- Aún tienes acceso a la versión más reciente
+                comensales,
                 availableProducts: Object.fromEntries(availableProducts),
                 masterProductList: Object.fromEntries(state.masterProductList),
                 activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
@@ -913,20 +913,21 @@ const App = () => {
     
             saveStateToGoogleSheets(shareId, dataToSave)
                 .then(() => {
-                    setSaveStatus('saved'); // Éxito: Guardado ✓
+                    setSaveStatus('saved');
                 })
                 .catch((e) => {
                     console.error("El guardado falló:", e.message);
-                    setSaveStatus('error'); // Error: Error al guardar ✗
+                    setSaveStatus('error');
+                })
+                // ▼▼▼ CAMBIO 2: Marcar que el guardado terminó ▼▼▼
+                .finally(() => {
+                    hasPendingChanges.current = false;
                 });
         }, 500);
     
-        // Limpiamos el timeout si el componente se desmonta o si el efecto se vuelve a ejecutar.
+        // Limpiamos el timeout si el efecto se vuelve a ejecutar.
         return () => clearTimeout(handler);
     
-    //  ▼▼▼ LA CLAVE ESTÁ AQUÍ ▼▼▼
-    // El efecto SÓLO se activa cuando estas variables cambian.
-    // Ya no depende directamente de los datos que guarda.
     }, [state.lastUpdated, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
     const handleAddItem = useCallback((comensalId, productId) => {
