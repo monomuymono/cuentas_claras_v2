@@ -719,7 +719,7 @@ const App = () => {
                 }
             }, 0);
         }
-    }, []);
+    }, [dispatch]);
     const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave, isNewSession = false, retryCount = 0) => {
         const MAX_RETRIES = 3;
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
