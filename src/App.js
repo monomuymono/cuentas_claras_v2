@@ -892,33 +892,6 @@ const App = () => {
         return () => clearTimeout(handler);
     }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.lastUpdated]);
 
-    ¡Por supuesto! Aquí tienes todos los cambios necesarios para implementar las actualizaciones optimistas.
-
-El objetivo es que la interfaz se actualice al instante para el usuario, y que el guardado en el servidor ocurra en segundo plano, haciendo que la aplicación se sienta mucho más rápida.
-
-## Instrucciones
-En tu archivo App.js, vas a reemplazar las seis funciones que manejan las acciones críticas. No necesitas tocar ninguna otra parte del código (ni el reducer ni los otros componentes).
-
-Reemplaza las siguientes funciones:
-
-handleAddItem
-
-handleRemoveItem
-
-handleShareItem
-
-handleAddComensal
-
-confirmClearComensal
-
-confirmRemoveComensal
-
-Con este bloque de código completo:
-
-JavaScript
-
-// --- COPIA Y PEGA ESTE BLOQUE COMPLETO EN TU COMPONENTE App ---
-
     const handleAddItem = useCallback((comensalId, productId) => {
         if (!productId) return;
 
