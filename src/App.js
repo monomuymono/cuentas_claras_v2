@@ -949,6 +949,7 @@ const handleRetrySave = () => {
         .catch((e) => {
             console.error("El guardado falló:", e.message);
             setSaveStatus('error');
+            lastFailedSaveData.current = dataToSave; 
         })
         .finally(() => {
             isSaving.current = false; // <-- 2. Ponemos el semáforo en verde, sin importar si falló o no.
