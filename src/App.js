@@ -314,7 +314,6 @@ function billReducer(state, action) {
         case 'SET_SHARE_LINK':
             return { ...state, shareLink: action.payload };
         case 'APPLY_DISCOUNT': {
-            hasPendingChanges.current = true;
             const { percentage, cap } = action.payload;
             return {
                 ...state,
@@ -1294,7 +1293,8 @@ const ReviewStep = ({
     onBack,
     discountPercentage,
     discountCap,
-    dispatch
+    dispatch,
+    hasPendingChanges
 }) => {
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
 
@@ -1310,6 +1310,7 @@ const ReviewStep = ({
     };
 
     const handleDiscountChange = (e) => {
+        hasPendingChanges.current = true;
         const { name, value } = e.target;
         const newPercentage = name === 'percentage' ? value : discountPercentage;
         const newCap = name === 'cap' ? value : discountCap;
