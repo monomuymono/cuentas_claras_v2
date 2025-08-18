@@ -357,25 +357,29 @@ function billReducer(state, action) {
             };
         }
         case 'LOAD_STATE': {
-            const serverData = action.payload;
-            const finalMasterList = serverData.masterProductList && Object.keys(serverData.masterProductList).length > 0
-                ? new Map(Object.entries(serverData.masterProductList))
-                : new Map(Object.entries(serverData.availableProducts || {}));
-            return {
-                ...state,
-                comensales: (serverData.comensales || []).map(diner => ({
-                    ...diner,
-                    selectedItems: diner.selectedItems || []
-                })),
-                activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
-                shareId: serverData.shareId || state.shareId,
-                lastUpdated: serverData.lastUpdated || null,
-                masterProductList: finalMasterList,
-                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || []),
-                discountPercentage: serverData.discountPercentage || 0,
-        discountCap: serverData.discountCap || 0
-            };
-        }
+            const serverData = action.payload;
+
+            // CAMBIO CLAVE: Ya no hacemos un fallback a availableProducts.
+            // masterProductList es la única fuente de verdad para el inventario total.
+            // Si no existe, empezamos con un mapa vacío.
+            const finalMasterList = new Map(Object.entries(serverData.masterProductList || {}));
+            
+            return {
+                ...state,
+                comensales: (serverData.comensales || []).map(diner => ({
+                    ...diner,
+                    selectedItems: diner.selectedItems || []
+                })),
+                activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [key, Array.from(value)])), // Corregido para que el valor sea un array, no un Set
+                shareId: serverData.shareId || state.shareId,
+                lastUpdated: serverData.lastUpdated || null,
+                masterProductList: finalMasterList,
+                // La recalculación ahora siempre funcionará porque parte del inventario correcto.
+                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || []),
+                discountPercentage: serverData.discountPercentage || 0,
+                discountCap: serverData.discountCap || 0
+            };
+        }
         case 'UPDATE_AVAILABLE_PRODUCTS':
             return {
                 ...state,
@@ -401,54 +405,61 @@ function billReducer(state, action) {
                 lastUpdated: new Date().toISOString()
             };
         case 'SYNC_STATE': {
-            const serverStateData = action.payload;
+            const serverStateData = action.payload;
+            // CAMBIO SUTIL PERO IMPORTANTE:
+            // Nos aseguramos de que el masterProductList del estado local no se pierda durante la sincronización.
+            // La sincronización se enfoca en comensales y descuentos, no en el inventario total.
+            const masterListToUse = state.masterProductList.size > 0 ? state.masterProductList : new Map(Object.entries(serverStateData.masterProductList || {}));
+            
+            // ... (el resto de la lógica de SYNC_STATE para reconciliar comensales sigue igual) ...
             const localState = state;
-            const serverComensalesMap = new Map((serverStateData.comensales || []).map(c => [c.id, c]));
-            const localComensalesMap = new Map(localState.comensales.map(c => [c.id, c]));
-            const reconciledComensales = [];
-            const allDinerIds = new Set([...serverComensalesMap.keys(), ...localComensalesMap.keys()]);
+            const serverComensalesMap = new Map((serverStateData.comensales || []).map(c => [c.id, c]));
+            const localComensalesMap = new Map(localState.comensales.map(c => [c.id, c]));
+            const reconciledComensales = [];
+            const allDinerIds = new Set([...serverComensalesMap.keys(), ...localComensalesMap.keys()]);
 
-            allDinerIds.forEach(id => {
-                const serverDiner = serverComensalesMap.get(id);
-                const localDiner = localComensalesMap.get(id);
+            allDinerIds.forEach(id => {
+                const serverDiner = serverComensalesMap.get(id);
+                const localDiner = localComensalesMap.get(id);
 
-                if (serverDiner && !localDiner) {
-                    reconciledComensales.push(serverDiner);
-                } else if (!serverDiner && localDiner) {
-                    reconciledComensales.push(localDiner);
-                } else if (serverDiner && localDiner) {
-                    const finalItems = [];
-                    const localItemsMap = new Map((localDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
-                    const serverItemsMap = new Map((serverDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
-                    const allItemKeys = new Set([...localItemsMap.keys(), ...serverItemsMap.keys()]);
+                if (serverDiner && !localDiner) {
+                    reconciledComensales.push(serverDiner);
+                } else if (!serverDiner && localDiner) {
+                    reconciledComensales.push(localDiner);
+                } else if (serverDiner && localDiner) {
+                    const finalItems = [];
+                    const localItemsMap = new Map((localDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const serverItemsMap = new Map((serverDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const allItemKeys = new Set([...localItemsMap.keys(), ...serverItemsMap.keys()]);
 
-                    allItemKeys.forEach(key => {
-                        const localItem = localItemsMap.get(key);
-                        const serverItem = serverItemsMap.get(key);
-                        if (localItem && !serverItem) { // Existe localmente, no en el servidor (fue eliminado remotamente o añadido localmente)
-                            finalItems.push(localItem);
-                        } else if (serverItem && !localItem) { // Existe en el servidor, no localmente (fue añadido remotamente)
-                            finalItems.push(serverItem);
-                        } else if (serverItem && localItem) { // Existe en ambos, comparar timestamps
-                            const localDate = new Date(localItem.modifiedAt || 0);
-                            const serverDate = new Date(serverItem.modifiedAt || 0);
-                            finalItems.push(serverDate > localDate ? serverItem : localItem);
-                        }
-                    });
-                    reconciledComensales.push({ ...serverDiner, selectedItems: finalItems });
-                }
-            });
+                    allItemKeys.forEach(key => {
+                        const localItem = localItemsMap.get(key);
+                        const serverItem = serverItemsMap.get(key);
+                        if (localItem && !serverItem) {
+                            finalItems.push(localItem);
+                        } else if (serverItem && !localItem) {
+                            finalItems.push(serverItem);
+                        } else if (serverItem && localItem) {
+                            const localDate = new Date(localItem.modifiedAt || 0);
+                            const serverDate = new Date(serverItem.modifiedAt || 0);
+                            finalItems.push(serverDate > localDate ? serverItem : localItem);
+                        }
+                    });
+                    reconciledComensales.push({ ...serverDiner, selectedItems: finalItems });
+                }
+            });
 
-            return {
-                ...state,
-                comensales: reconciledComensales,
-                activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
-                lastUpdated: serverStateData.lastUpdated,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales),
-                discountPercentage: serverStateData.discountPercentage !== undefined ? serverStateData.discountPercentage : state.discountPercentage,
-        discountCap: serverStateData.discountCap !== undefined ? serverStateData.discountCap : state.discountCap
-            };
-        }
+            return {
+                ...state,
+                masterProductList: masterListToUse, // Aseguramos que no se borre
+                comensales: reconciledComensales,
+                activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [key, Array.from(value)])),
+                lastUpdated: serverStateData.lastUpdated,
+                availableProducts: recalculateAvailableProducts(masterListToUse, reconciledComensales),
+                discountPercentage: serverStateData.discountPercentage !== undefined ? serverStateData.discountPercentage : state.discountPercentage,
+                discountCap: serverStateData.discountCap !== undefined ? serverStateData.discountCap : state.discountCap
+            };
+        }
         case 'ADD_ITEM': {
             const { comensalId, productId } = action.payload;
             const productInStock = state.availableProducts.get(productId);
