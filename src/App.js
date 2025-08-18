@@ -358,7 +358,9 @@ function billReducer(state, action) {
                 shareId: serverData.shareId,
                 lastUpdated: serverData.lastUpdated || null,
                 masterProductList: finalMasterList,
-                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || [])
+                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || []),
+                discountPercentage: serverData.discountPercentage || 0,
+        discountCap: serverData.discountCap || 0
             };
         }
         case 'UPDATE_AVAILABLE_PRODUCTS':
@@ -429,7 +431,9 @@ function billReducer(state, action) {
                 comensales: reconciledComensales,
                 activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
                 lastUpdated: serverStateData.lastUpdated,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales)
+                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales),
+                discountPercentage: serverStateData.discountPercentage !== undefined ? serverStateData.discountPercentage : state.discountPercentage,
+        discountCap: serverStateData.discountCap !== undefined ? serverStateData.discountCap : state.discountCap
             };
         }
         case 'ADD_ITEM': {
@@ -913,6 +917,8 @@ const App = () => {
                 availableProducts: Object.fromEntries(availableProducts),
                 masterProductList: Object.fromEntries(state.masterProductList),
                 activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+                discountPercentage: state.discountPercentage,
+        discountCap: state.discountCap,
                 lastUpdated: state.lastUpdated
             };
     
