@@ -679,6 +679,7 @@ const handleRetrySave = () => {
         .then(() => {
             setSaveStatus('saved');
             lastFailedSaveData.current = null; // Limpia en caso de éxito
+            hasPendingChanges.current = false;
         })
         .catch((e) => {
             console.error("El reintento de guardado falló:", e.message);
