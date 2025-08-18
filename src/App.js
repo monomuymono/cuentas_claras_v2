@@ -8,6 +8,19 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 // --- FUNCIÓN AUXILIAR PARA IDs ÚNICOS ---
 const generateUniqueId = (prefix = 'id') => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
+// --- NUEVA FUNCIÓN "TRADUCTORA" DE NÚMEROS ---
+const parseChileanNumber = (str) => {
+  // Si no es un texto, lo devolvemos como número por si acaso
+  if (typeof str !== 'string') {
+    return Number(str) || 0;
+  }
+  // 1. Quita todos los puntos (separadores de miles) -> "1.234,56" se convierte en "1234,56"
+  const withoutDots = str.replace(/\./g, '');
+  // 2. Reemplaza la coma decimal por un punto -> "1234,56" se convierte en "1234.56"
+  const withDotDecimal = withoutDots.replace(/,/, '.');
+  // 3. Convierte el texto limpio a un número de punto flotante
+  return parseFloat(withDotDecimal) || 0;
+};
 
 // --- CONSTANTES ---
 const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec";
@@ -1039,7 +1052,7 @@ useEffect(() => {
           const newProductsMap = new Map();
           parsedData.items.forEach(item => {
               const name = item.name?.trim();
-              const price = parseFloat(String(item.price).replace(/\./g, ''));
+              const price = parseChileanNumber(String(item.price));
               const quantity = parseInt(item.quantity, 10);
               if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
                   const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
@@ -1313,7 +1326,7 @@ const ReviewStep = ({
         dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: newPercentage, cap: newCap } });
     };
 
-    const total = Array.from(products.values()).reduce((sum, p) => (sum + (parseFloat(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
+    const total = Array.from(products.values()).reduce((sum, p) => (sum + (parseChileanNumber(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
     const potentialDiscount = total * (discountPercentage / 100);
     const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
     const tip = total * TIP_PERCENTAGE;
@@ -1368,7 +1381,8 @@ const AssigningStep = ({
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
     onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus, dispatch, onRetrySave
 }) => {
-    const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
+    
+    const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (parseChileanNumber(item.originalBasePrice) || 0) * item.quantity, 0), 0);
     const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
     const unassignedItems = Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0);
     const totalUnassignedQuantity = unassignedItems.reduce((sum, item) => sum + Number(item.quantity), 0);
