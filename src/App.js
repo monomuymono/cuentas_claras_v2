@@ -651,6 +651,7 @@ const App = () => {
 
     // Maneja cambios en los campos de un producto existente (nombre, precio, cantidad)
     const handleProductChange = (productId, field, value) => {
+        hasPendingChanges.current = true;
         const newProducts = new Map(state.availableProducts);
         const product = newProducts.get(productId);
         if (product) {
@@ -692,6 +693,7 @@ const handleRetrySave = () => {
 
     // Maneja la adición de un nuevo producto desde el formulario de ReviewStep
     const handleAddNewProduct = (newItem) => {
+        hasPendingChanges.current = true;
         const newProducts = new Map(state.availableProducts);
         const newId = generateUniqueId('item');
         newProducts.set(newId, { ...newItem, id: newId });
@@ -700,6 +702,7 @@ const handleRetrySave = () => {
 
     // Maneja la eliminación de un producto
     const handleRemoveProduct = (productId) => {
+        hasPendingChanges.current = true;
         const newProducts = new Map(state.availableProducts);
         newProducts.delete(productId);
         dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
