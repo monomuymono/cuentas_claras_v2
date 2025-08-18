@@ -735,6 +735,7 @@ const handleRetrySave = () => {
                     const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
                     dispatch({ type: 'LOAD_STATE', payload: { ...data, availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances } });
                     lastSyncedTimestamp.current = data.lastUpdated;
+setSaveStatus('saved');
                     if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
                         dispatch({ type: 'SET_STEP', payload: 'assigning' });
                     } else {
