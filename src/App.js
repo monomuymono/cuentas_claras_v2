@@ -645,6 +645,7 @@ const App = () => {
     const isCriticalOperation = useRef(false);
     const [saveStatus, setSaveStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
     const isSaving = useRef(false);
+    const lastFailedSaveData = useRef(null);
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
 
@@ -658,6 +659,36 @@ const App = () => {
             dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
         }
     };
+    
+const handleRetrySave = () => {
+    if (!lastFailedSaveData.current) {
+        console.error("No hay datos de guardado fallido para reintentar.");
+        // Si no hay datos, fuerza un guardado con el estado actual
+        dispatch({ type: 'UPDATE_AVAILABLE_PRODUCTS', payload: state.availableProducts });
+        return;
+    }
+
+    // Usamos los datos exactos que fallaron
+    const dataToRetry = lastFailedSaveData.current;
+
+    isSaving.current = true;
+    setSaveStatus('saving');
+
+    saveStateToGoogleSheets(shareId, dataToRetry)
+        .then(() => {
+            setSaveStatus('saved');
+            lastFailedSaveData.current = null; // Limpia en caso de éxito
+        })
+        .catch((e) => {
+            console.error("El reintento de guardado falló:", e.message);
+            setSaveStatus('error');
+            // Mantiene los datos en lastFailedSaveData para poder reintentar de nuevo
+        })
+        .finally(() => {
+            isSaving.current = false;
+        });
+};
+
 
     // Maneja la adición de un nuevo producto desde el formulario de ReviewStep
     const handleAddNewProduct = (newItem) => {
@@ -737,12 +768,7 @@ const App = () => {
         }
         if (!currentShareId || !userId) return Promise.resolve();
     
-        if (!isNewSession) {
-            const currentServerData = await loadStateFromGoogleSheets(currentShareId).catch(() => null);
-            if (currentServerData && currentServerData.lastUpdated && new Date(currentServerData.lastUpdated) > new Date(dataToSave.lastUpdated)) {
-                return Promise.reject(new Error("El estado en el servidor es más reciente."));
-            }
-        }
+        
     
         const promiseWithTimeout = new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
@@ -1111,6 +1137,7 @@ const App = () => {
                         discountCap={discountCap}
                         saveStatus={saveStatus}
                         dispatch={dispatch} // <-- Prop necesaria para el botón "Reintentar"
+onRetrySave={handleRetrySave}
                     />
                 );
                 return <p>Cargando...</p>;
