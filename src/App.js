@@ -644,6 +644,7 @@ const App = () => {
     const [loadingMessage, setLoadingMessage] = useState('');
     const isCriticalOperation = useRef(false);
     const [saveStatus, setSaveStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
+    const isSaving = useRef(false);
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
 
@@ -884,62 +885,50 @@ const App = () => {
 
 
     useEffect(() => {
-        if (saveStatus === 'error') {
-            const resetStatusTimeout = setTimeout(() => {
-                setSaveStatus('idle');
-            }, 5000); // Restablecer después de 5 segundos
-            return () => clearTimeout(resetStatusTimeout);
-        }
-    }, [saveStatus]);
+    // Si la carga inicial no ha terminado o no hay un ID de sesión, no hacemos nada.
+    if (!initialLoadDone.current || isLoadingFromServer.current || !shareId || shareId.startsWith('local-')) {
+        return;
+    }
 
-    // En tu componente App.js
+    // Si no hay una marca de tiempo de actualización, no hay nada que guardar.
+    if (!state.lastUpdated) {
+        return;
+    }
 
-    useEffect(() => {
-        // Si la carga inicial no ha terminado, si estamos en una operación crítica
-        // o si no hay un ID de sesión para guardar, no hacemos nada.
-        if (!initialLoadDone.current || isLoadingFromServer.current || isCriticalOperation.current || !shareId || shareId.startsWith('local-')) {
-            return;
-        }
-        
-        // Si state.lastUpdated es nulo (estado inicial), no hay nada que guardar.
-        if (!state.lastUpdated) {
-            return;
-        }
-    
-        // ▼▼▼ CAMBIO 1: Marcar que hay cambios pendientes ▼▼▼
-        hasPendingChanges.current = true;
-        setSaveStatus('saving');
-    
-        // Usamos un debounce para evitar enviar demasiadas solicitudes.
-        const handler = setTimeout(() => {
-            const dataToSave = {
-                comensales,
-                availableProducts: Object.fromEntries(availableProducts),
-                masterProductList: Object.fromEntries(state.masterProductList),
-                activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-                discountPercentage: state.discountPercentage,
+    // Si ya hay una operación de guardado en curso, simplemente salimos.
+    // El cambio más reciente se guardará en la siguiente oportunidad.
+    if (isSaving.current) {
+        return;
+    }
+
+    // --- INICIA EL PROCESO DE GUARDADO ---
+    isSaving.current = true;      // <-- 1. Ponemos el semáforo en rojo.
+    setSaveStatus('saving');
+
+    const dataToSave = {
+        comensales,
+        availableProducts: Object.fromEntries(availableProducts),
+        masterProductList: Object.fromEntries(state.masterProductList),
+        activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+        // IMPORTANTE: No olvides incluir la corrección anterior sobre el descuento.
+        discountPercentage: state.discountPercentage,
         discountCap: state.discountCap,
-                lastUpdated: state.lastUpdated
-            };
-    
-            saveStateToGoogleSheets(shareId, dataToSave)
-                .then(() => {
-                    setSaveStatus('saved');
-                })
-                .catch((e) => {
-                    console.error("El guardado falló:", e.message);
-                    setSaveStatus('error');
-                })
-                // ▼▼▼ CAMBIO 2: Marcar que el guardado terminó ▼▼▼
-                .finally(() => {
-                    hasPendingChanges.current = false;
-                });
-        }, 500);
-    
-        // Limpiamos el timeout si el efecto se vuelve a ejecutar.
-        return () => clearTimeout(handler);
-    
-    }, [state.lastUpdated, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
+        lastUpdated: state.lastUpdated
+    };
+
+    saveStateToGoogleSheets(shareId, dataToSave)
+        .then(() => {
+            setSaveStatus('saved');
+        })
+        .catch((e) => {
+            console.error("El guardado falló:", e.message);
+            setSaveStatus('error');
+        })
+        .finally(() => {
+            isSaving.current = false; // <-- 2. Ponemos el semáforo en verde, sin importar si falló o no.
+        });
+
+}, [state.lastUpdated, shareId, authReady]);
 
     const handleAddItem = useCallback((comensalId, productId) => {
         if (!productId) return;
