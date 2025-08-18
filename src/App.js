@@ -644,7 +644,6 @@ const App = () => {
     const [loadingMessage, setLoadingMessage] = useState('');
     const isCriticalOperation = useRef(false);
     const [saveStatus, setSaveStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
-    const [retryTrigger, setRetryTrigger] = useState(null);
     const isSaving = useRef(false);
     const lastFailedSaveData = useRef(null);
     
@@ -662,11 +661,34 @@ const App = () => {
         }
     };
     
-// REEMPLAZAR LA FUNCIÓN COMPLETA
 const handleRetrySave = () => {
-    // Simplemente actualiza el estado 'retryTrigger' para forzar
-    // la reactivación del useEffect de guardado.
-    setRetryTrigger(new Date().toISOString());
+    if (isSaving.current) return; // Protección extra
+    if (!lastFailedSaveData.current) {
+        console.error("No hay datos de guardado fallido para reintentar.");
+        // Si no hay datos, forzamos un guardado del estado actual activando el useEffect
+        dispatch({ type: 'UPDATE_AVAILABLE_PRODUCTS', payload: availableProducts });
+        return;
+    }
+
+    const dataToRetry = lastFailedSaveData.current;
+
+    isSaving.current = true;
+    setSaveStatus('saving');
+
+    saveStateToGoogleSheets(shareId, dataToRetry)
+        .then(() => {
+            setSaveStatus('saved');
+            lastFailedSaveData.current = null;
+            hasPendingChanges.current = false;
+        })
+        .catch((e) => {
+            console.error("El reintento de guardado falló:", e.message);
+            setSaveStatus('error');
+            // Mantenemos los datos en lastFailedSaveData para poder reintentar de nuevo
+        })
+        .finally(() => {
+            isSaving.current = false;
+        });
 };
 
 
@@ -892,64 +914,47 @@ setSaveStatus('saved');
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
 
 
-
-    // REEMPLAZAR EL USEEFFECT DE GUARDADO COMPLETO
-
 useEffect(() => {
-    // --- 1. Guardias de entrada (sin cambios) ---
     if (!initialLoadDone.current || isLoadingFromServer.current || !shareId || shareId.startsWith('local-')) {
+        return;
+    }
+    if (!state.lastUpdated) {
         return;
     }
     if (isSaving.current) {
         return;
     }
-    
-    // --- 2. Decidir qué datos guardar (NUEVA LÓGICA) ---
-    // Si hay datos de un guardado fallido, usamos esos. Si no, usamos el estado actual.
-    const hasFailedData = !!lastFailedSaveData.current;
-    const dataToSave = hasFailedData
-        ? lastFailedSaveData.current
-        : {
-            shareId: shareId,
-            comensales,
-            availableProducts: Object.fromEntries(availableProducts),
-            masterProductList: Object.fromEntries(state.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            discountPercentage: state.discountPercentage,
-            discountCap: state.discountCap,
-            lastUpdated: state.lastUpdated
-        };
 
-    // Si no hay datos fallidos Y no hay una actualización de estado, no hacer nada.
-    // Esto previene un guardado innecesario cuando solo se activa el retryTrigger.
-    if (!hasFailedData && !state.lastUpdated) {
-        return;
-    }
-
-    // --- 3. Iniciar el proceso de guardado (lógica movida aquí) ---
     isSaving.current = true;
     setSaveStatus('saving');
+
+    const dataToSave = {
+        shareId: shareId,
+        comensales,
+        availableProducts: Object.fromEntries(availableProducts),
+        masterProductList: Object.fromEntries(state.masterProductList),
+        activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+        discountPercentage: state.discountPercentage,
+        discountCap: state.discountCap,
+        lastUpdated: state.lastUpdated
+    };
 
     saveStateToGoogleSheets(shareId, dataToSave)
         .then(() => {
             setSaveStatus('saved');
             hasPendingChanges.current = false;
-            // IMPORTANTE: Limpiar los datos del error si el reintento fue exitoso.
-            if (hasFailedData) {
-                lastFailedSaveData.current = null;
-            }
         })
         .catch((e) => {
             console.error("El guardado falló:", e.message);
             setSaveStatus('error');
-            // Guardar los datos que acabamos de intentar enviar.
-            lastFailedSaveData.current = dataToSave;
+            lastFailedSaveData.current = dataToSave; 
         })
         .finally(() => {
             isSaving.current = false;
         });
 
-}, [state.lastUpdated, retryTrigger, shareId, authReady]); // <-- AÑADIR retryTrigger
+}, [state.lastUpdated, shareId, authReady]); // <-- Asegúrate que el array de dependencias NO incluya retryTrigger
+
 
 
     const handleAddItem = useCallback((comensalId, productId) => {
