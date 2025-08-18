@@ -1346,7 +1346,7 @@ const AssigningStep = ({
     onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus, dispatch, onRetrySave
 }) => {
     
-    const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (parseChileanNumber(item.originalBasePrice) || 0) * item.quantity, 0), 0);
+    const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
     const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
     const unassignedItems = Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0);
     const totalUnassignedQuantity = unassignedItems.reduce((sum, item) => sum + Number(item.quantity), 0);
