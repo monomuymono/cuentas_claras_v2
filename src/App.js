@@ -314,6 +314,7 @@ function billReducer(state, action) {
         case 'SET_SHARE_LINK':
             return { ...state, shareLink: action.payload };
         case 'APPLY_DISCOUNT': {
+            hasPendingChanges.current = true;
             const { percentage, cap } = action.payload;
             return {
                 ...state,
@@ -949,6 +950,7 @@ setSaveStatus('saved');
     saveStateToGoogleSheets(shareId, dataToSave)
         .then(() => {
             setSaveStatus('saved');
+            hasPendingChanges.current = false;
         })
         .catch((e) => {
             console.error("El guardado falló:", e.message);
