@@ -960,14 +960,17 @@ setSaveStatus('saved');
 
     const handleAddItem = useCallback((comensalId, productId) => {
         if (!productId) return;
+        hasPendingChanges.current = true;
         dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } });
     }, [dispatch]); // <-- Dependencia solo de dispatch
     
     const handleRemoveItem = useCallback((comensalId, itemIdentifier) => {
+        hasPendingChanges.current = true;
         dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } });
     }, [dispatch]); // <-- Dependencia solo de dispatch
     
     const handleShareItem = useCallback((productId, sharingComensalIds) => {
+        hasPendingChanges.current = true;
         dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } });
     }, [dispatch]); // <-- Dependencia solo de dispatch
 
@@ -980,6 +983,7 @@ setSaveStatus('saved');
             setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` });
             return;
         }
+        hasPendingChanges.current = true;
         dispatch({ type: 'ADD_COMENSAL', payload: newComensalName });
         setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
         setNewComensalName('');
@@ -989,6 +993,7 @@ setSaveStatus('saved');
     
     const confirmClearComensal = useCallback(() => {
         if (comensalToClearId === null) return;
+        hasPendingChanges.current = true;
         dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: { comensalId: comensalToClearId } });
         setIsClearComensalModalOpen(false);
         setComensalToClearId(null);
@@ -997,6 +1002,7 @@ setSaveStatus('saved');
     
     const confirmRemoveComensal = useCallback(() => {
         if (comensalToRemoveId === null) return;
+        hasPendingChanges.current = true;
         dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId });
         setIsRemoveComensalModalOpen(false);
         setComensalToRemoveId(null);
