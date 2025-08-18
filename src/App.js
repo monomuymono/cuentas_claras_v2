@@ -1356,7 +1356,7 @@ const ReviewStep = ({
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
-    onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus, dispatch
+    onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus, dispatch, onRetrySave
 }) => {
     const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
     const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
@@ -1424,7 +1424,7 @@ const AssigningStep = ({
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /> </svg>
                             Error al guardar ✗
                             <button
-                                onClick={() => dispatch({ type: 'UPDATE_AVAILABLE_PRODUCTS', payload: availableProducts })}
+                                onClick={onRetrySave}
                                 className="ml-2 px-2 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
                             >
                                 Reintentar
