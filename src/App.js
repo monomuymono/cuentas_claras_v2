@@ -355,7 +355,7 @@ function billReducer(state, action) {
                     selectedItems: diner.selectedItems || []
                 })),
                 activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
-                shareId: serverData.shareId,
+                shareId: serverData.shareId || state.shareId,
                 lastUpdated: serverData.lastUpdated || null,
                 masterProductList: finalMasterList,
                 availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || []),
@@ -936,6 +936,7 @@ setSaveStatus('saved');
     setSaveStatus('saving');
 
     const dataToSave = {
+        shareId: shareId,
         comensales,
         availableProducts: Object.fromEntries(availableProducts),
         masterProductList: Object.fromEntries(state.masterProductList),
