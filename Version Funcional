@@ -355,10 +355,12 @@ function billReducer(state, action) {
                     selectedItems: diner.selectedItems || []
                 })),
                 activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
-                shareId: serverData.shareId,
+                shareId: serverData.shareId || state.shareId,
                 lastUpdated: serverData.lastUpdated || null,
                 masterProductList: finalMasterList,
-                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || [])
+                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || []),
+                discountPercentage: serverData.discountPercentage || 0,
+        discountCap: serverData.discountCap || 0
             };
         }
         case 'UPDATE_AVAILABLE_PRODUCTS':
@@ -429,7 +431,9 @@ function billReducer(state, action) {
                 comensales: reconciledComensales,
                 activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
                 lastUpdated: serverStateData.lastUpdated,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales)
+                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales),
+                discountPercentage: serverStateData.discountPercentage !== undefined ? serverStateData.discountPercentage : state.discountPercentage,
+        discountCap: serverStateData.discountCap !== undefined ? serverStateData.discountCap : state.discountCap
             };
         }
         case 'ADD_ITEM': {
@@ -640,11 +644,14 @@ const App = () => {
     const [loadingMessage, setLoadingMessage] = useState('');
     const isCriticalOperation = useRef(false);
     const [saveStatus, setSaveStatus] = useState('idle'); // 'idle', 'saving', 'saved', 'error'
+    const isSaving = useRef(false);
+    const lastFailedSaveData = useRef(null);
     
     const handleResetAll = useCallback(() => { dispatch({ type: 'RESET_SESSION' }); }, []);
 
     // Maneja cambios en los campos de un producto existente (nombre, precio, cantidad)
     const handleProductChange = (productId, field, value) => {
+        hasPendingChanges.current = true;
         const newProducts = new Map(state.availableProducts);
         const product = newProducts.get(productId);
         if (product) {
@@ -653,9 +660,41 @@ const App = () => {
             dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
         }
     };
+    
+const handleRetrySave = () => {
+    if (isSaving.current) return; // Protección extra
+    if (!lastFailedSaveData.current) {
+        console.error("No hay datos de guardado fallido para reintentar.");
+        // Si no hay datos, forzamos un guardado del estado actual activando el useEffect
+        dispatch({ type: 'UPDATE_AVAILABLE_PRODUCTS', payload: availableProducts });
+        return;
+    }
+
+    const dataToRetry = lastFailedSaveData.current;
+
+    isSaving.current = true;
+    setSaveStatus('saving');
+
+    saveStateToGoogleSheets(shareId, dataToRetry)
+        .then(() => {
+            setSaveStatus('saved');
+            lastFailedSaveData.current = null;
+            hasPendingChanges.current = false;
+        })
+        .catch((e) => {
+            console.error("El reintento de guardado falló:", e.message);
+            setSaveStatus('error');
+            // Mantenemos los datos en lastFailedSaveData para poder reintentar de nuevo
+        })
+        .finally(() => {
+            isSaving.current = false;
+        });
+};
+
 
     // Maneja la adición de un nuevo producto desde el formulario de ReviewStep
     const handleAddNewProduct = (newItem) => {
+        hasPendingChanges.current = true;
         const newProducts = new Map(state.availableProducts);
         const newId = generateUniqueId('item');
         newProducts.set(newId, { ...newItem, id: newId });
@@ -664,6 +703,7 @@ const App = () => {
 
     // Maneja la eliminación de un producto
     const handleRemoveProduct = (productId) => {
+        hasPendingChanges.current = true;
         const newProducts = new Map(state.availableProducts);
         newProducts.delete(productId);
         dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
@@ -699,6 +739,7 @@ const App = () => {
                     const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
                     dispatch({ type: 'LOAD_STATE', payload: { ...data, availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances } });
                     lastSyncedTimestamp.current = data.lastUpdated;
+setSaveStatus('saved');
                     if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
                         dispatch({ type: 'SET_STEP', payload: 'assigning' });
                     } else {
@@ -732,12 +773,7 @@ const App = () => {
         }
         if (!currentShareId || !userId) return Promise.resolve();
     
-        if (!isNewSession) {
-            const currentServerData = await loadStateFromGoogleSheets(currentShareId).catch(() => null);
-            if (currentServerData && currentServerData.lastUpdated && new Date(currentServerData.lastUpdated) > new Date(dataToSave.lastUpdated)) {
-                return Promise.reject(new Error("El estado en el servidor es más reciente."));
-            }
-        }
+        
     
         const promiseWithTimeout = new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
@@ -878,73 +914,62 @@ const App = () => {
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
 
 
+useEffect(() => {
+    if (!initialLoadDone.current || isLoadingFromServer.current || !shareId || shareId.startsWith('local-')) {
+        return;
+    }
+    if (!state.lastUpdated) {
+        return;
+    }
+    if (isSaving.current) {
+        return;
+    }
 
-    useEffect(() => {
-        if (saveStatus === 'error') {
-            const resetStatusTimeout = setTimeout(() => {
-                setSaveStatus('idle');
-            }, 5000); // Restablecer después de 5 segundos
-            return () => clearTimeout(resetStatusTimeout);
-        }
-    }, [saveStatus]);
+    isSaving.current = true;
+    setSaveStatus('saving');
 
-    // En tu componente App.js
+    const dataToSave = {
+        shareId: shareId,
+        comensales,
+        availableProducts: Object.fromEntries(availableProducts),
+        masterProductList: Object.fromEntries(state.masterProductList),
+        activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
+        discountPercentage: state.discountPercentage,
+        discountCap: state.discountCap,
+        lastUpdated: state.lastUpdated
+    };
 
-    useEffect(() => {
-        // Si la carga inicial no ha terminado, si estamos en una operación crítica
-        // o si no hay un ID de sesión para guardar, no hacemos nada.
-        if (!initialLoadDone.current || isLoadingFromServer.current || isCriticalOperation.current || !shareId || shareId.startsWith('local-')) {
-            return;
-        }
-        
-        // Si state.lastUpdated es nulo (estado inicial), no hay nada que guardar.
-        if (!state.lastUpdated) {
-            return;
-        }
-    
-        // ▼▼▼ CAMBIO 1: Marcar que hay cambios pendientes ▼▼▼
-        hasPendingChanges.current = true;
-        setSaveStatus('saving');
-    
-        // Usamos un debounce para evitar enviar demasiadas solicitudes.
-        const handler = setTimeout(() => {
-            const dataToSave = {
-                comensales,
-                availableProducts: Object.fromEntries(availableProducts),
-                masterProductList: Object.fromEntries(state.masterProductList),
-                activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-                lastUpdated: state.lastUpdated
-            };
-    
-            saveStateToGoogleSheets(shareId, dataToSave)
-                .then(() => {
-                    setSaveStatus('saved');
-                })
-                .catch((e) => {
-                    console.error("El guardado falló:", e.message);
-                    setSaveStatus('error');
-                })
-                // ▼▼▼ CAMBIO 2: Marcar que el guardado terminó ▼▼▼
-                .finally(() => {
-                    hasPendingChanges.current = false;
-                });
-        }, 500);
-    
-        // Limpiamos el timeout si el efecto se vuelve a ejecutar.
-        return () => clearTimeout(handler);
-    
-    }, [state.lastUpdated, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
+    saveStateToGoogleSheets(shareId, dataToSave)
+        .then(() => {
+            setSaveStatus('saved');
+            hasPendingChanges.current = false;
+        })
+        .catch((e) => {
+            console.error("El guardado falló:", e.message);
+            setSaveStatus('error');
+            lastFailedSaveData.current = dataToSave; 
+        })
+        .finally(() => {
+            isSaving.current = false;
+        });
+
+}, [state.lastUpdated, shareId, authReady]); // <-- Asegúrate que el array de dependencias NO incluya retryTrigger
+
+
 
     const handleAddItem = useCallback((comensalId, productId) => {
         if (!productId) return;
+        hasPendingChanges.current = true;
         dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } });
     }, [dispatch]); // <-- Dependencia solo de dispatch
     
     const handleRemoveItem = useCallback((comensalId, itemIdentifier) => {
+        hasPendingChanges.current = true;
         dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } });
     }, [dispatch]); // <-- Dependencia solo de dispatch
     
     const handleShareItem = useCallback((productId, sharingComensalIds) => {
+        hasPendingChanges.current = true;
         dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } });
     }, [dispatch]); // <-- Dependencia solo de dispatch
 
@@ -957,6 +982,7 @@ const App = () => {
             setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` });
             return;
         }
+        hasPendingChanges.current = true;
         dispatch({ type: 'ADD_COMENSAL', payload: newComensalName });
         setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
         setNewComensalName('');
@@ -966,6 +992,7 @@ const App = () => {
     
     const confirmClearComensal = useCallback(() => {
         if (comensalToClearId === null) return;
+        hasPendingChanges.current = true;
         dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: { comensalId: comensalToClearId } });
         setIsClearComensalModalOpen(false);
         setComensalToClearId(null);
@@ -974,6 +1001,7 @@ const App = () => {
     
     const confirmRemoveComensal = useCallback(() => {
         if (comensalToRemoveId === null) return;
+        hasPendingChanges.current = true;
         dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId });
         setIsRemoveComensalModalOpen(false);
         setComensalToRemoveId(null);
@@ -1024,6 +1052,7 @@ const App = () => {
               }
           });
   
+          hasPendingChanges.current = true;
           dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
       } catch (error) {
           console.error("Error al analizar:", error);
@@ -1116,6 +1145,7 @@ const App = () => {
                         discountCap={discountCap}
                         saveStatus={saveStatus}
                         dispatch={dispatch} // <-- Prop necesaria para el botón "Reintentar"
+onRetrySave={handleRetrySave}
                     />
                 );
                 return <p>Cargando...</p>;
@@ -1259,7 +1289,8 @@ const ReviewStep = ({
     onBack,
     discountPercentage,
     discountCap,
-    dispatch
+    dispatch,
+    hasPendingChanges
 }) => {
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
 
@@ -1275,6 +1306,7 @@ const ReviewStep = ({
     };
 
     const handleDiscountChange = (e) => {
+        hasPendingChanges.current = true;
         const { name, value } = e.target;
         const newPercentage = name === 'percentage' ? value : discountPercentage;
         const newCap = name === 'cap' ? value : discountCap;
@@ -1334,7 +1366,7 @@ const ReviewStep = ({
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
-    onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus, dispatch
+    onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus, dispatch, onRetrySave
 }) => {
     const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
     const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
@@ -1402,7 +1434,7 @@ const AssigningStep = ({
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /> </svg>
                             Error al guardar ✗
                             <button
-                                onClick={() => dispatch({ type: 'UPDATE_AVAILABLE_PRODUCTS', payload: availableProducts })}
+                                onClick={onRetrySave}
                                 className="ml-2 px-2 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
                             >
                                 Reintentar
