@@ -315,7 +315,12 @@ function billReducer(state, action) {
             return { ...state, shareLink: action.payload };
         case 'APPLY_DISCOUNT': {
             const { percentage, cap } = action.payload;
-            return { ...state, discountPercentage: parseFloat(percentage) || 0, discountCap: parseFloat(cap) || 0 };
+            return {
+                ...state,
+                discountPercentage: parseFloat(percentage) || 0,
+                discountCap: parseFloat(cap) || 0,
+                lastUpdated: new Date().toISOString() // <-- LA LÍNEA CRÍTICA QUE FALTABA
+            };
         }
         case 'ADD_COMENSAL': {
             if (state.comensales.length >= MAX_COMENSALES) return state;
@@ -719,20 +724,21 @@ const App = () => {
                 }
             }, 0);
         }
-    }, []);
-    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave, isNewSession = false) => {
+    }, [dispatch]);
+    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave, isNewSession = false, retryCount = 0) => {
+        const MAX_RETRIES = 3;
         if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
             return Promise.reject(new Error("URL de Apps Script inválida."));
         }
         if (!currentShareId || !userId) return Promise.resolve();
-
+    
         if (!isNewSession) {
             const currentServerData = await loadStateFromGoogleSheets(currentShareId).catch(() => null);
             if (currentServerData && currentServerData.lastUpdated && new Date(currentServerData.lastUpdated) > new Date(dataToSave.lastUpdated)) {
                 return Promise.reject(new Error("El estado en el servidor es más reciente."));
             }
         }
-
+    
         const promiseWithTimeout = new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
                 reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
@@ -757,16 +763,23 @@ const App = () => {
             script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
             document.body.appendChild(script);
         });
-
+    
         try {
             const result = await promiseWithTimeout;
-            if (result.status === 'error') return Promise.reject(new Error(result.message));
-            lastSyncedTimestamp.current = dataToSave.lastUpdated; // Actualizar timestamp de sincronización
+            if (result.status === 'error') {
+                throw new Error(result.message || 'Error desconocido al guardar en Google Sheets.');
+            }
+            lastSyncedTimestamp.current = dataToSave.lastUpdated;
             return Promise.resolve();
         } catch (error) {
+            if (retryCount < MAX_RETRIES && error.message.includes('Error de red') || error.message.includes('timeout')) {
+                // Reintentar en caso de errores de red o timeout
+                await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Backoff exponencial
+                return saveStateToGoogleSheets(currentShareId, dataToSave, isNewSession, retryCount + 1);
+            }
             return Promise.reject(error);
         }
-    }, [userId]);
+    }, [userId, loadStateFromGoogleSheets]);
 
 
     const handleStartNewSession = async () => {
@@ -829,6 +842,7 @@ const App = () => {
         };
         performInitialLoad();
     }, [authReady, userId, loadStateFromGoogleSheets]);
+  
     useEffect(() => {
         const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
         if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || isCriticalOperation.current) return;
@@ -863,12 +877,37 @@ const App = () => {
         };
     }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
 
-    useEffect(() => {
-        if (isLoadingFromServer.current || !initialLoadDone.current || !shareId || shareId.startsWith('local-') || !authReady || isImageProcessing || isCriticalOperation.current) return;
 
+
+    useEffect(() => {
+        if (saveStatus === 'error') {
+            const resetStatusTimeout = setTimeout(() => {
+                setSaveStatus('idle');
+            }, 5000); // Restablecer después de 5 segundos
+            return () => clearTimeout(resetStatusTimeout);
+        }
+    }, [saveStatus]);
+
+    // En tu componente App.js
+
+    useEffect(() => {
+        // Si la carga inicial no ha terminado, si estamos en una operación crítica
+        // o si no hay un ID de sesión para guardar, no hacemos nada.
+        if (!initialLoadDone.current || isLoadingFromServer.current || isCriticalOperation.current || !shareId || shareId.startsWith('local-')) {
+            return;
+        }
+        
+        // Si state.lastUpdated es nulo (estado inicial), no hay nada que guardar.
+        if (!state.lastUpdated) {
+            return;
+        }
+    
+        // ▼▼▼ CAMBIO 1: Marcar que hay cambios pendientes ▼▼▼
         hasPendingChanges.current = true;
+        setSaveStatus('saving');
+    
+        // Usamos un debounce para evitar enviar demasiadas solicitudes.
         const handler = setTimeout(() => {
-            setSaveStatus('saving');
             const dataToSave = {
                 comensales,
                 availableProducts: Object.fromEntries(availableProducts),
@@ -876,129 +915,40 @@ const App = () => {
                 activeSharedInstances: Object.fromEntries(Array.from(activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
                 lastUpdated: state.lastUpdated
             };
+    
             saveStateToGoogleSheets(shareId, dataToSave)
                 .then(() => {
-                    setSaveStatus('saved'); // Muestra "Guardado ✓"
+                    setSaveStatus('saved');
                 })
                 .catch((e) => {
                     console.error("El guardado falló:", e.message);
                     setSaveStatus('error');
                 })
+                // ▼▼▼ CAMBIO 2: Marcar que el guardado terminó ▼▼▼
                 .finally(() => {
                     hasPendingChanges.current = false;
                 });
-        }, 2500);
-
+        }, 500);
+    
+        // Limpiamos el timeout si el efecto se vuelve a ejecutar.
         return () => clearTimeout(handler);
-    }, [comensales, availableProducts, activeSharedInstances, shareId, saveStateToGoogleSheets, authReady, isImageProcessing, state.lastUpdated]);
+    
+    }, [state.lastUpdated, shareId, saveStateToGoogleSheets, authReady, isImageProcessing]);
 
-    const handleAddItem = useCallback(async (comensalId, productId) => {
-        // No hacer nada si no se selecciona un producto
+    const handleAddItem = useCallback((comensalId, productId) => {
         if (!productId) return;
+        dispatch({ type: 'ADD_ITEM', payload: { comensalId, productId } });
+    }, [dispatch]); // <-- Dependencia solo de dispatch
     
-        // Pausar otros procesos de guardado y polling
-        isCriticalOperation.current = true;
-        setSaveStatus('saving'); // Mostramos "Guardando..." inmediatamente
+    const handleRemoveItem = useCallback((comensalId, itemIdentifier) => {
+        dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: { comensalId, itemIdentifier } });
+    }, [dispatch]); // <-- Dependencia solo de dispatch
     
-        const actionPayload = { comensalId, productId };
-    
-        // 1. Actualizar el estado local
-        dispatch({ type: 'ADD_ITEM', payload: actionPayload });
-    
-        // 2. Calcular el estado que resultará de la acción para enviarlo al servidor
-        const nextState = billReducer(state, { type: 'ADD_ITEM', payload: actionPayload });
-    
-        // 3. Preparar los datos para el guardado
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-    
-        // 4. Guardar inmediatamente en el servidor
-        try {
-            await saveStateToGoogleSheets(shareId, dataToSave);
-            setSaveStatus('saved');
-        } catch (e) {
-            console.error("Error al guardar nuevo ítem:", e.message);
-            setSaveStatus('error');
-            // Considera mostrar un error más específico si lo deseas
-        } finally {
-            // 5. Reanudar los procesos normales
-            isCriticalOperation.current = false;
-        }
-    }, [state, shareId, saveStateToGoogleSheets]); // Añadimos dependencias para useCallback
-    const handleRemoveItem = useCallback(async (comensalId, itemIdentifier) => {
-        isCriticalOperation.current = true; // Pausa el polling
-    
-        // 1. Prepara el payload de la acción.
-        const actionPayload = { comensalId, itemIdentifier };
-        
-        // 2. Ejecuta la acción para actualizar el estado local.
-        dispatch({ type: 'REMOVE_ITEM_FROM_COMENSAL', payload: actionPayload });
-    
-        // 3. Calcula el estado SIGUIENTE para enviarlo al servidor.
-        // Usamos el reducer para simular la actualización y obtener el resultado.
-        const nextState = billReducer(state, { type: 'REMOVE_ITEM_FROM_COMENSAL', payload: actionPayload });
-    
-        // 4. Prepara los datos para guardar.
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-    
-        // 5. Guarda inmediatamente en el servidor.
-        try {
-            await saveStateToGoogleSheets(shareId, dataToSave);
-        } catch (e) {
-            console.error("Error al guardar eliminación:", e.message);
-            alert(`No se pudieron guardar los cambios: ${e.message}`);
-            // Considera revertir el estado si el guardado falla.
-        } finally {
-            isCriticalOperation.current = false; // Reanuda el polling
-        }
-    }, [state, shareId, saveStateToGoogleSheets]);
-    const handleShareItem = useCallback(async (productId, sharingComensalIds) => {
-        // 1. Pausar otros procesos y mostrar estado de guardado
-        isCriticalOperation.current = true;
-        setSaveStatus('saving');
-    
-        const actionPayload = { productId, sharingComensalIds };
-        
-        // 2. Actualizar estado local
-        dispatch({ type: 'SHARE_ITEM', payload: actionPayload });
-    
-        // 3. Calcular el estado siguiente para el guardado
-        const nextState = billReducer(state, { type: 'SHARE_ITEM', payload: actionPayload });
-    
-        // 4. Preparar los datos para guardar
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-    
-        // 5. Guardar inmediatamente
-        try {
-            await saveStateToGoogleSheets(shareId, dataToSave);
-            setSaveStatus('saved');
-        } catch (e) {
-            console.error("Error al guardar ítem compartido:", e.message);
-            setSaveStatus('error');
-        } finally {
-            // 6. Reanudar procesos
-            isCriticalOperation.current = false;
-        }
-    }, [state, shareId, saveStateToGoogleSheets]);
-    const handleAddComensal = useCallback(async () => {
-        // 1. Validación (sin cambios)
+    const handleShareItem = useCallback((productId, sharingComensalIds) => {
+        dispatch({ type: 'SHARE_ITEM', payload: { productId, sharingComensalIds } });
+    }, [dispatch]); // <-- Dependencia solo de dispatch
+
+    const handleAddComensal = useCallback(() => {
         if (newComensalName.trim() === '') {
             setAddComensalMessage({ type: 'error', text: 'Por favor, ingresa un nombre.' });
             return;
@@ -1007,124 +957,29 @@ const App = () => {
             setAddComensalMessage({ type: 'error', text: `No más de ${MAX_COMENSALES} comensales.` });
             return;
         }
+        dispatch({ type: 'ADD_COMENSAL', payload: newComensalName });
+        setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
+        setNewComensalName('');
+        setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
+    }, [newComensalName, comensales.length, dispatch]);
     
-        // 2. Pausar otros procesos y mostrar estado de guardado
-        isCriticalOperation.current = true;
-        setSaveStatus('saving');
     
-        const actionPayload = newComensalName;
-        
-        // 3. Actualizar estado local
-        dispatch({ type: 'ADD_COMENSAL', payload: actionPayload });
-        
-        // 4. Calcular el estado siguiente para el guardado
-        const nextState = billReducer(state, { type: 'ADD_COMENSAL', payload: actionPayload });
-    
-        // 5. Preparar los datos para guardar
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-        
-        // 6. Guardar inmediatamente
-        try {
-            await saveStateToGoogleSheets(shareId, dataToSave);
-            setSaveStatus('saved');
-            
-            // Actualizar UI solo después del guardado exitoso
-            setAddComensalMessage({ type: 'success', text: `¡"${newComensalName.trim()}" añadido!` });
-            setNewComensalName('');
-            setTimeout(() => setAddComensalMessage({ type: '', text: '' }), 3000);
-    
-        } catch (e) {
-            console.error("Error al guardar nuevo comensal:", e.message);
-            setSaveStatus('error');
-            // Opcional: Revertir el estado si el guardado falla
-        } finally {
-            // 7. Reanudar procesos
-            isCriticalOperation.current = false;
-        }
-    }, [state, shareId, saveStateToGoogleSheets, newComensalName, comensales.length]);
-    const confirmClearComensal = useCallback(async () => {
+    const confirmClearComensal = useCallback(() => {
         if (comensalToClearId === null) return;
+        dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: { comensalId: comensalToClearId } });
+        setIsClearComensalModalOpen(false);
+        setComensalToClearId(null);
+    }, [comensalToClearId, dispatch]);
     
-        // 1. Pausar y mostrar estado de guardado
-        isCriticalOperation.current = true;
-        setSaveStatus('saving');
     
-        const actionPayload = { comensalId: comensalToClearId };
-        
-        // 2. Actualizar estado local
-        dispatch({ type: 'CLEAR_COMENSAL_ITEMS', payload: actionPayload });
-    
-        // 3. Calcular estado siguiente
-        const nextState = billReducer(state, { type: 'CLEAR_COMENSAL_ITEMS', payload: actionPayload });
-        
-        // 4. Preparar datos para guardar
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(Array.from(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-    
-        // 5. Guardar
-        try {
-            await saveStateToGoogleSheets(shareId, dataToSave);
-            setSaveStatus('saved');
-        } catch (e) {
-            console.error("Error al limpiar ítems del comensal:", e.message);
-            setSaveStatus('error');
-        } finally {
-            // 6. Limpiar y reanudar
-            setIsClearComensalModalOpen(false);
-            setComensalToClearId(null);
-            isCriticalOperation.current = false;
-        }
-    }, [state, shareId, saveStateToGoogleSheets, comensalToClearId]);
-    const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
-    const confirmRemoveComensal = useCallback(async () => {
+    const confirmRemoveComensal = useCallback(() => {
         if (comensalToRemoveId === null) return;
+        dispatch({ type: 'REMOVE_COMENSAL', payload: comensalToRemoveId });
+        setIsRemoveComensalModalOpen(false);
+        setComensalToRemoveId(null);
+    }, [comensalToRemoveId, dispatch]);
     
-        // 1. Pausar y mostrar estado de guardado
-        isCriticalOperation.current = true;
-        setSaveStatus('saving');
-    
-        const actionPayload = comensalToRemoveId;
-    
-        // 2. Actualizar estado local (ahora con una sola acción)
-        dispatch({ type: 'REMOVE_COMENSAL', payload: actionPayload });
-    
-        // 3. Calcular estado siguiente
-        const nextState = billReducer(state, { type: 'REMOVE_COMENSAL', payload: actionPayload });
-    
-        // 4. Preparar datos para guardar
-        const dataToSave = {
-            comensales: nextState.comensales,
-            availableProducts: Object.fromEntries(nextState.availableProducts),
-            masterProductList: Object.fromEntries(nextState.masterProductList),
-            activeSharedInstances: Object.fromEntries(nextState.activeSharedInstances.entries()).map(([key, value]) => [key, Array.from(value)])),
-            lastUpdated: nextState.lastUpdated
-        };
-    
-        // 5. Guardar
-        try {
-            await saveStateToGoogleSheets(shareId, dataToSave);
-            setSaveStatus('saved');
-        } catch (e) {
-            console.error("Error al eliminar comensal:", e.message);
-            setSaveStatus('error');
-        } finally {
-            // 6. Limpiar y reanudar
-            setIsRemoveComensalModalOpen(false);
-            setComensalToRemoveId(null);
-            isCriticalOperation.current = false;
-        }
-    }, [state, shareId, saveStateToGoogleSheets, comensalToRemoveId]);
+    const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
     const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
     const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
@@ -1260,9 +1115,9 @@ const App = () => {
                         discountPercentage={discountPercentage}
                         discountCap={discountCap}
                         saveStatus={saveStatus}
+                        dispatch={dispatch} // <-- Prop necesaria para el botón "Reintentar"
                     />
                 );
-            default:
                 return <p>Cargando...</p>;
         }
     };
@@ -1475,12 +1330,12 @@ const ReviewStep = ({
     );
 };
 
+    // VERSIÓN FINAL Y CORREGIDA de AssigningStep
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
-    onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus 
+    onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus, dispatch
 }) => {
-    const remainingToAssign = Array.from(availableProducts.values()).reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 0)), 0);
     const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
     const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
     const unassignedItems = Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0);
@@ -1523,7 +1378,7 @@ const AssigningStep = ({
                 <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
                     <div className="flex justify-between text-sm text-gray-600"><span>Consumo:</span><span>${Math.round(totalSinPropina).toLocaleString('es-CL')}</span></div>
                     {descuentoAplicado > 0 && (<div className="flex justify-between text-sm text-green-600"><span>Descuento ({discountPercentage}%):</span><span>-${Math.round(descuentoAplicado).toLocaleString('es-CL')}</span></div>)}
-                    <div className="flex justify-between text-sm text-gray-600"><span>Propina ({TIP_PERCENTAGE*100}%):</span><span>${Math.round(propina).toLocaleString('es-CL')}</span></div>
+                    <div className="flex justify-between text-sm text-gray-600"><span>Propina ({TIP_PERCENTAGE * 100}%):</span><span>${Math.round(propina).toLocaleString('es-CL')}</span></div>
                     <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1"><span>TOTAL A PAGAR:</span><span className="text-2xl">${Math.round(totalAPagar).toLocaleString('es-CL')}</span></div>
                 </div>
                 <div className="flex gap-2 mt-4">
@@ -1533,38 +1388,30 @@ const AssigningStep = ({
             </div>
         )
     };
-    
+
     return (
         <div className="pb-24">
-            <header className="mb-6 text-center"> <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1> <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p> 
-            <div className="h-6 mt-2 flex justify-center items-center">
-                {saveStatus === 'saving' && (
-                    <div className="flex items-center text-sm text-gray-500">
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Guardando...
-                    </div>
-                )}
-                {saveStatus === 'saved' && (
-                    <div className="flex items-center text-sm text-green-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                        </svg>
-                        Guardado ✓
-                    </div>
-                )}
-                {saveStatus === 'error' && (
-                    <div className="flex items-center text-sm text-red-600">
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        Error al guardar ✗
-                    </div>
-                )}
-            </div>
-            <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">&larr; Volver y Editar Ítems</button> </header>
+            <header className="mb-6 text-center">
+                <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
+                <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p>
+                <div className="h-6 mt-2 flex justify-center items-center">
+                    {saveStatus === 'saving' && ( <div className="flex items-center text-sm text-gray-500"> <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> Guardando... </div> )}
+                    {saveStatus === 'saved' && ( <div className="flex items-center text-sm text-green-600"> <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /> </svg> Guardado ✓ </div> )}
+                    {saveStatus === 'error' && (
+                        <div className="flex items-center text-sm text-red-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /> </svg>
+                            Error al guardar ✗
+                            <button
+                                onClick={() => dispatch({ type: 'UPDATE_AVAILABLE_PRODUCTS', payload: availableProducts })}
+                                className="ml-2 px-2 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
+                            >
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
+                </div>
+                <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">&larr; Volver y Editar Ítems</button>
+            </header>
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
                 <div className="flex flex-col sm:flex-row gap-3 items-center">
