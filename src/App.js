@@ -1057,6 +1057,7 @@ setSaveStatus('saved');
               }
           });
   
+          hasPendingChanges.current = true;
           dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
       } catch (error) {
           console.error("Error al analizar:", error);
