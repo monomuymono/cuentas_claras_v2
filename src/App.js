@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useReducer } from 'react';
+import { supabase } from './supabaseClient';
 
 // Polyfill para 'process' si no está definido
 if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
@@ -23,7 +24,6 @@ const parseChileanNumber = (str) => {
 };
 
 // --- CONSTANTES ---
-const GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzI_sW6-SKJy8K3M1apb_hdmafjE9gz8ZF7UPrYKfeI5eBGDKmqagl6HLxnB0ILeY67JA/exec";
 const TIP_PERCENTAGE = 0.10; // Propina del 10%
 const MAX_COMENSALES = 20;
 const ITEM_TYPES = {
@@ -688,7 +688,7 @@ const handleRetrySave = () => {
     isSaving.current = true;
     setSaveStatus('saving');
 
-    saveStateToGoogleSheets(shareId, dataToRetry)
+    saveStateToSupabase(shareId, dataToRetry)
         .then(() => {
             setSaveStatus('saved');
             lastFailedSaveData.current = null;
@@ -723,112 +723,70 @@ const handleRetrySave = () => {
     };
 
     // ... (El resto de las funciones de App.js no cambian, excepto las marcadas) ...
-    const loadStateFromGoogleSheets = useCallback(async (idToLoad) => {
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) return;
-        if (!idToLoad || idToLoad.startsWith('local-')) return;
-        const callbackName = 'jsonp_callback_load_' + Math.round(100000 * Math.random());
-        const promise = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            window[callbackName] = (data) => {
-                if (document.body.contains(script)) document.body.removeChild(script);
-                delete window[callbackName];
-                resolve(data);
-            };
-            script.onerror = () => {
-                if (document.body.contains(script)) document.body.removeChild(script);
-                delete window[callbackName];
-                reject(new Error('Error al cargar los datos desde Google Sheets.'));
-            };
-            script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=load&id=${idToLoad}&callback=${callbackName}`;
-            document.body.appendChild(script);
-        });
+    // BORRA la función loadStateFromGoogleSheets y reemplázala con esta:
+const loadStateFromSupabase = useCallback(async (idToLoad) => {
+    if (!idToLoad || idToLoad.startsWith('local-')) return;
 
-        try {
-            const data = await promise;
-            if (data && data.status !== "not_found") {
-                if (!initialLoadDone.current) {
-                    isLoadingFromServer.current = true;
-                    const loadedProducts = new Map(Object.entries(data.availableProducts || {}));
-                    const loadedSharedInstances = new Map(Object.entries(data.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
-                    dispatch({ type: 'LOAD_STATE', payload: { ...data, availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances } });
-                    lastSyncedTimestamp.current = data.lastUpdated;
-setSaveStatus('saved');
-                    if (loadedProducts.size > 0 || (data.comensales && data.comensales.length > 0)) {
-                        dispatch({ type: 'SET_STEP', payload: 'assigning' });
-                    } else {
-                        dispatch({ type: 'SET_STEP', payload: 'reviewing' });
-                    }
-                } else if (!isCriticalOperation.current && (!lastSyncedTimestamp.current || new Date(data.lastUpdated) > new Date(lastSyncedTimestamp.current))) {
-                    isLoadingFromServer.current = true;
-                    dispatch({ type: 'SYNC_STATE', payload: data });
-                    lastSyncedTimestamp.current = data.lastUpdated;
-                }
+    try {
+        isLoadingFromServer.current = true;
+        const { data, error } = await supabase
+            .from('sessions')
+            .select('data')
+            .eq('id', idToLoad)
+            .single(); // .single() es clave para obtener un solo objeto
+
+        if (error) {
+            // Si no se encuentra la fila, Supabase devuelve un error
+            console.warn("Error de Supabase (probablemente no se encontró la sesión):", error.message);
+            alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
+            dispatch({ type: 'RESET_SESSION' });
+            return;
+        }
+
+        if (data) {
+            // La data del estado está dentro del campo 'data'
+            const sessionData = data.data;
+            const loadedProducts = new Map(Object.entries(sessionData.availableProducts || {}));
+            const loadedSharedInstances = new Map(Object.entries(sessionData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)]));
+
+            dispatch({ type: 'LOAD_STATE', payload: { ...sessionData, availableProducts: loadedProducts, activeSharedInstances: loadedSharedInstances } });
+            lastSyncedTimestamp.current = sessionData.lastUpdated;
+            setSaveStatus('saved');
+
+            if (loadedProducts.size > 0 || (sessionData.comensales && sessionData.comensales.length > 0)) {
+                dispatch({ type: 'SET_STEP', payload: 'assigning' });
             } else {
-                if (idToLoad === justCreatedSessionId.current) return;
-                alert("La sesión compartida no fue encontrada. Se ha iniciado una nueva sesión local.");
-                dispatch({ type: 'RESET_SESSION' });
+                dispatch({ type: 'SET_STEP', payload: 'reviewing' });
             }
-        } catch (error) {
-            console.error("Error al cargar con JSONP:", error);
-        } finally {
-            setTimeout(() => {
-                isLoadingFromServer.current = false;
-                if (!initialLoadDone.current) {
-                    initialLoadDone.current = true;
-                }
-            }, 0);
         }
-    }, [dispatch]);
-    const saveStateToGoogleSheets = useCallback(async (currentShareId, dataToSave, isNewSession = false, retryCount = 0) => {
-        const MAX_RETRIES = 3;
-        if (GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || !GOOGLE_SHEET_WEB_APP_URL.startsWith("https://script.google.com/macros/")) {
-            return Promise.reject(new Error("URL de Apps Script inválida."));
-        }
-        if (!currentShareId || !userId) return Promise.resolve();
-    
-        
-    
-        const promiseWithTimeout = new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error('El guardado ha tardado demasiado y fue cancelado (timeout).'));
-            }, 8000);
-            const callbackName = 'jsonp_callback_save_' + Math.round(100000 * Math.random());
-            const script = document.createElement('script');
-            const cleanup = () => {
-                clearTimeout(timeoutId);
-                if (document.body.contains(script)) document.body.removeChild(script);
-                delete window[callbackName];
-            };
-            window[callbackName] = (data) => {
-                cleanup();
-                resolve(data);
-            };
-            script.onerror = () => {
-                cleanup();
-                reject(new Error('Error de red al guardar los datos en Google Sheets.'));
-            };
-            const dataString = JSON.stringify(dataToSave);
-            const encodedData = encodeURIComponent(dataString);
-            script.src = `${GOOGLE_SHEET_WEB_APP_URL}?action=save&id=${currentShareId}&data=${encodedData}&callback=${callbackName}`;
-            document.body.appendChild(script);
-        });
-    
-        try {
-            const result = await promiseWithTimeout;
-            if (result.status === 'error') {
-                throw new Error(result.message || 'Error desconocido al guardar en Google Sheets.');
+    } catch (error) {
+        console.error("Error crítico al cargar desde Supabase:", error);
+    } finally {
+        setTimeout(() => {
+            isLoadingFromServer.current = false;
+            if (!initialLoadDone.current) {
+                initialLoadDone.current = true;
             }
-            lastSyncedTimestamp.current = dataToSave.lastUpdated;
-            return Promise.resolve();
-        } catch (error) {
-            if (retryCount < MAX_RETRIES && error.message.includes('Error de red') || error.message.includes('timeout')) {
-                // Reintentar en caso de errores de red o timeout
-                await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Backoff exponencial
-                return saveStateToGoogleSheets(currentShareId, dataToSave, isNewSession, retryCount + 1);
-            }
-            return Promise.reject(error);
-        }
-    }, [userId, loadStateFromGoogleSheets]);
+        }, 0);
+    }
+}, [dispatch]);
+  
+    const saveStateToSupabase = useCallback(async (currentShareId, dataToSave) => {
+    if (!currentShareId || currentShareId.startsWith('local-')) return;
+
+    try {
+        const { error } = await supabase
+            .from('sessions')
+            .upsert({ id: currentShareId, data: dataToSave });
+
+        if (error) throw error;
+
+        lastSyncedTimestamp.current = dataToSave.lastUpdated;
+    } catch (error) {
+        console.error("Error al guardar en Supabase:", error);
+        throw error; // Propaga el error para que la lógica de reintento funcione
+    }
+}, []);
 
 
     const handleStartNewSession = async () => {
@@ -847,7 +805,7 @@ setSaveStatus('saved');
         };
     
         try {
-            await saveStateToGoogleSheets(newSessionId, initialData, true);
+            await saveStateToSupabase(newSessionId, initialData, true);
             dispatch({ type: 'SET_SHARE_ID', payload: newSessionId });
     
             const newUrl = new URL(window.location.href);
@@ -883,48 +841,54 @@ setSaveStatus('saved');
             const urlParams = new URLSearchParams(window.location.search);
             const idFromUrl = urlParams.get('id');
             if (idFromUrl) {
-                await loadStateFromGoogleSheets(idFromUrl);
+                await loadStateFromSupabase(idFromUrl);
             } else {
                 dispatch({ type: 'SET_STEP', payload: 'landing' });
             }
             initialLoadDone.current = true;
         };
         performInitialLoad();
-    }, [authReady, userId, loadStateFromGoogleSheets]);
+    }, [authReady, userId, loadStateFromSupabase]);
   
     useEffect(() => {
-        const isAnyModalOpen = isShareModalOpen || isClearComensalModalOpen || isRemoveComensalModalOpen || isSummaryModalOpen;
-        if (!shareId || shareId.startsWith('local-') || !userId || isAnyModalOpen || GOOGLE_SHEET_WEB_APP_URL.includes("YOUR_NEW_JSONP_WEB_APP_URL_HERE") || isCriticalOperation.current) return;
+    // Solo nos suscribimos si tenemos un ID de sesión válido y no es local
+    if (!shareId || shareId.startsWith('local-')) return;
 
-        let isCancelled = false;
-        const pollTimeout = 5000;
-        let pollTimer;
+    // Creamos un canal de suscripción. Es buena práctica darle un nombre único.
+    const channel = supabase
+        .channel(`session-updates-${shareId}`)
+        .on(
+            'postgres_changes',
+            {
+                event: '*', // Escucha inserciones, actualizaciones y eliminaciones
+                schema: 'public',
+                table: 'sessions',
+                filter: `id=eq.${shareId}` // MUY IMPORTANTE: solo para la fila de nuestra sesión
+            },
+            (payload) => {
+                // payload.new.data contiene el estado actualizado de la app
+                const serverData = payload.new.data;
 
-        const poll = async () => {
-            if (isCancelled) return;
-            if (!hasPendingChanges.current) {
-                try {
-                    await loadStateFromGoogleSheets(shareId);
-                } catch (error) {
-                    console.warn("Error en polling:", error.message);
-                } finally {
-                    if (!isCancelled) {
-                        pollTimer = setTimeout(poll, pollTimeout);
-                    }
-                }
-            } else {
-                if (!isCancelled) {
-                    pollTimer = setTimeout(poll, pollTimeout);
+                if (serverData && (!lastSyncedTimestamp.current || new Date(serverData.lastUpdated) > new Date(lastSyncedTimestamp.current))) {
+                    console.log("¡Cambio detectado en tiempo real! Sincronizando...");
+                    isLoadingFromServer.current = true;
+                    dispatch({ type: 'SYNC_STATE', payload: serverData });
+                    lastSyncedTimestamp.current = serverData.lastUpdated;
+                    setTimeout(() => isLoadingFromServer.current = false, 0);
                 }
             }
-        };
+        )
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('¡Conectado al canal de tiempo real!');
+            }
+        });
 
-        pollTimer = setTimeout(poll, pollTimeout);
-        return () => {
-            isCancelled = true;
-            clearTimeout(pollTimer);
-        };
-    }, [shareId, userId, loadStateFromGoogleSheets, isShareModalOpen, isClearComensalModalOpen, isRemoveComensalModalOpen, isSummaryModalOpen]);
+    // Función de limpieza: Es VITAL desuscribirse cuando el componente se desmonte o el ID cambie
+    return () => {
+        supabase.removeChannel(channel);
+    };
+}, [shareId]); // El array de dependencias asegura que esto se re-ejecute si el shareId cambia
 
 
 useEffect(() => {
@@ -952,7 +916,7 @@ useEffect(() => {
         lastUpdated: state.lastUpdated
     };
 
-    saveStateToGoogleSheets(shareId, dataToSave)
+    saveStateToSupabase(shareId, dataToSave)
         .then(() => {
             setSaveStatus('saved');
             hasPendingChanges.current = false;
