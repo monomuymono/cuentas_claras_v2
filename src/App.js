@@ -1258,85 +1258,127 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 const ReviewStep = ({
-    products,
-    onProductChange,
-    onAddNewProduct,
-    onRemoveProduct,
-    onConfirm,
-    onBack,
-    discountPercentage,
-    discountCap,
-    dispatch,
-    hasPendingChanges
+    products,
+    onProductChange,
+    onAddNewProduct,
+    onRemoveProduct,
+    onConfirm,
+    onBack,
+    discountPercentage,
+    discountCap,
+    dispatch
 }) => {
-    const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
-
-    const handleAddNewItemClick = () => {
-        if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
-        const price = parseFloat(newItem.price);
-        const quantity = parseInt(newItem.quantity, 10);
-        if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
-        if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
-
-        onAddNewProduct({ name: newItem.name.trim(), price, quantity });
-        setNewItem({ name: '', price: '', quantity: '1' }); // Resetea el formulario local
-    };
-
-    const handleDiscountChange = (e) => {
-        hasPendingChanges.current = true;
-        const { name, value } = e.target;
-        const newPercentage = name === 'percentage' ? value : discountPercentage;
-        const newCap = name === 'cap' ? value : discountCap;
-        dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: newPercentage, cap: newCap } });
-    };
-
-    const total = Array.from(products.values()).reduce((sum, p) => (sum + (parseChileanNumber(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
-    const potentialDiscount = total * (discountPercentage / 100);
-    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
-    const tip = total * TIP_PERCENTAGE;
-    const grandTotal = total + tip - actualDiscount;
+    const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
     
-    return (
-        <div className="p-4 pb-20">
-            <header className="text-center mb-6"> <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1> <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p> </header>
-            <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
-                <h2 className="text-lg font-bold">Ítems Cargados</h2>
-                {Array.from(products.values()).map(p => (
-                    <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
-                        <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" aria-label="Nombre"/>
-                        <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
-                        <span className="col-span-1 text-center self-center">$</span>
-                        <input type="number" value={p.price} onChange={e => onProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" aria-label="Precio" min="0"/>
-                        <button onClick={() => onRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700" aria-label={`Eliminar ${p.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg> </button>
-                    </div>
-                ))}
-                <div className="grid grid-cols-12 gap-2 items-center pt-3">
-                    <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="col-span-5 p-2 border rounded-md" aria-label="Nombre nuevo ítem"/>
-                    <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad nuevo ítem" min="1"/>
-                    <span className="col-span-1 text-center self-center">$</span>
-                    <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="col-span-3 p-2 border rounded-md" aria-label="Precio nuevo ítem" min="0"/>
-                    <button onClick={handleAddNewItemClick} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center" aria-label="Agregar ítem"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg> </button>
-                </div>
-            </div>
-            <div className="bg-white p-4 rounded-xl shadow-md mb-6">
-                <h2 className="text-lg font-bold text-blue-600 mb-4">Aplicar Descuento</h2>
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <input type="number" name="percentage" placeholder="% de Descuento" value={discountPercentage || ''} onChange={handleDiscountChange} className="flex-grow p-3 border rounded-md" min="0" max="100" aria-label="Porcentaje descuento"/>
-                    <input type="number" name="cap" placeholder="Tope de Descuento ($)" value={discountCap || ''} onChange={handleDiscountChange} className="flex-grow p-3 border rounded-md" min="0" aria-label="Tope descuento"/>
-                </div>
-            </div>
-            <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-6">
-                <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
-                {actualDiscount > 0 && (<div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Descuento ({discountPercentage}%):</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
-                <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
-                <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-4">
-                <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
-                <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
-            </div>
-        </div>
-    );
+    // CAMBIO 1: Añadimos un estado local para los campos de descuento.
+    const [localDiscounts, setLocalDiscounts] = useState({
+        percentage: discountPercentage || '',
+        cap: discountCap || ''
+    });
+
+    // CAMBIO 2: Sincronizamos el estado local si las props cambian desde fuera.
+    useEffect(() => {
+        setLocalDiscounts({
+            percentage: discountPercentage || '',
+            cap: discountCap || ''
+        });
+    }, [discountPercentage, discountCap]);
+
+    const handleAddNewItemClick = () => {
+        if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
+        const price = parseFloat(newItem.price);
+        const quantity = parseInt(newItem.quantity, 10);
+        if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
+        if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
+        onAddNewProduct({ name: newItem.name.trim(), price, quantity });
+        setNewItem({ name: '', price: '', quantity: '1' });
+    };
+
+    // CAMBIO 3: Nueva función que SOLO actualiza el estado local mientras escribes.
+    const handleLocalDiscountChange = (e) => {
+        const { name, value } = e.target;
+        setLocalDiscounts(prev => ({ ...prev, [name]: value }));
+    };
+
+    // CAMBIO 4: Nueva función que actualiza el estado GLOBAL cuando dejas el campo (onBlur).
+    const handleDiscountBlur = () => {
+        dispatch({
+            type: 'APPLY_DISCOUNT',
+            payload: {
+                percentage: localDiscounts.percentage,
+                cap: localDiscounts.cap
+            }
+        });
+    };
+
+    const total = Array.from(products.values()).reduce((sum, p) => (sum + (parseChileanNumber(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
+    const potentialDiscount = total * (discountPercentage / 100);
+    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
+    const tip = total * TIP_PERCENTAGE;
+    const grandTotal = total + tip - actualDiscount;
+    
+    return (
+        <div className="p-4 pb-20">
+            <header className="text-center mb-6"> <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1> <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p> </header>
+            <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
+                <h2 className="text-lg font-bold">Ítems Cargados</h2>
+                {Array.from(products.values()).map(p => (
+                    <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
+                        <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" aria-label="Nombre"/>
+                        <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
+                        <span className="col-span-1 text-center self-center">$</span>
+                        <input type="number" value={p.price} onChange={e => onProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" aria-label="Precio" min="0"/>
+                        <button onClick={() => onRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700" aria-label={`Eliminar ${p.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg> </button>
+                    </div>
+                ))}
+                <div className="grid grid-cols-12 gap-2 items-center pt-3">
+                    <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="col-span-5 p-2 border rounded-md" aria-label="Nombre nuevo ítem"/>
+                    <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad nuevo ítem" min="1"/>
+                    <span className="col-span-1 text-center self-center">$</span>
+                    <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="col-span-3 p-2 border rounded-md" aria-label="Precio nuevo ítem" min="0"/>
+                    <button onClick={handleAddNewItemClick} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center" aria-label="Agregar ítem"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg> </button>
+                </div>
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow-md mb-6">
+                <h2 className="text-lg font-bold text-blue-600 mb-4">Aplicar Descuento</h2>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    {/* CAMBIO 5: Actualizamos los inputs para usar el estado local y las nuevas funciones */}
+                    <input
+                          type="number"
+                          name="percentage"
+                          placeholder="% de Descuento"
+                          value={localDiscounts.percentage}
+                          onChange={handleLocalDiscountChange}
+                          onBlur={handleDiscountBlur}
+                          className="flex-grow p-3 border rounded-md"
+                          min="0" max="100"
+                          aria-label="Porcentaje descuento"
+                      />
+                    <input
+                          type="number"
+                          name="cap"
+                          placeholder="Tope de Descuento ($)"
+                          value={localDiscounts.cap}
+                          onChange={handleLocalDiscountChange}
+                          onBlur={handleDiscountBlur}
+                          className="flex-grow p-3 border rounded-md"
+                          min="0"
+                          aria-label="Tope descuento"
+                      />
+                </div>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-6">
+                <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
+                {actualDiscount > 0 && (<div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Descuento ({discountPercentage}%):</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
+                <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
+                <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-4">
+                <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
+                <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
+            </div>
+        </div>
+    );
 };
 
     // VERSIÓN FINAL Y CORREGIDA de AssigningStep
