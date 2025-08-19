@@ -997,8 +997,20 @@ useEffect(() => {
     
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
-    const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { (reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
-    // Dentro de tu componente App
+    const handleImageUpload = (event) => { 
+        const file = event.target.files[0]; 
+        if (!file) return; 
+        setIsImageProcessing(true); 
+        setImageProcessingError(null); 
+        const reader = new FileReader(); 
+        // 👇 Línea corregida
+        reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; 
+        reader.onerror = () => { 
+            setImageProcessingError("Error al cargar la imagen."); 
+            setIsImageProcessing(false); 
+        }; 
+        reader.readAsDataURL(file); 
+    }; // Dentro de tu componente App
 
 const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
   try {
