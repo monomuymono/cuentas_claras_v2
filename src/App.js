@@ -997,58 +997,64 @@ useEffect(() => {
     
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
-    const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
-    const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
-      try {
-          const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`;
-          const payload = {
-              contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
-              generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "STRING" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } }
-          };
-          const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
-          if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini.");
-          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-          const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          
-          if (!response.ok) {
-              throw new Error(`Error en la API de Gemini: ${response.statusText}`);
-          }
-  
-          const result = await response.json();
-          if (!result.candidates || !result.candidates[0]?.content?.parts?.[0]?.text) {
-              throw new Error(result.error?.message || "No se pudo extraer información válida de la imagen.");
-          }
-  
-          const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
-          if (!parsedData.items || !Array.isArray(parsedData.items)) {
-              throw new Error("La respuesta de la API no contiene una lista de ítems válida.");
-          }
-  
-          const newProductsMap = new Map();
-          parsedData.items.forEach(item => {
-              const name = item.name?.trim();
-              const price = parseChileanNumber(String(item.price));
-              const quantity = parseInt(item.quantity, 10);
-              if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
-                  const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
-                  if (existing) {
-                      newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
-                  } else {
-                      const newId = generateUniqueId('item');
-                      newProductsMap.set(newId, { id: newId, name, price, quantity });
-                  }
-              }
-          });
-  
-          hasPendingChanges.current = true;
-          dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
-      } catch (error) {
-          console.error("Error al analizar:", error);
-          setImageProcessingError(error.message);
-      } finally {
-          setIsImageProcessing(false);
-      }
-  };
+    const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { (reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
+    // Dentro de tu componente App
+
+const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
+  try {
+    // La URL ahora apunta a TU función serverless
+    const apiUrl = '/api/analyzeImage'; 
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // Enviamos los datos de la imagen a nuestra función
+      body: JSON.stringify({ base64ImageData, mimeType }), 
+    });
+      
+    if (!response.ok) {
+      const errorResult = await response.json();
+      throw new Error(errorResult.message || `Error en el servidor: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    if (!result.candidates || !result.candidates[0]?.content?.parts?.[0]?.text) {
+      throw new Error(result.error?.message || "No se pudo extraer información válida de la imagen.");
+    }
+    
+    // El resto de tu lógica para procesar el resultado no cambia
+    const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
+    if (!parsedData.items || !Array.isArray(parsedData.items)) {
+      throw new Error("La respuesta de la API no contiene una lista de ítems válida.");
+    }
+
+    const newProductsMap = new Map();
+    parsedData.items.forEach(item => {
+        const name = item.name?.trim();
+        const price = parseChileanNumber(String(item.price));
+        const quantity = parseInt(item.quantity, 10);
+        if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
+            const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
+            if (existing) {
+                newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
+            } else {
+                const newId = generateUniqueId('item');
+                newProductsMap.set(newId, { id: newId, name, price, quantity });
+            }
+        }
+    });
+
+    hasPendingChanges.current = true;
+    dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
+
+  } catch (error) {
+      console.error("Error al analizar:", error);
+      setImageProcessingError(error.message);
+  } finally {
+      setIsImageProcessing(false);
+  }
+};
   const handleGenerateShareLink = () => {
         // CAMBIO: Muestra el modal de carga con el mensaje apropiado
         setLoadingMessage("Generando enlace...");
