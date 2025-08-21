@@ -1214,9 +1214,8 @@ const LandingStep = ({ onStart }) => (
             <img 
               src="/logoCC.png" 
               alt="Logo CuentasClaras" 
-              // Clases modificadas: sin "rounded-full" ni "object-cover"
-              // y con un tamaño ajustado
-              className="w-48 h-auto mx-auto shadow-lg" 
+              // Clase "shadow-lg" eliminada para mantener la transparencia
+              className="w-48 h-auto mx-auto" 
             />
         </div> 
         <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> 
