@@ -1211,11 +1211,12 @@ onRetrySave={handleRetrySave}
 const LandingStep = ({ onStart }) => ( 
     <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> 
         <div className="mb-8"> 
-            {/* --- AQUÍ ESTÁ EL CAMBIO --- */}
             <img 
               src="/logoCC.jpeg" 
               alt="Logo CuentasClaras" 
-              className="w-32 h-32 mx-auto rounded-full object-cover shadow-lg" 
+              // Clases modificadas: sin "rounded-full" ni "object-cover"
+              // y con un tamaño ajustado
+              className="w-48 h-auto mx-auto shadow-lg" 
             />
         </div> 
         <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> 
