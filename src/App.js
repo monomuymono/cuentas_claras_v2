@@ -1212,7 +1212,7 @@ const LandingStep = ({ onStart }) => (
     <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> 
         <div className="mb-8"> 
             <img 
-              src="/logoCC.jpeg" 
+              src="/logoCC.png" 
               alt="Logo CuentasClaras" 
               // Clases modificadas: sin "rounded-full" ni "object-cover"
               // y con un tamaño ajustado
