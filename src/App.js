@@ -1070,6 +1070,7 @@ const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
     parsedData.items.forEach(item => {
         const name = item.name?.trim();
         const price = parseChileanNumber(String(item.price));
+        const quantity = parseInt(item.quantity, 10) || 1;
         const quantity = parseInt(item.quantity, 10);
         if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
             const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
@@ -1077,7 +1078,10 @@ const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
                 newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
             } else {
                 const newId = generateUniqueId('item');
-                newProductsMap.set(newId, { id: newId, name, price, quantity });
+                newProductsMap.set(newId, { id: newId, name, 
+                  price: totalValue / quantity, 
+                  quantity,
+                  priceIsTotal: True });
             }
         }
     });
