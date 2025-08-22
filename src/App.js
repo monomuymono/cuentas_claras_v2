@@ -1356,6 +1356,9 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
 );
 // --- COPIA Y REEMPLAZA TU COMPONENTE ReviewStep CON ESTE CÓDIGO ---
 
+// --- EN TU ARCHIVO App.js ---
+// Reemplaza tu componente ReviewStep completo con esta nueva versión
+
 const ReviewStep = ({
     products,
     onProductChange,
@@ -1373,42 +1376,62 @@ const ReviewStep = ({
         cap: discountCap || ''
     });
 
+    // --- NUEVO: ESTADO PARA CONTROLAR EL TAMAÑO DEL FOOTER ---
+    const [isFooterCompact, setIsFooterCompact] = useState(false);
+
     useEffect(() => {
         setLocalDiscounts({
             percentage: discountPercentage || '',
             cap: discountCap || ''
         });
     }, [discountPercentage, discountCap]);
+    
+    // --- NUEVO: USEEFFECT PARA DETECTAR EL SCROLL Y AJUSTAR EL FOOTER ---
+    useEffect(() => {
+        const handleScroll = () => {
+            const scrollHeight = document.documentElement.scrollHeight;
+            const clientHeight = document.documentElement.clientHeight;
+            const scrollY = window.scrollY;
 
-    // Se activa cuando el usuario escribe en el campo de precio
+            // Condición para saber si se llegó al final (con un pequeño margen de 10px)
+            const isAtBottom = scrollHeight - (scrollY + clientHeight) < 10;
+
+            // Si el scroll es mayor a 50px pero no se ha llegado al final, compactar el footer
+            if (scrollY > 50 && !isAtBottom) {
+                setIsFooterCompact(true);
+            } else {
+                // Si está arriba o al final, expandir el footer
+                setIsFooterCompact(false);
+            }
+        };
+
+        window.addEventListener('scroll', handleScroll);
+
+        // Limpieza del evento al desmontar el componente
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+        };
+    }, []); // El array vacío asegura que el efecto se ejecute solo una vez (al montar y desmontar)
+
+
     const handlePriceInputChange = (productId, newDisplayValue) => {
         const product = products.get(productId);
         if (!product) return;
-
         const numericValue = parseChileanNumber(String(newDisplayValue));
         const quantity = parseInt(product.quantity, 10) || 1;
-
-        // Si la casilla está marcada, el valor ingresado es el total.
-        // Calculamos el precio unitario para guardarlo internamente.
         if (product.priceIsTotal) {
             onProductChange(productId, 'price', numericValue / quantity);
         } else {
-            // Si no, el valor ingresado es directamente el precio unitario.
             onProductChange(productId, 'price', numericValue);
         }
     };
     
-    // Se activa cuando el usuario hace clic en la casilla "Es Total"
     const handlePriceTypeToggle = (productId) => {
         const product = products.get(productId);
         if (!product) return;
-        
-        // Llama a la función principal para actualizar el producto,
-        // invirtiendo el valor de la bandera 'priceIsTotal'.
         onProductChange(productId, 'priceIsTotal', !product.priceIsTotal);
     };
 
-    // Maneja la adición de un nuevo ítem desde el formulario
     const handleAddNewItemClick = () => {
         if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
         const price = parseChileanNumber(newItem.price);
@@ -1419,7 +1442,7 @@ const ReviewStep = ({
             name: newItem.name.trim(), 
             price, 
             quantity, 
-            priceIsTotal: false // Por defecto, al agregar manual, el precio es unitario
+            priceIsTotal: false
         });
         setNewItem({ name: '', price: '', quantity: '1' });
     };
@@ -1428,7 +1451,6 @@ const ReviewStep = ({
         const { name, value } = e.target;
         setLocalDiscounts(prev => ({ ...prev, [name]: value }));
     };
-
 
     const handleDiscountBlur = () => {
         dispatch({
@@ -1440,7 +1462,6 @@ const ReviewStep = ({
         });
     };
 
-    // El total general siempre se calcula sobre el precio unitario (p.price), que es la fuente de verdad.
     const total = Array.from(products.values()).reduce((sum, p) => (sum + (p.price || 0) * (p.quantity || 1)), 0);
     const potentialDiscount = total * (discountPercentage / 100);
     const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
@@ -1448,59 +1469,45 @@ const ReviewStep = ({
     const grandTotal = total - actualDiscount + tip;
     
     return (
-        <div className="p-4 pb-20">
+        // --- Se añade padding inferior para que el último item no quede oculto por el footer fijo ---
+        <div className="p-4 pb-48"> 
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
             </header>
             
+            {/* --- CAMBIO: SECCIÓN DE DESCUENTO MOVIDA Y COMPACTADA --- */}
+            <div className="bg-white p-4 rounded-xl shadow-md mb-6">
+                <label className="text-lg font-bold text-blue-600 mb-3 block">Aplicar Descuento</label>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <input type="number" name="percentage" placeholder="% Descuento" value={localDiscounts.percentage} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="flex-grow p-3 border rounded-md" min="0" max="100" aria-label="Porcentaje descuento"/>
+                    <input type="number" name="cap" placeholder="Tope ($)" value={localDiscounts.cap} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="flex-grow p-3 border rounded-md" min="0" aria-label="Tope descuento"/>
+                </div>
+            </div>
+            
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-4">
                 <h2 className="text-lg font-bold">Ítems Cargados</h2>
-
                 <div className="hidden md:grid md:grid-cols-12 gap-x-4 px-2 text-sm font-bold text-gray-500 uppercase">
                     <div className="col-span-5">Ítem</div>
                     <div className="col-span-2 text-center">Cant.</div>
                     <div className="col-span-5 text-right">Precio</div>
                 </div>
-
                 {Array.from(products.values()).map(p => {
-                    // El valor a mostrar en el input depende de si la casilla "Es Total" está marcada
                     const displayPrice = p.priceIsTotal ? (p.price || 0) * (p.quantity || 1) : (p.price || 0);
-
                     return (
                         <div key={p.id} className="grid grid-cols-12 gap-x-2 md:gap-x-4 items-center border-b border-gray-200 py-3">
-                            {/* Nombre del Ítem */}
                             <div className="col-span-12 md:col-span-5">
                                 <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="w-full p-2 border rounded-md" aria-label="Nombre del ítem"/>
                             </div>
-                            
-                            {/* Cantidad */}
                             <div className="col-span-3 md:col-span-2 mt-2 md:mt-0">
                                 <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="w-full p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
                             </div>
-
-                            {/* Sección de Precio Simplificada */}
                             <div className="col-span-9 md:col-span-5 mt-2 md:mt-0 flex items-center gap-2 justify-end">
                                 <span className="text-gray-400">$</span>
-                                <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={displayPrice.toLocaleString('es-CL')}
-                                    onChange={e => handlePriceInputChange(p.id, e.target.value)}
-                                    className="p-2 border rounded-md text-right w-24"
-                                    aria-label="Precio"
-                                />
+                                <input type="text" inputMode="decimal" value={displayPrice.toLocaleString('es-CL')} onChange={e => handlePriceInputChange(p.id, e.target.value)} className="p-2 border rounded-md text-right w-24" aria-label="Precio"/>
                                 <div className="flex items-center" title="Marcar si el precio ingresado es por el total de las unidades">
-                                    <input
-                                        type="checkbox"
-                                        id={`is-total-${p.id}`}
-                                        checked={p.priceIsTotal || false}
-                                        onChange={() => handlePriceTypeToggle(p.id)}
-                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <label htmlFor={`is-total-${p.id}`} className="ml-2 text-xs text-gray-600">
-                                        Es Total
-                                    </label>
+                                    <input type="checkbox" id={`is-total-${p.id}`} checked={p.priceIsTotal || false} onChange={() => handlePriceTypeToggle(p.id)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"/>
+                                    <label htmlFor={`is-total-${p.id}`} className="ml-2 text-xs text-gray-600">Es Total</label>
                                 </div>
                                 <button onClick={() => onRemoveProduct(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full" aria-label={`Eliminar ${p.name}`}>
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -1509,8 +1516,6 @@ const ReviewStep = ({
                         </div>
                     );
                 })}
-                
-                 {/* Formulario para añadir nuevo ítem */}
                  <div className="flex flex-col md:grid md:grid-cols-12 md:gap-x-4 md:items-center pt-4">
                     <div className="col-span-5">
                         <input type="text" placeholder="Nombre nuevo ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-2 border rounded-md bg-gray-50" aria-label="Nombre nuevo ítem"/>
@@ -1531,25 +1536,33 @@ const ReviewStep = ({
                     </div>
                 </div>
             </div>
-            
-            <div className="bg-white p-4 rounded-xl shadow-md mb-6">
-                <h2 className="text-lg font-bold text-blue-600 mb-4">Aplicar Descuento</h2>
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <input type="number" name="percentage" placeholder="% de Descuento" value={localDiscounts.percentage} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="flex-grow p-3 border rounded-md" min="0" max="100" aria-label="Porcentaje descuento"/>
-                    <input type="number" name="cap" placeholder="Tope de Descuento ($)" value={localDiscounts.cap} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="flex-grow p-3 border rounded-md" min="0" aria-label="Tope descuento"/>
+
+            {/* --- NUEVO: FOOTER FIJO Y DINÁMICO --- */}
+            <div className={`fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-200 p-4 transition-all duration-300 ease-in-out`}>
+                <div className="max-w-4xl mx-auto">
+                    {/* --- VISTA EXPANDIDA (Default) --- */}
+                    <div className={`${isFooterCompact ? 'hidden' : 'block'}`}>
+                        <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
+                            <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
+                            {actualDiscount > 0 && (<div className="flex justify-between text-lg"><span className="font-semibold text-green-600">Descuento ({discountPercentage}%):</span><span className="font-bold">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
+                            <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
+                            <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
+                            <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
+                        </div>
+                    </div>
+
+                    {/* --- VISTA COMPACTA (Al hacer scroll) --- */}
+                    <div className={`flex justify-between items-center ${isFooterCompact ? 'block' : 'hidden'}`}>
+                        <div className="text-xl font-extrabold text-blue-800">
+                            <span>TOTAL: </span>
+                            <span>${Math.round(grandTotal).toLocaleString('es-CL')}</span>
+                        </div>
+                        <button onClick={onConfirm} className="py-3 px-8 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Continuar</button>
+                    </div>
                 </div>
-            </div>
-            
-            <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-6">
-                <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
-                {actualDiscount > 0 && (<div className="flex justify-between text-lg"><span className="font-semibold text-green-600">Descuento ({discountPercentage}%):</span><span className="font-bold">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
-                <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
-                <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
-            </div>
-            
-            <div className="flex flex-col sm:flex-row gap-4">
-                <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
-                <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
             </div>
         </div>
     );
