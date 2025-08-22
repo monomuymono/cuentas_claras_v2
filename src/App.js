@@ -1394,7 +1394,6 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 // --- EN TU ARCHIVO App.js ---
-// --- EN TU ARCHIVO App.js ---
 // Reemplaza tu componente ReviewStep completo con esta versión definitiva
 
 const ReviewStep = ({
