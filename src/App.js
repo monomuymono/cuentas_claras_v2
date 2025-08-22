@@ -9,44 +9,42 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 // --- FUNCIÓN AUXILIAR PARA IDs ÚNICOS ---
 const generateUniqueId = (prefix = 'id') => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-// --- FUNCIÓN "TRADUCTORA" DE NÚMEROS (VERSIÓN DEFINITIVA) ---
+// --- FUNCIÓN "TRADUCTORA" DE NÚMEROS (VERSIÓN FINAL-FINAL) ---
 const parseChileanNumber = (str) => {
-  if (typeof str !== 'string') {
+  // Verificación inicial por si no es un string
+  if (typeof str !== 'string' || !str) {
     return Number(str) || 0;
   }
 
-  // 1. Quitar todos los puntos, que siempre son separadores de miles en este contexto.
-  // Ejemplo: "1.234,56" -> "1234,56"
-  let cleanStr = str.replace(/\./g, '');
+  const cleanStr = str.trim();
 
-  // 2. Revisar la última coma para decidir si es decimal o de miles.
-  const lastCommaIndex = cleanStr.lastIndexOf(',');
+  // Heurística robusta: ¿El string termina con el patrón de un decimal chileno?
+  // (una coma seguida de 1 o 2 dígitos exactamente al final del string)
+  const hasChileanDecimal = /,\d{1,2}$/.test(cleanStr);
 
-  // Si se encuentra una coma...
-  if (lastCommaIndex !== -1) {
-    const partAfterComma = cleanStr.substring(lastCommaIndex + 1);
+  let parsableString;
+
+  if (hasChileanDecimal) {
+    // Si SÍ tiene decimales, convertimos la ÚLTIMA coma en un punto
+    // y luego eliminamos cualquier otro caracter que no sea un número o ese punto.
+    const dotDecimalString = cleanStr.substring(0, cleanStr.lastIndexOf(',')) + '.' + cleanStr.substring(cleanStr.lastIndexOf(',') + 1);
+    parsableString = dotDecimalString.replace(/[^\d.]/g, '');
     
-    // 3. HEURÍSTICA CLAVE: Si la parte después de la última coma tiene exactamente 3 dígitos,
-    // es muy probable que sea un separador de miles (ej: "5,000").
-    if (partAfterComma.length === 3) {
-      // Si parece ser de miles, simplemente eliminamos TODAS las comas.
-      // Ejemplo: "5,000" -> "5000"
-      cleanStr = cleanStr.replace(/,/g, '');
-    } else {
-      // 4. Si no tiene 3 dígitos (ej: "123,45"), la tratamos como un decimal.
-      // Primero, eliminamos todas las comas que puedan ser de miles (todas menos la última).
-      const thousandsRemoved = cleanStr.substring(0, lastCommaIndex).replace(/,/g, '');
-      // Reconstruimos el número con un punto decimal.
-      cleanStr = thousandsRemoved + '.' + partAfterComma;
-    }
+  } else {
+    // Si NO tiene decimales (como "6,900" o "10.000"),
+    // la forma más segura es eliminar TODO lo que no sea un dígito.
+    parsableString = cleanStr.replace(/\D/g, '');
+  }
+  
+  // Si el string quedó vacío, devolvemos 0
+  if (parsableString === '') {
+    return 0;
   }
 
-  // 5. Convertir el string ya limpio a número.
-  const num = parseFloat(cleanStr);
+  // Convertimos el string limpio a número
+  const num = parseFloat(parsableString);
   return isNaN(num) ? 0 : num;
 };
-
-
 
 // --- CONSTANTES ---
 const TIP_PERCENTAGE = 0.10; // Propina del 10%
