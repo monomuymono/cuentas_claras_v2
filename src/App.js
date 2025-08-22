@@ -1424,17 +1424,17 @@ const ReviewStep = ({
         });
     }, [discountPercentage, discountCap]);
     
-    // --- EFECTO CON INTERSECTION OBSERVER ---
+    // --- EFECTO CON INTERSECTION OBSERVER (LA SOLUCIÓN DEFINITIVA) ---
     useEffect(() => {
         const observer = new IntersectionObserver(
             ([entry]) => {
-                // Simplemente actualizamos el estado basándonos en si el sensor está visible o no.
+                // Actualiza el estado basándose únicamente en si el sensor está visible.
                 setIsFooterExpanded(entry.isIntersecting);
             },
             { 
-                root: null, // Observa intersecciones en relación con el viewport
-                rootMargin: '0px',
-                threshold: 0.1 // Se activa cuando al menos el 10% del sensor es visible
+                root: null,
+                rootMargin: "0px",
+                threshold: 0.1 // Se activa cuando el 10% del sensor es visible
             }
         );
 
@@ -1443,6 +1443,7 @@ const ReviewStep = ({
             observer.observe(currentSentinel);
         }
 
+        // Limpieza al desmontar el componente
         return () => {
             if (currentSentinel) {
                 observer.unobserve(currentSentinel);
@@ -1505,7 +1506,7 @@ const ReviewStep = ({
     const grandTotal = total - actualDiscount + tip;
     
     return (
-        <div className="p-4 pb-80"> {/* Aumentamos el padding para asegurar que el sensor sea visible */}
+        <div className="p-4 pb-80"> {/* Padding aumentado para asegurar que el sensor sea visible */}
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
@@ -1559,39 +1560,40 @@ const ReviewStep = ({
                 </div>
             </div>
             
+            {/* --- "Sensor" invisible para el Intersection Observer --- */}
             <div ref={sentinelRef} style={{ height: '1px' }} />
 
-            <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-top z-10 transition-all duration-300 ease-in-out ${!isFooterExpanded ? 'h-24' : 'h-auto'}`}>
-                <div className="max-w-4xl mx-auto p-4 h-full flex flex-col justify-center">
-                    <div className="relative w-full h-full">
-                        <div className={`transition-opacity duration-300 absolute inset-0 ${!isFooterExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-                            <div className="flex flex-col h-full justify-between">
-                                <div className="bg-blue-50 p-4 rounded-xl shadow-inner">
-                                    <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
-                                    {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
-                                    <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina:</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
-                                    <div className="flex justify-between text-xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
-                                </div>
-                                <div className="flex flex-col sm:flex-row gap-4 mt-4">
-                                    <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
-                                    <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
-                                </div>
-                            </div>
+            {/* --- FOOTER con transición de altura y opacidad controlada por CSS --- */}
+            <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-top z-10 transition-all duration-300 ease-in-out ${isFooterExpanded ? 'h-auto' : 'h-24'}`}>
+                <div className="max-w-4xl mx-auto p-4 flex flex-col justify-center h-full">
+                    {/* Vista Expandida */}
+                    <div className={`transition-opacity duration-300 ${isFooterExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
+                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
+                            {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
+                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
+                            <div className="flex justify-between text-xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
                         </div>
-                        <div className={`absolute inset-0 flex justify-between items-center transition-opacity duration-300 ${!isFooterExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                            <div className="flex items-center gap-3">
-                                <div className="text-xl font-extrabold text-blue-800">
-                                    <span>TOTAL: </span>
-                                    <span>${Math.round(grandTotal).toLocaleString('es-CL')}</span>
-                                </div>
-                                {actualDiscount > 0 && (
-                                    <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded-full">
-                                        -${Math.round(actualDiscount).toLocaleString('es-CL')}
-                                    </span>
-                                )}
-                            </div>
-                            <button onClick={onConfirm} className="py-3 px-8 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Continuar</button>
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
+                            <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
                         </div>
+                    </div>
+                    
+                    {/* Vista Compacta */}
+                    <div className={`absolute inset-0 flex justify-between items-center px-4 transition-opacity duration-300 ${isFooterExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                        <div className="flex items-center gap-3">
+                            <div className="text-xl font-extrabold text-blue-800">
+                                <span>TOTAL: </span>
+                                <span>${Math.round(grandTotal).toLocaleString('es-CL')}</span>
+                            </div>
+                            {actualDiscount > 0 && (
+                                <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded-full">
+                                    -${Math.round(actualDiscount).toLocaleString('es-CL')}
+                                </span>
+                            )}
+                        </div>
+                        <button onClick={onConfirm} className="py-3 px-8 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Continuar</button>
                     </div>
                 </div>
             </div>
