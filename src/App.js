@@ -1355,7 +1355,8 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 // --- EN TU ARCHIVO App.js ---
-// Reemplaza tu componente ReviewStep completo con esta versión
+// Reemplaza tu componente ReviewStep completo con esta versión final
+
 const ReviewStep = ({
     products,
     onProductChange,
@@ -1471,8 +1472,8 @@ const ReviewStep = ({
 
     const total = Array.from(products.values()).reduce((sum, p) => (sum + (p.price || 0) * (p.quantity || 1)), 0);
     const potentialDiscount = total * (discountPercentage / 100);
-    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : potentialDiscount;
-    const tip = total * TIP_PERCENTAGE; // <-- CORREGIDO: Propina sobre el subtotal
+    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
+    const tip = total * TIP_PERCENTAGE;
     const grandTotal = total - actualDiscount + tip;
     
     return (
@@ -1547,9 +1548,17 @@ const ReviewStep = ({
                         </div>
                         <div className="absolute inset-x-0 bottom-0 p-4 transition-opacity duration-200" style={{ opacity: footerStyle.compactOpacity, pointerEvents: footerStyle.compactOpacity < 0.5 ? 'none' : 'auto' }}>
                              <div className="max-w-4xl mx-auto flex justify-between items-center">
-                                <div className="text-xl font-extrabold text-blue-800">
-                                    <span>TOTAL: </span>
-                                    <span>${Math.round(grandTotal).toLocaleString('es-CL')}</span>
+                                <div className="flex items-center gap-3">
+                                    <div className="text-xl font-extrabold text-blue-800">
+                                        <span>TOTAL: </span>
+                                        <span>${Math.round(grandTotal).toLocaleString('es-CL')}</span>
+                                    </div>
+                                    {/* --- NUEVO: INDICADOR DE DESCUENTO EN VISTA COMPACTA --- */}
+                                    {actualDiscount > 0 && (
+                                        <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded-full">
+                                            -${Math.round(actualDiscount).toLocaleString('es-CL')}
+                                        </span>
+                                    )}
                                 </div>
                                 <button onClick={onConfirm} className="py-3 px-8 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Continuar</button>
                             </div>
