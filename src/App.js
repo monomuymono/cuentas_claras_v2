@@ -1355,8 +1355,7 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 // --- EN TU ARCHIVO App.js ---
-// Reemplaza tu componente ReviewStep completo con esta versión definitiva
-
+// Reemplaza tu componente ReviewStep completo con esta versión
 const ReviewStep = ({
     products,
     onProductChange,
@@ -1373,7 +1372,6 @@ const ReviewStep = ({
         percentage: discountPercentage || '',
         cap: discountCap || ''
     });
-    // --- NUEVO: El estado ahora guarda estilos dinámicos, no un booleano ---
     const [footerStyle, setFooterStyle] = useState({
         compactOpacity: 0,
         expandedOpacity: 1,
@@ -1387,49 +1385,41 @@ const ReviewStep = ({
         });
     }, [discountPercentage, discountCap]);
     
-    // --- LÓGICA DE SCROLL COMPLETAMENTE REHECHA PARA SER FLUIDA ---
     useEffect(() => {
-        const expandedHeight = 250; // Altura aproximada del footer expandido
-        const compactHeight = 88;   // Altura del footer compacto
-        const triggerZone = 200;    // ¿Cuántos píxeles antes del final empieza la animación?
+        const expandedHeight = 250; 
+        const compactHeight = 88;
+        const triggerZone = 200;
 
         const handleScroll = () => {
             const scrollHeight = document.documentElement.scrollHeight;
             const clientHeight = document.documentElement.clientHeight;
             const scrollY = window.scrollY;
             
-            // Si no hay scroll, se mantiene expandido
             if (scrollHeight <= clientHeight) {
                 setFooterStyle({ compactOpacity: 0, expandedOpacity: 1, containerHeight: `${expandedHeight}px`});
                 return;
             }
 
             const scrollFromBottom = scrollHeight - clientHeight - scrollY;
-
-            // Calcula el progreso de la animación (de 0 a 1) dentro de la "zona de activación"
             const progress = 1 - (scrollFromBottom / triggerZone);
             const clampedProgress = Math.max(0, Math.min(1, progress));
 
-            // Si estamos lejos del inicio y del final, forzamos el estado compacto
             if (scrollY > 50 && scrollFromBottom > triggerZone) {
                  setFooterStyle({ compactOpacity: 1, expandedOpacity: 0, containerHeight: `${compactHeight}px` });
             } else {
-            // Si estamos en la zona de transición (arriba o abajo), calculamos los estilos dinámicamente
                 setFooterStyle({
                     compactOpacity: 1 - clampedProgress,
                     expandedOpacity: clampedProgress,
-                    // Interpola la altura para una transición de tamaño suave
                     containerHeight: `${compactHeight + (expandedHeight - compactHeight) * clampedProgress}px`
                 });
             }
         };
 
         window.addEventListener('scroll', handleScroll, { passive: true });
-        handleScroll(); // Llama una vez al inicio para el estado inicial correcto
+        handleScroll();
 
         return () => window.removeEventListener('scroll', handleScroll);
-    }, [products.size]); // Se recalcula si la cantidad de productos cambia la altura de la página
-
+    }, [products.size]);
 
     const handlePriceInputChange = (productId, newDisplayValue) => {
         const product = products.get(productId);
@@ -1481,18 +1471,17 @@ const ReviewStep = ({
 
     const total = Array.from(products.values()).reduce((sum, p) => (sum + (p.price || 0) * (p.quantity || 1)), 0);
     const potentialDiscount = total * (discountPercentage / 100);
-    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
-    const tip = (total - actualDiscount) * TIP_PERCENTAGE;
+    const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : potentialDiscount;
+    const tip = total * TIP_PERCENTAGE; // <-- CORREGIDO: Propina sobre el subtotal
     const grandTotal = total - actualDiscount + tip;
     
     return (
-        <div className="p-4" style={{ paddingBottom: '260px' }}> {/* Padding dinámico para el footer */}
+        <div className="p-4" style={{ paddingBottom: '260px' }}> 
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
             </header>
             
-            {/* --- SECCIÓN DE DESCUENTO SÚPER COMPACTA --- */}
             <div className="bg-white p-3 rounded-xl shadow-md mb-6">
                 <details className="group">
                     <summary className="flex justify-between items-center cursor-pointer list-none">
@@ -1509,7 +1498,6 @@ const ReviewStep = ({
             </div>
             
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-4">
-                 {/* ... (El mapeo de productos y el formulario no cambian) ... */}
                  <h2 className="text-lg font-bold">Ítems Cargados</h2>
                  {Array.from(products.values()).map(p => {
                     const displayPrice = p.priceIsTotal ? (p.price || 0) * (p.quantity || 1) : (p.price || 0);
@@ -1529,35 +1517,42 @@ const ReviewStep = ({
                         </div>
                     );
                  })}
-                 {/* Formulario para añadir nuevo ítem */}
+                 <div className="flex flex-col md:grid md:grid-cols-12 md:gap-x-4 md:items-center pt-4">
+                    <div className="col-span-5"><input type="text" placeholder="Nombre nuevo ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-2 border rounded-md bg-gray-50" aria-label="Nombre nuevo ítem"/></div>
+                    <div className="flex items-center gap-x-4 mt-2 md:mt-0 md:col-span-7">
+                        <div className="w-1/3 md:w-auto md:col-span-2"><input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="w-full p-2 border rounded-md text-center bg-gray-50" aria-label="Cantidad nuevo ítem" min="1"/></div>
+                        <div className="flex-grow md:col-span-3 relative">
+                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input type="text" inputMode="decimal" placeholder="Precio Unit." value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="w-full p-2 border rounded-md text-right pl-6 bg-gray-50" aria-label="Precio nuevo ítem" min="0"/>
+                        </div>
+                        <div className="md:col-span-1"><button onClick={handleAddNewItemClick} className="p-2 text-white bg-green-500 hover:bg-green-600 rounded-full" aria-label="Agregar ítem"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg></button></div>
+                    </div>
+                </div>
             </div>
 
-            {/* --- FOOTER FIJO CON TRANSICIÓN SUAVE --- */}
             <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 shadow-top z-10 transition-height duration-300 ease-in-out" style={{ height: footerStyle.containerHeight }}>
                 <div className="max-w-4xl mx-auto p-4 h-full flex flex-col justify-end">
-                    
-                    {/* Vista Expandida (se desvanece) */}
-                    <div className="transition-opacity duration-200" style={{ opacity: footerStyle.expandedOpacity, pointerEvents: footerStyle.expandedOpacity < 0.5 ? 'none' : 'auto' }}>
-                        <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
-                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
-                            {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
-                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina:</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
-                            <div className="flex justify-between text-xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-4">
-                            <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
-                            <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
-                        </div>
-                    </div>
-                    
-                    {/* Vista Compacta (aparece) */}
-                    <div className="absolute inset-x-0 bottom-0 p-4 transition-opacity duration-200" style={{ opacity: footerStyle.compactOpacity, pointerEvents: footerStyle.compactOpacity < 0.5 ? 'none' : 'auto' }}>
-                         <div className="max-w-4xl mx-auto flex justify-between items-center">
-                            <div className="text-xl font-extrabold text-blue-800">
-                                <span>TOTAL: </span>
-                                <span>${Math.round(grandTotal).toLocaleString('es-CL')}</span>
+                    <div className="relative h-full">
+                        <div className="transition-opacity duration-200 absolute inset-0" style={{ opacity: footerStyle.expandedOpacity, pointerEvents: footerStyle.expandedOpacity < 0.5 ? 'none' : 'auto' }}>
+                            <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
+                                <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
+                                {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
+                                <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
+                                <div className="flex justify-between text-xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
                             </div>
-                            <button onClick={onConfirm} className="py-3 px-8 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Continuar</button>
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
+                                <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
+                            </div>
+                        </div>
+                        <div className="absolute inset-x-0 bottom-0 p-4 transition-opacity duration-200" style={{ opacity: footerStyle.compactOpacity, pointerEvents: footerStyle.compactOpacity < 0.5 ? 'none' : 'auto' }}>
+                             <div className="max-w-4xl mx-auto flex justify-between items-center">
+                                <div className="text-xl font-extrabold text-blue-800">
+                                    <span>TOTAL: </span>
+                                    <span>${Math.round(grandTotal).toLocaleString('es-CL')}</span>
+                                </div>
+                                <button onClick={onConfirm} className="py-3 px-8 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Continuar</button>
+                            </div>
                         </div>
                     </div>
                 </div>
