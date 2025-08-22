@@ -1037,10 +1037,13 @@ useEffect(() => {
         reader.readAsDataURL(file); 
     }; // Dentro de tu componente App
 
-// Reemplaza tu función analyzeImageWithGemini con esta versión corregida
+// REEMPLAZA TU FUNCIÓN analyzeImageWithGemini COMPLETA CON ESTA VERSIÓN
 
 const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
   try {
+    setIsImageProcessing(true); // Asegúrate de tener esta línea si la habías quitado
+    setImageProcessingError(null); // Y esta para limpiar errores previos
+
     const apiUrl = '/api/analyzeImage'; 
 
     const response = await fetch(apiUrl, {
@@ -1069,30 +1072,32 @@ const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
     parsedData.items.forEach(item => {
         const name = item.name?.trim();
         
-        // --- SECCIÓN CORREGIDA ---
+        // --- LÓGICA CLAVE CORREGIDA Y VERIFICADA ---
         const totalValue = parseChileanNumber(String(item.price));
         const quantity = parseInt(item.quantity, 10) || 1;
 
         if (name && !isNaN(totalValue) && !isNaN(quantity) && quantity > 0) {
-            // Se busca un ítem existente por nombre para agruparlo
-            // Nota: Podrías hacer esta búsqueda más específica si también comparas el precio unitario
+            
+            // Buscamos si ya existe un ítem con el mismo nombre para agruparlos
             const existing = Array.from(newProductsMap.values()).find(p => p.name === name);
             
             if (existing) {
-                // Si existe, se suma la cantidad y se recalcula el precio unitario promedio si es necesario
+                // Si ya existe, sumamos la cantidad y el valor total, luego recalculamos el precio unitario
                 const newQuantity = existing.quantity + quantity;
-                // Esta es una forma simple de promediar, podrías ajustarla si necesitas otra lógica
-                const newPrice = ((existing.price * existing.quantity) + totalValue) / newQuantity;
-                newProductsMap.set(existing.id, { ...existing, quantity: newQuantity, price: newPrice });
+                const newTotalValue = (existing.price * existing.quantity) + totalValue;
+                existing.quantity = newQuantity;
+                existing.price = newTotalValue / newQuantity; // Recalcula el precio unitario promedio
             } else {
-                // Si no existe, se crea un nuevo ítem
+                // Si es un ítem nuevo, lo creamos
                 const newId = generateUniqueId('item');
                 newProductsMap.set(newId, {
                   id: newId,
                   name, 
-                  price: totalValue / quantity, // Guardamos el precio unitario
+                  // Punto CRÍTICO: Guardamos el PRECIO UNITARIO
+                  price: totalValue / quantity, 
                   quantity,
-                  priceIsTotal: true // Le indicamos a la UI que el precio inicial es el total
+                  // Punto CRÍTICO: Le decimos a la UI que el precio que vimos era el TOTAL
+                  priceIsTotal: true 
                 });
             }
         }
