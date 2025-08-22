@@ -1138,8 +1138,47 @@ const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
             setIsGeneratingLink(false);
         }, 500); // 500ms para que el usuario perciba la acción
     };
-    const handleOpenSummaryModal = () => { const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0); const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity); const data = comensales.map(comensal => { const totalSinPropina = comensal.selectedItems.reduce((sum, item) => sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0); const propina = totalSinPropina * TIP_PERCENTAGE; const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropina / totalGeneralSinPropina : 0; const descuentoAplicado = totalDescuentoCalculado * proporcionDelComensal; const totalConPropina = totalSinPropina + propina - descuentoAplicado; return { id: comensal.id, name: comensal.name, totalSinPropina: Math.round(totalSinPropina), propina: Math.round(propina), descuentoAplicado: Math.round(descuentoAplicado), totalConPropina: Math.round(totalConPropina), items: comensal.selectedItems }; }); setSummaryData(data); setIsSummaryModalOpen(true); };
-    const handlePrint = () => {
+   // En tu componente App, reemplaza la función handleOpenSummaryModal completa
+
+const handleOpenSummaryModal = useCallback(() => {
+    // 1. Calcular el subtotal general de todos los comensales
+    const totalGeneralSinPropina = comensales.reduce((total, c) =>
+        total + c.selectedItems.reduce((sub, item) =>
+            sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
+
+    // 2. Calcular el descuento total que se puede aplicar
+    const totalDescuentoPosible = totalGeneralSinPropina * (discountPercentage / 100);
+    const totalDescuentoReal = (discountPercentage > 0 && discountCap > 0)
+        ? Math.min(totalDescuentoPosible, discountCap)
+        : totalDescuentoPosible;
+
+    const data = comensales.map(comensal => {
+        const totalSinPropinaComensal = comensal.selectedItems.reduce((sum, item) =>
+            sum + ((item.originalBasePrice || 0) * (item.quantity || 0)), 0);
+
+        // 3. Distribuir el descuento proporcionalmente
+        const proporcionDelComensal = totalGeneralSinPropina > 0 ? totalSinPropinaComensal / totalGeneralSinPropina : 0;
+        const descuentoAplicado = totalDescuentoReal * proporcionDelComensal;
+        
+        // 4. Calcular la propina sobre el subtotal SIN descuento
+        const propina = totalSinPropinaComensal * TIP_PERCENTAGE;
+
+        const totalConPropina = (totalSinPropinaComensal - descuentoAplicado) + propina;
+
+        return { 
+            id: comensal.id, 
+            name: comensal.name, 
+            totalSinPropina: Math.round(totalSinPropinaComensal), 
+            propina: Math.round(propina), 
+            descuentoAplicado: Math.round(descuentoAplicado), 
+            totalConPropina: Math.round(totalConPropina), 
+            items: comensal.selectedItems 
+        }; 
+    }); 
+    setSummaryData(data); 
+    setIsSummaryModalOpen(true); 
+}, [comensales, discountPercentage, discountCap]); // <-- Dependencias que fuerzan la actualización de la función
+  const handlePrint = () => {
         const printContent = document.getElementById('print-source-content');
         if (!printContent) return;
         const printWindow = window.open('', '_blank', 'height=800,width=800');
