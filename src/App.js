@@ -674,7 +674,7 @@ function billReducer(state, action) {
 // --- Componente principal de la aplicación ---
 const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
-    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
+    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap, masterProductList } = state;
 
     // ... (El resto de los useState y useRef no cambian) ...
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
