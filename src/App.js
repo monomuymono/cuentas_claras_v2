@@ -1329,8 +1329,7 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
         )}
     </div>
 );
-// --- EN TU ARCHIVO App.js ---
-// Reemplaza tu componente ReviewStep completo con este:
+// --- COPIA Y REEMPLAZA TU COMPONENTE ReviewStep CON ESTE CÓDIGO ---
 
 const ReviewStep = ({
     products,
@@ -1344,7 +1343,6 @@ const ReviewStep = ({
     dispatch
 }) => {
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
-    
     const [localDiscounts, setLocalDiscounts] = useState({
         percentage: discountPercentage || '',
         cap: discountCap || ''
@@ -1357,31 +1355,47 @@ const ReviewStep = ({
         });
     }, [discountPercentage, discountCap]);
 
-    // *** NUEVA FUNCIÓN PARA MANEJAR CAMBIOS EN LOS PRECIOS ***
-    const handlePriceChange = (productId, fieldChanged, value) => {
+    // Se activa cuando el usuario escribe en el campo de precio
+    const handlePriceInputChange = (productId, newDisplayValue) => {
         const product = products.get(productId);
         if (!product) return;
 
-        const numericValue = parseChileanNumber(String(value));
+        const numericValue = parseChileanNumber(String(newDisplayValue));
         const quantity = parseInt(product.quantity, 10) || 1;
-        let newPrice;
 
-        if (fieldChanged === 'unit') {
-            newPrice = numericValue;
-        } else { // fieldChanged === 'total'
-            newPrice = numericValue / quantity;
+        // Si la casilla está marcada, el valor ingresado es el total.
+        // Calculamos el precio unitario para guardarlo internamente.
+        if (product.priceIsTotal) {
+            onProductChange(productId, 'price', numericValue / quantity);
+        } else {
+            // Si no, el valor ingresado es directamente el precio unitario.
+            onProductChange(productId, 'price', numericValue);
         }
+    };
+    
+    // Se activa cuando el usuario hace clic en la casilla "Es Total"
+    const handlePriceTypeToggle = (productId) => {
+        const product = products.get(productId);
+        if (!product) return;
         
-        onProductChange(productId, 'price', newPrice);
+        // Llama a la función principal para actualizar el producto,
+        // invirtiendo el valor de la bandera 'priceIsTotal'.
+        onProductChange(productId, 'priceIsTotal', !product.priceIsTotal);
     };
 
+    // Maneja la adición de un nuevo ítem desde el formulario
     const handleAddNewItemClick = () => {
         if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
         const price = parseChileanNumber(newItem.price);
         const quantity = parseInt(newItem.quantity, 10);
         if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
-        onAddNewProduct({ name: newItem.name.trim(), price, quantity });
+        onAddNewProduct({ 
+            name: newItem.name.trim(), 
+            price, 
+            quantity, 
+            priceIsTotal: false // Por defecto, al agregar manual, el precio es unitario
+        });
         setNewItem({ name: '', price: '', quantity: '1' });
     };
 
@@ -1389,6 +1403,7 @@ const ReviewStep = ({
         const { name, value } = e.target;
         setLocalDiscounts(prev => ({ ...prev, [name]: value }));
     };
+
 
     const handleDiscountBlur = () => {
         dispatch({
@@ -1400,11 +1415,12 @@ const ReviewStep = ({
         });
     };
 
-    const total = Array.from(products.values()).reduce((sum, p) => (sum + (parseChileanNumber(String(p.price)) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
+    // El total general siempre se calcula sobre el precio unitario (p.price), que es la fuente de verdad.
+    const total = Array.from(products.values()).reduce((sum, p) => (sum + (p.price || 0) * (p.quantity || 1)), 0);
     const potentialDiscount = total * (discountPercentage / 100);
     const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
-    const tip = total * TIP_PERCENTAGE;
-    const grandTotal = total + tip - actualDiscount;
+    const tip = (total - actualDiscount) * TIP_PERCENTAGE;
+    const grandTotal = total - actualDiscount + tip;
     
     return (
         <div className="p-4 pb-20">
@@ -1416,72 +1432,71 @@ const ReviewStep = ({
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-4">
                 <h2 className="text-lg font-bold">Ítems Cargados</h2>
 
-                {/* *** ENCABEZADOS ACTUALIZADOS *** */}
                 <div className="hidden md:grid md:grid-cols-12 gap-x-4 px-2 text-sm font-bold text-gray-500 uppercase">
-                    <div className="col-span-4">Ítem</div>
+                    <div className="col-span-5">Ítem</div>
                     <div className="col-span-2 text-center">Cant.</div>
-                    <div className="col-span-3 text-right">Precio Unit.</div>
-                    <div className="col-span-3 text-right">Precio Total</div>
+                    <div className="col-span-5 text-right">Precio</div>
                 </div>
 
-                {Array.from(products.values()).map(p => (
-                    <div key={p.id} className="grid grid-cols-12 gap-x-4 items-center border-b border-gray-200 py-3">
-                        {/* Nombre */}
-                        <div className="col-span-12 md:col-span-4">
-                            <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="w-full p-2 border rounded-md" aria-label="Nombre"/>
-                        </div>
-                        
-                        {/* Cantidad */}
-                        <div className="col-span-3 md:col-span-2 mt-2 md:mt-0">
-                            <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="w-full p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
-                        </div>
+                {Array.from(products.values()).map(p => {
+                    // El valor a mostrar en el input depende de si la casilla "Es Total" está marcada
+                    const displayPrice = p.priceIsTotal ? (p.price || 0) * (p.quantity || 1) : (p.price || 0);
 
-                        {/* *** NUEVOS INPUTS DE PRECIO *** */}
-                        {/* Precio Unitario */}
-                        <div className="col-span-4 md:col-span-3 mt-2 md:mt-0 relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                            <input
-                                type="text" // Usamos text para permitir comas
-                                value={Number(p.price).toLocaleString('es-CL')}
-                                onChange={e => handlePriceChange(p.id, 'unit', e.target.value)}
-                                className="w-full p-2 border rounded-md text-right pl-6"
-                                aria-label="Precio Unitario"
-                            />
-                        </div>
+                    return (
+                        <div key={p.id} className="grid grid-cols-12 gap-x-2 md:gap-x-4 items-center border-b border-gray-200 py-3">
+                            {/* Nombre del Ítem */}
+                            <div className="col-span-12 md:col-span-5">
+                                <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="w-full p-2 border rounded-md" aria-label="Nombre del ítem"/>
+                            </div>
+                            
+                            {/* Cantidad */}
+                            <div className="col-span-3 md:col-span-2 mt-2 md:mt-0">
+                                <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="w-full p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
+                            </div>
 
-                        {/* Precio Total */}
-                        <div className="col-span-4 md:col-span-3 mt-2 md:mt-0 relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                            <input
-                                type="text" // Usamos text para permitir comas
-                                value={(Number(p.price) * (Number(p.quantity) || 1)).toLocaleString('es-CL')}
-                                onChange={e => handlePriceChange(p.id, 'total', e.target.value)}
-                                className="w-full p-2 border rounded-md text-right pl-6 bg-gray-50"
-                                aria-label="Precio Total"
-                            />
+                            {/* Sección de Precio Simplificada */}
+                            <div className="col-span-9 md:col-span-5 mt-2 md:mt-0 flex items-center gap-2 justify-end">
+                                <span className="text-gray-400">$</span>
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={displayPrice.toLocaleString('es-CL')}
+                                    onChange={e => handlePriceInputChange(p.id, e.target.value)}
+                                    className="p-2 border rounded-md text-right w-24"
+                                    aria-label="Precio"
+                                />
+                                <div className="flex items-center" title="Marcar si el precio ingresado es por el total de las unidades">
+                                    <input
+                                        type="checkbox"
+                                        id={`is-total-${p.id}`}
+                                        checked={p.priceIsTotal || false}
+                                        onChange={() => handlePriceTypeToggle(p.id)}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <label htmlFor={`is-total-${p.id}`} className="ml-2 text-xs text-gray-600">
+                                        Es Total
+                                    </label>
+                                </div>
+                                <button onClick={() => onRemoveProduct(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full" aria-label={`Eliminar ${p.name}`}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                            </div>
                         </div>
-
-                        {/* Botón Eliminar */}
-                        <div className="col-span-1 flex justify-end mt-2 md:mt-0">
-                            <button onClick={() => onRemoveProduct(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full" aria-label={`Eliminar ${p.name}`}>
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
                 
-                {/* El resto del componente (agregar nuevo ítem, descuentos, total, botones) sigue igual... */}
+                 {/* Formulario para añadir nuevo ítem */}
                  <div className="flex flex-col md:grid md:grid-cols-12 md:gap-x-4 md:items-center pt-4">
-                    <div className="col-span-4">
-                        <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-2 border rounded-md bg-gray-50" aria-label="Nombre nuevo ítem"/>
+                    <div className="col-span-5">
+                        <input type="text" placeholder="Nombre nuevo ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-2 border rounded-md bg-gray-50" aria-label="Nombre nuevo ítem"/>
                     </div>
-                    <div className="flex items-center gap-x-4 mt-2 md:mt-0 md:col-span-8">
+                    <div className="flex items-center gap-x-4 mt-2 md:mt-0 md:col-span-7">
                         <div className="w-1/3 md:w-auto md:col-span-2">
                             <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="w-full p-2 border rounded-md text-center bg-gray-50" aria-label="Cantidad nuevo ítem" min="1"/>
                         </div>
                         <div className="flex-grow md:col-span-3 relative">
                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                            <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="w-full p-2 border rounded-md text-right pl-6 bg-gray-50" aria-label="Precio nuevo ítem" min="0"/>
+                            <input type="text" inputMode="decimal" placeholder="Precio Unit." value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="w-full p-2 border rounded-md text-right pl-6 bg-gray-50" aria-label="Precio nuevo ítem" min="0"/>
                         </div>
                         <div className="md:col-span-1">
                             <button onClick={handleAddNewItemClick} className="p-2 text-white bg-green-500 hover:bg-green-600 rounded-full" aria-label="Agregar ítem">
@@ -1502,7 +1517,7 @@ const ReviewStep = ({
             
             <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-6">
                 <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
-                {actualDiscount > 0 && (<div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Descuento ({discountPercentage}%):</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
+                {actualDiscount > 0 && (<div className="flex justify-between text-lg"><span className="font-semibold text-green-600">Descuento ({discountPercentage}%):</span><span className="font-bold">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
                 <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
                 <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
             </div>
@@ -1514,6 +1529,7 @@ const ReviewStep = ({
         </div>
     );
 };
+
 
 
     // VERSIÓN FINAL Y CORREGIDA de AssigningStep
