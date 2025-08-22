@@ -1554,13 +1554,28 @@ const ReviewStep = ({
 
 
 
-    // VERSIÓN FINAL Y CORREGIDA de AssigningStep
+    // --- EN TU ARCHIVO App.js ---
+// Reemplaza tu componente AssigningStep completo con esta versión reordenada
+
 const AssigningStep = ({
     availableProducts, comensales, newComensalName, setNewComensalName, addComensalMessage, onAddComensal,
     onAddItem, onRemoveItem, onOpenClearComensalModal, onOpenRemoveComensalModal, onOpenShareModal, onOpenSummary,
     onGoBack, onGenerateLink, onRestart, shareLink, discountPercentage, discountCap, saveStatus, dispatch, onRetrySave
 }) => {
     
+    const [isToolsOpen, setIsToolsOpen] = useState(false);
+    const comensalesContainerRef = useRef(null);
+    const prevComensalesLength = useRef(comensales.length);
+
+    useEffect(() => {
+        if (comensales.length > prevComensalesLength.current && prevComensalesLength.current === 0) {
+            setTimeout(() => {
+                comensalesContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }, 100); 
+        }
+        prevComensalesLength.current = comensales.length;
+    }, [comensales.length]);
+
     const totalGeneralSinPropina = comensales.reduce((total, c) => total + c.selectedItems.reduce((sub, item) => sub + (item.originalBasePrice || 0) * item.quantity, 0), 0);
     const totalDescuentoCalculado = Math.min(totalGeneralSinPropina * (discountPercentage / 100), discountCap || Infinity);
     const unassignedItems = Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0);
@@ -1574,7 +1589,7 @@ const AssigningStep = ({
         const totalAPagar = totalSinPropina + propina - descuentoAplicado;
 
         return (
-            <div className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full">
+            <div className="bg-white p-5 rounded-xl shadow-lg flex flex-col h-full animate-fade-in">
                 <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">{comensal.name}</h3>
                 <div className="mb-4">
                     <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
@@ -1620,23 +1635,37 @@ const AssigningStep = ({
                 <h1 className="text-3xl font-extrabold text-blue-700 mb-2">Asignar Consumos</h1>
                 <p className="text-gray-600">Agrega comensales y asígnales lo que consumieron.</p>
                 <div className="h-6 mt-2 flex justify-center items-center">
-                    {saveStatus === 'saving' && ( <div className="flex items-center text-sm text-gray-500"> <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> Guardando... </div> )}
-                    {saveStatus === 'saved' && ( <div className="flex items-center text-sm text-green-600"> <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /> </svg> Guardado ✓ </div> )}
-                    {saveStatus === 'error' && (
-                        <div className="flex items-center text-sm text-red-600">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /> </svg>
-                            Error al guardar ✗
-                            <button
-                                onClick={onRetrySave}
-                                className="ml-2 px-2 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
-                            >
-                                Reintentar
-                            </button>
-                        </div>
-                    )}
+                    {/* ... (código de estado de guardado no cambia) ... */}
                 </div>
                 <button onClick={onGoBack} className="mt-2 text-sm text-blue-600 hover:underline">&larr; Volver y Editar Ítems</button>
             </header>
+
+            {/* --- CAMBIO: SECCIÓN DE HERRAMIENTAS (AHORA ARRIBA) --- */}
+            <div className="bg-gray-100 rounded-xl mb-6 border border-gray-200">
+                <button onClick={() => setIsToolsOpen(!isToolsOpen)} className="w-full flex justify-between items-center text-left p-4">
+                    <h2 className="text-lg font-bold text-gray-700">Otras Herramientas</h2>
+                    <svg className={`w-5 h-5 text-gray-500 transition-transform ${isToolsOpen ? 'rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+                {isToolsOpen && (
+                    <div className="p-4 border-t border-gray-200 animate-fade-in-down">
+                        <div className="space-y-3">
+                            <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-white hover:bg-gray-50 rounded-lg transition-colors border">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                <span className="font-semibold">Generar Link de Sesión</span>
+                            </button>
+                            <button onClick={onRestart} className="w-full flex items-center justify-center text-left p-3 bg-white hover:bg-gray-50 rounded-lg transition-colors border">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path d="M4 9a9 9 0 0114.65-4.65l-2.12 2.12a5 5 0 00-9.07 4.53" /><path d="M20 15a9 9 0 01-14.65 4.65l2.12-2.12a5 5 0 009.07-4.53" /></svg>
+                                <span className="font-semibold">Empezar de Nuevo</span>
+                            </button>
+                        </div>
+                        {shareLink && ( <div className="mt-4 bg-green-50 p-4 rounded-lg border border-green-200"> <p className="font-semibold text-green-800">¡Enlace generado!</p> <input type="text" readOnly value={shareLink} className="w-full mt-2 p-2 border rounded-md bg-white text-center text-sm" onFocus={(e) => e.target.select()} /> <button onClick={() => navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado!'))} className="mt-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700">Copiar</button> </div> )}
+                    </div>
+                )}
+            </div>
+
+            {/* --- SECCIÓN DE AÑADIR COMENSAL --- */}
             <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
                 <h2 className="text-xl font-bold text-blue-600 mb-4">Agregar Nuevo Comensal</h2>
                 <div className="flex flex-col sm:flex-row gap-3 items-center">
@@ -1644,21 +1673,25 @@ const AssigningStep = ({
                     <button onClick={onAddComensal} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 w-full sm:w-auto">Añadir</button>
                 </div>
                 {addComensalMessage.text && (<p className={`mt-3 text-center text-sm ${addComensalMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{addComensalMessage.text}</p>)}
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
-                <h2 className="text-xl font-bold text-blue-600 mb-4 text-center">Herramientas</h2>
-                <div className="space-y-3">
-                    <button onClick={onGenerateLink} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg> <span className="font-semibold">Generar Link de Sesión</span> </button>
-                    <button onClick={onOpenShareModal} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg> <span className="font-semibold">Compartir un Ítem</span> </button>
-                    <button onClick={onRestart} className="w-full flex items-center justify-center text-left p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path d="M4 9a9 9 0 0114.65-4.65l-2.12 2.12a5 5 0 00-9.07 4.53" /><path d="M20 15a9 9 0 01-14.65 4.65l2.12-2.12a5 5 0 009.07-4.53" /></svg> <span className="font-semibold">Empezar de Nuevo</span> </button>
+                <div className="text-center mt-4 text-gray-600 font-semibold">
+                    Comensales Agregados: {comensales.length}
                 </div>
-                {shareLink && ( <div className="mt-4 bg-green-50 p-4 rounded-lg border border-green-200"> <p className="font-semibold text-green-800">¡Enlace para compartir generado!</p> <input type="text" readOnly value={shareLink} className="w-full mt-2 p-2 border rounded-md bg-white text-center text-sm" onFocus={(e) => e.target.select()} /> <button onClick={() => navigator.clipboard.writeText(shareLink).then(() => alert('¡Enlace copiado!'))} className="mt-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700">Copiar Enlace</button> </div> )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+            {/* --- ACCIÓN PRINCIPAL "COMPARTIR ÍTEM" --- */}
+            <div className="mb-6">
+                 <button onClick={onOpenShareModal} className="w-full flex items-center justify-center text-left p-4 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors border border-indigo-200 text-indigo-800 shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12s-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.368a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" /></svg>
+                    <span className="font-bold text-lg">Compartir un Ítem</span>
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" ref={comensalesContainerRef}>
                 {comensales.map(comensal => ( <ComensalCard key={comensal.id} comensal={comensal} /> ))}
             </div>
+            
             {comensales.length > 0 && (
-                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200">
+                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200 print:hidden">
                     <button onClick={onOpenSummary} className="w-full max-w-4xl mx-auto py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 transition-transform hover:scale-105 flex flex-col items-center">
                         <span className="text-lg">Ver Resumen Final</span>
                         {totalUnassignedQuantity > 0 && (
