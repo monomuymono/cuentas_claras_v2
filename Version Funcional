@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useReducer } from 'react';
 import { supabase } from './supabaseClient';
 
@@ -10,19 +9,44 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 // --- FUNCIÓN AUXILIAR PARA IDs ÚNICOS ---
 const generateUniqueId = (prefix = 'id') => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-// --- NUEVA FUNCIÓN "TRADUCTORA" DE NÚMEROS ---
+// --- FUNCIÓN "TRADUCTORA" DE NÚMEROS (VERSIÓN DEFINITIVA) ---
 const parseChileanNumber = (str) => {
-  // Si no es un texto, lo devolvemos como número por si acaso
   if (typeof str !== 'string') {
     return Number(str) || 0;
   }
-  // 1. Quita todos los puntos (separadores de miles) -> "1.234,56" se convierte en "1234,56"
-  const withoutDots = str.replace(/\./g, '');
-  // 2. Reemplaza la coma decimal por un punto -> "1234,56" se convierte en "1234.56"
-  const withDotDecimal = withoutDots.replace(/,/, '.');
-  // 3. Convierte el texto limpio a un número de punto flotante
-  return parseFloat(withDotDecimal) || 0;
+
+  // 1. Quitar todos los puntos, que siempre son separadores de miles en este contexto.
+  // Ejemplo: "1.234,56" -> "1234,56"
+  let cleanStr = str.replace(/\./g, '');
+
+  // 2. Revisar la última coma para decidir si es decimal o de miles.
+  const lastCommaIndex = cleanStr.lastIndexOf(',');
+
+  // Si se encuentra una coma...
+  if (lastCommaIndex !== -1) {
+    const partAfterComma = cleanStr.substring(lastCommaIndex + 1);
+    
+    // 3. HEURÍSTICA CLAVE: Si la parte después de la última coma tiene exactamente 3 dígitos,
+    // es muy probable que sea un separador de miles (ej: "5,000").
+    if (partAfterComma.length === 3) {
+      // Si parece ser de miles, simplemente eliminamos TODAS las comas.
+      // Ejemplo: "5,000" -> "5000"
+      cleanStr = cleanStr.replace(/,/g, '');
+    } else {
+      // 4. Si no tiene 3 dígitos (ej: "123,45"), la tratamos como un decimal.
+      // Primero, eliminamos todas las comas que puedan ser de miles (todas menos la última).
+      const thousandsRemoved = cleanStr.substring(0, lastCommaIndex).replace(/,/g, '');
+      // Reconstruimos el número con un punto decimal.
+      cleanStr = thousandsRemoved + '.' + partAfterComma;
+    }
+  }
+
+  // 5. Convertir el string ya limpio a número.
+  const num = parseFloat(cleanStr);
+  return isNaN(num) ? 0 : num;
 };
+
+
 
 // --- CONSTANTES ---
 const TIP_PERCENTAGE = 0.10; // Propina del 10%
@@ -358,25 +382,29 @@ function billReducer(state, action) {
             };
         }
         case 'LOAD_STATE': {
-            const serverData = action.payload;
-            const finalMasterList = serverData.masterProductList && Object.keys(serverData.masterProductList).length > 0
-                ? new Map(Object.entries(serverData.masterProductList))
-                : new Map(Object.entries(serverData.availableProducts || {}));
-            return {
-                ...state,
-                comensales: (serverData.comensales || []).map(diner => ({
-                    ...diner,
-                    selectedItems: diner.selectedItems || []
-                })),
-                activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
-                shareId: serverData.shareId || state.shareId,
-                lastUpdated: serverData.lastUpdated || null,
-                masterProductList: finalMasterList,
-                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || []),
-                discountPercentage: serverData.discountPercentage || 0,
-        discountCap: serverData.discountCap || 0
-            };
-        }
+            const serverData = action.payload;
+
+            // CAMBIO CLAVE: Ya no hacemos un fallback a availableProducts.
+            // masterProductList es la única fuente de verdad para el inventario total.
+            // Si no existe, empezamos con un mapa vacío.
+            const finalMasterList = new Map(Object.entries(serverData.masterProductList || {}));
+            
+            return {
+                ...state,
+                comensales: (serverData.comensales || []).map(diner => ({
+                    ...diner,
+                    selectedItems: diner.selectedItems || []
+                })),
+                activeSharedInstances: new Map(Object.entries(serverData.activeSharedInstances || {}).map(([key, value]) => [key, Array.from(value)])), // Corregido para que el valor sea un array, no un Set
+                shareId: serverData.shareId || state.shareId,
+                lastUpdated: serverData.lastUpdated || null,
+                masterProductList: finalMasterList,
+                // La recalculación ahora siempre funcionará porque parte del inventario correcto.
+                availableProducts: recalculateAvailableProducts(finalMasterList, serverData.comensales || []),
+                discountPercentage: serverData.discountPercentage || 0,
+                discountCap: serverData.discountCap || 0
+            };
+        }
         case 'UPDATE_AVAILABLE_PRODUCTS':
             return {
                 ...state,
@@ -402,54 +430,61 @@ function billReducer(state, action) {
                 lastUpdated: new Date().toISOString()
             };
         case 'SYNC_STATE': {
-            const serverStateData = action.payload;
+            const serverStateData = action.payload;
+            // CAMBIO SUTIL PERO IMPORTANTE:
+            // Nos aseguramos de que el masterProductList del estado local no se pierda durante la sincronización.
+            // La sincronización se enfoca en comensales y descuentos, no en el inventario total.
+            const masterListToUse = state.masterProductList.size > 0 ? state.masterProductList : new Map(Object.entries(serverStateData.masterProductList || {}));
+            
+            // ... (el resto de la lógica de SYNC_STATE para reconciliar comensales sigue igual) ...
             const localState = state;
-            const serverComensalesMap = new Map((serverStateData.comensales || []).map(c => [c.id, c]));
-            const localComensalesMap = new Map(localState.comensales.map(c => [c.id, c]));
-            const reconciledComensales = [];
-            const allDinerIds = new Set([...serverComensalesMap.keys(), ...localComensalesMap.keys()]);
+            const serverComensalesMap = new Map((serverStateData.comensales || []).map(c => [c.id, c]));
+            const localComensalesMap = new Map(localState.comensales.map(c => [c.id, c]));
+            const reconciledComensales = [];
+            const allDinerIds = new Set([...serverComensalesMap.keys(), ...localComensalesMap.keys()]);
 
-            allDinerIds.forEach(id => {
-                const serverDiner = serverComensalesMap.get(id);
-                const localDiner = localComensalesMap.get(id);
+            allDinerIds.forEach(id => {
+                const serverDiner = serverComensalesMap.get(id);
+                const localDiner = localComensalesMap.get(id);
 
-                if (serverDiner && !localDiner) {
-                    reconciledComensales.push(serverDiner);
-                } else if (!serverDiner && localDiner) {
-                    reconciledComensales.push(localDiner);
-                } else if (serverDiner && localDiner) {
-                    const finalItems = [];
-                    const localItemsMap = new Map((localDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
-                    const serverItemsMap = new Map((serverDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
-                    const allItemKeys = new Set([...localItemsMap.keys(), ...serverItemsMap.keys()]);
+                if (serverDiner && !localDiner) {
+                    reconciledComensales.push(serverDiner);
+                } else if (!serverDiner && localDiner) {
+                    reconciledComensales.push(localDiner);
+                } else if (serverDiner && localDiner) {
+                    const finalItems = [];
+                    const localItemsMap = new Map((localDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const serverItemsMap = new Map((serverDiner.selectedItems || []).map(item => [item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id, item]));
+                    const allItemKeys = new Set([...localItemsMap.keys(), ...serverItemsMap.keys()]);
 
-                    allItemKeys.forEach(key => {
-                        const localItem = localItemsMap.get(key);
-                        const serverItem = serverItemsMap.get(key);
-                        if (localItem && !serverItem) { // Existe localmente, no en el servidor (fue eliminado remotamente o añadido localmente)
-                            finalItems.push(localItem);
-                        } else if (serverItem && !localItem) { // Existe en el servidor, no localmente (fue añadido remotamente)
-                            finalItems.push(serverItem);
-                        } else if (serverItem && localItem) { // Existe en ambos, comparar timestamps
-                            const localDate = new Date(localItem.modifiedAt || 0);
-                            const serverDate = new Date(serverItem.modifiedAt || 0);
-                            finalItems.push(serverDate > localDate ? serverItem : localItem);
-                        }
-                    });
-                    reconciledComensales.push({ ...serverDiner, selectedItems: finalItems });
-                }
-            });
+                    allItemKeys.forEach(key => {
+                        const localItem = localItemsMap.get(key);
+                        const serverItem = serverItemsMap.get(key);
+                        if (localItem && !serverItem) {
+                            finalItems.push(localItem);
+                        } else if (serverItem && !localItem) {
+                            finalItems.push(serverItem);
+                        } else if (serverItem && localItem) {
+                            const localDate = new Date(localItem.modifiedAt || 0);
+                            const serverDate = new Date(serverItem.modifiedAt || 0);
+                            finalItems.push(serverDate > localDate ? serverItem : localItem);
+                        }
+                    });
+                    reconciledComensales.push({ ...serverDiner, selectedItems: finalItems });
+                }
+            });
 
-            return {
-                ...state,
-                comensales: reconciledComensales,
-                activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [Number(key), new Set(value)])),
-                lastUpdated: serverStateData.lastUpdated,
-                availableProducts: recalculateAvailableProducts(state.masterProductList, reconciledComensales),
-                discountPercentage: serverStateData.discountPercentage !== undefined ? serverStateData.discountPercentage : state.discountPercentage,
-        discountCap: serverStateData.discountCap !== undefined ? serverStateData.discountCap : state.discountCap
-            };
-        }
+            return {
+                ...state,
+                masterProductList: masterListToUse, // Aseguramos que no se borre
+                comensales: reconciledComensales,
+                activeSharedInstances: new Map(Object.entries(serverStateData.activeSharedInstances || {}).map(([key, value]) => [key, Array.from(value)])),
+                lastUpdated: serverStateData.lastUpdated,
+                availableProducts: recalculateAvailableProducts(masterListToUse, reconciledComensales),
+                discountPercentage: serverStateData.discountPercentage !== undefined ? serverStateData.discountPercentage : state.discountPercentage,
+                discountCap: serverStateData.discountCap !== undefined ? serverStateData.discountCap : state.discountCap
+            };
+        }
         case 'ADD_ITEM': {
             const { comensalId, productId } = action.payload;
             const productInStock = state.availableProducts.get(productId);
@@ -634,7 +669,7 @@ function billReducer(state, action) {
 // --- Componente principal de la aplicación ---
 const App = () => {
     const [state, dispatch] = useReducer(billReducer, initialState);
-    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
+    const { currentStep, userId, shareId, shareLink, availableProducts, comensales, activeSharedInstances, discountPercentage, discountCap } = state;
 
     // ... (El resto de los useState y useRef no cambian) ...
     const [isGeneratingLink, setIsGeneratingLink] = useState(false);
@@ -987,58 +1022,76 @@ useEffect(() => {
     
     const openClearComensalModal = (comensalId) => { setComensalToClearId(comensalId); setIsClearComensalModalOpen(true); };
     const openRemoveComensalModal = (comensalId) => { setComensalToRemoveId(comensalId); setIsRemoveComensalModalOpen(true); };
-    const handleImageUpload = (event) => { const file = event.target.files[0]; if (!file) return; setIsImageProcessing(true); setImageProcessingError(null); const reader = new FileReader(); reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; reader.onerror = () => { setImageProcessingError("Error al cargar la imagen."); setIsImageProcessing(false); }; reader.readAsDataURL(file); };
-    const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
-      try {
-          const prompt = `Analiza la imagen de un recibo o boleta de restaurante...`;
-          const payload = {
-              contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: base64ImageData } }] }],
-              generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { "items": { "type": "ARRAY", "items": { "type": "OBJECT", "properties": { "name": { "type": "STRING" }, "quantity": { "type": "INTEGER" }, "price": { "type": "STRING" } }, "required": ["name", "quantity", "price"] } } }, required: ["items"] } }
-          };
-          const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyDMhW9Fxz2kLG7HszVnBDmgQMJwzXSzd9U";
-          if (apiKey.includes("YOUR")) throw new Error("Falta la clave de API de Gemini.");
-          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-          const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          
-          if (!response.ok) {
-              throw new Error(`Error en la API de Gemini: ${response.statusText}`);
-          }
-  
-          const result = await response.json();
-          if (!result.candidates || !result.candidates[0]?.content?.parts?.[0]?.text) {
-              throw new Error(result.error?.message || "No se pudo extraer información válida de la imagen.");
-          }
-  
-          const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
-          if (!parsedData.items || !Array.isArray(parsedData.items)) {
-              throw new Error("La respuesta de la API no contiene una lista de ítems válida.");
-          }
-  
-          const newProductsMap = new Map();
-          parsedData.items.forEach(item => {
-              const name = item.name?.trim();
-              const price = parseChileanNumber(String(item.price));
-              const quantity = parseInt(item.quantity, 10);
-              if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
-                  const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
-                  if (existing) {
-                      newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
-                  } else {
-                      const newId = generateUniqueId('item');
-                      newProductsMap.set(newId, { id: newId, name, price, quantity });
-                  }
-              }
-          });
-  
-          hasPendingChanges.current = true;
-          dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
-      } catch (error) {
-          console.error("Error al analizar:", error);
-          setImageProcessingError(error.message);
-      } finally {
-          setIsImageProcessing(false);
-      }
-  };
+    const handleImageUpload = (event) => { 
+        const file = event.target.files[0]; 
+        if (!file) return; 
+        setIsImageProcessing(true); 
+        setImageProcessingError(null); 
+        const reader = new FileReader(); 
+        // 👇 Línea corregida
+        reader.onloadend = () => { analyzeImageWithGemini(reader.result.split(',')[1], file.type); }; 
+        reader.onerror = () => { 
+            setImageProcessingError("Error al cargar la imagen."); 
+            setIsImageProcessing(false); 
+        }; 
+        reader.readAsDataURL(file); 
+    }; // Dentro de tu componente App
+
+const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
+  try {
+    // La URL ahora apunta a TU función serverless
+    const apiUrl = '/api/analyzeImage'; 
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // Enviamos los datos de la imagen a nuestra función
+      body: JSON.stringify({ base64ImageData, mimeType }), 
+    });
+      
+    if (!response.ok) {
+      const errorResult = await response.json();
+      throw new Error(errorResult.message || `Error en el servidor: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    if (!result.candidates || !result.candidates[0]?.content?.parts?.[0]?.text) {
+      throw new Error(result.error?.message || "No se pudo extraer información válida de la imagen.");
+    }
+    
+    // El resto de tu lógica para procesar el resultado no cambia
+    const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
+    if (!parsedData.items || !Array.isArray(parsedData.items)) {
+      throw new Error("La respuesta de la API no contiene una lista de ítems válida.");
+    }
+
+    const newProductsMap = new Map();
+    parsedData.items.forEach(item => {
+        const name = item.name?.trim();
+        const price = parseChileanNumber(String(item.price));
+        const quantity = parseInt(item.quantity, 10);
+        if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
+            const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
+            if (existing) {
+                newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
+            } else {
+                const newId = generateUniqueId('item');
+                newProductsMap.set(newId, { id: newId, name, price, quantity });
+            }
+        }
+    });
+
+    hasPendingChanges.current = true;
+    dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProductsMap });
+
+  } catch (error) {
+      console.error("Error al analizar:", error);
+      setImageProcessingError(error.message);
+  } finally {
+      setIsImageProcessing(false);
+  }
+};
   const handleGenerateShareLink = () => {
         // CAMBIO: Muestra el modal de carga con el mensaje apropiado
         setLoadingMessage("Generando enlace...");
@@ -1180,7 +1233,21 @@ onRetrySave={handleRetrySave}
 };
 
 // --- COMPONENTES DE PASOS ---
-const LandingStep = ({ onStart }) => ( <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> <div className="mb-8"> <svg className="w-24 h-24 mx-auto text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> </div> <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> </div> );
+const LandingStep = ({ onStart }) => ( 
+    <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4"> 
+        <div className="mb-8"> 
+            <img 
+              src="/logoCC.png" 
+              alt="Logo CuentasClaras" 
+              // Clase "shadow-lg" eliminada para mantener la transparencia
+              className="w-48 h-auto mx-auto" 
+            />
+        </div> 
+        <h1 className="text-5xl font-extrabold text-gray-800">CuentasClaras</h1> 
+        <p className="text-lg text-gray-600 mt-4 max-w-md"> Divide la cuenta de forma fácil y rápida. Escanea el recibo y deja que nosotros hagamos el resto. </p> 
+        <button onClick={onStart} className="mt-12 px-8 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-105"> Empezar </button> 
+    </div> 
+);
 const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imageProcessingError, onRestart }) => (
     <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-4">
         <header className="mb-12">
@@ -1258,6 +1325,9 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
         )}
     </div>
 );
+// --- EN TU ARCHIVO App.js ---
+// Reemplaza tu componente ReviewStep completo con este:
+
 const ReviewStep = ({
     products,
     onProductChange,
@@ -1267,31 +1337,66 @@ const ReviewStep = ({
     onBack,
     discountPercentage,
     discountCap,
-    dispatch,
-    hasPendingChanges
+    dispatch
 }) => {
     const [newItem, setNewItem] = useState({ name: '', price: '', quantity: '1' });
+    
+    const [localDiscounts, setLocalDiscounts] = useState({
+        percentage: discountPercentage || '',
+        cap: discountCap || ''
+    });
+
+    useEffect(() => {
+        setLocalDiscounts({
+            percentage: discountPercentage || '',
+            cap: discountCap || ''
+        });
+    }, [discountPercentage, discountCap]);
+
+    // *** NUEVA FUNCIÓN PARA MANEJAR CAMBIOS EN LOS PRECIOS ***
+    const handlePriceChange = (productId, fieldChanged, value) => {
+        const product = products.get(productId);
+        if (!product) return;
+
+        const numericValue = parseChileanNumber(String(value));
+        const quantity = parseInt(product.quantity, 10) || 1;
+        let newPrice;
+
+        if (fieldChanged === 'unit') {
+            newPrice = numericValue;
+        } else { // fieldChanged === 'total'
+            newPrice = numericValue / quantity;
+        }
+        
+        onProductChange(productId, 'price', newPrice);
+    };
 
     const handleAddNewItemClick = () => {
         if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
-        const price = parseFloat(newItem.price);
+        const price = parseChileanNumber(newItem.price);
         const quantity = parseInt(newItem.quantity, 10);
         if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
-
         onAddNewProduct({ name: newItem.name.trim(), price, quantity });
-        setNewItem({ name: '', price: '', quantity: '1' }); // Resetea el formulario local
+        setNewItem({ name: '', price: '', quantity: '1' });
     };
 
-    const handleDiscountChange = (e) => {
-        hasPendingChanges.current = true;
+    const handleLocalDiscountChange = (e) => {
         const { name, value } = e.target;
-        const newPercentage = name === 'percentage' ? value : discountPercentage;
-        const newCap = name === 'cap' ? value : discountCap;
-        dispatch({ type: 'APPLY_DISCOUNT', payload: { percentage: newPercentage, cap: newCap } });
+        setLocalDiscounts(prev => ({ ...prev, [name]: value }));
     };
 
-    const total = Array.from(products.values()).reduce((sum, p) => (sum + (parseChileanNumber(p.price) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
+    const handleDiscountBlur = () => {
+        dispatch({
+            type: 'APPLY_DISCOUNT',
+            payload: {
+                percentage: localDiscounts.percentage,
+                cap: localDiscounts.cap
+            }
+        });
+    };
+
+    const total = Array.from(products.values()).reduce((sum, p) => (sum + (parseChileanNumber(String(p.price)) || 0) * (parseInt(p.quantity, 10) || 0)), 0);
     const potentialDiscount = total * (discountPercentage / 100);
     const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
     const tip = total * TIP_PERCENTAGE;
@@ -1299,39 +1404,105 @@ const ReviewStep = ({
     
     return (
         <div className="p-4 pb-20">
-            <header className="text-center mb-6"> <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1> <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p> </header>
-            <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-3">
+            <header className="text-center mb-6">
+                <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
+                <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
+            </header>
+            
+            <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-4">
                 <h2 className="text-lg font-bold">Ítems Cargados</h2>
+
+                {/* *** ENCABEZADOS ACTUALIZADOS *** */}
+                <div className="hidden md:grid md:grid-cols-12 gap-x-4 px-2 text-sm font-bold text-gray-500 uppercase">
+                    <div className="col-span-4">Ítem</div>
+                    <div className="col-span-2 text-center">Cant.</div>
+                    <div className="col-span-3 text-right">Precio Unit.</div>
+                    <div className="col-span-3 text-right">Precio Total</div>
+                </div>
+
                 {Array.from(products.values()).map(p => (
-                    <div key={p.id} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
-                        <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="col-span-5 p-2 border rounded-md" aria-label="Nombre"/>
-                        <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
-                        <span className="col-span-1 text-center self-center">$</span>
-                        <input type="number" value={p.price} onChange={e => onProductChange(p.id, 'price', e.target.value)} className="col-span-3 p-2 border rounded-md" aria-label="Precio" min="0"/>
-                        <button onClick={() => onRemoveProduct(p.id)} className="col-span-1 text-red-500 hover:text-red-700" aria-label={`Eliminar ${p.name}`}> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg> </button>
+                    <div key={p.id} className="grid grid-cols-12 gap-x-4 items-center border-b border-gray-200 py-3">
+                        {/* Nombre */}
+                        <div className="col-span-12 md:col-span-4">
+                            <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="w-full p-2 border rounded-md" aria-label="Nombre"/>
+                        </div>
+                        
+                        {/* Cantidad */}
+                        <div className="col-span-3 md:col-span-2 mt-2 md:mt-0">
+                            <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="w-full p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
+                        </div>
+
+                        {/* *** NUEVOS INPUTS DE PRECIO *** */}
+                        {/* Precio Unitario */}
+                        <div className="col-span-4 md:col-span-3 mt-2 md:mt-0 relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input
+                                type="text" // Usamos text para permitir comas
+                                value={Number(p.price).toLocaleString('es-CL')}
+                                onChange={e => handlePriceChange(p.id, 'unit', e.target.value)}
+                                className="w-full p-2 border rounded-md text-right pl-6"
+                                aria-label="Precio Unitario"
+                            />
+                        </div>
+
+                        {/* Precio Total */}
+                        <div className="col-span-4 md:col-span-3 mt-2 md:mt-0 relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input
+                                type="text" // Usamos text para permitir comas
+                                value={(Number(p.price) * (Number(p.quantity) || 1)).toLocaleString('es-CL')}
+                                onChange={e => handlePriceChange(p.id, 'total', e.target.value)}
+                                className="w-full p-2 border rounded-md text-right pl-6 bg-gray-50"
+                                aria-label="Precio Total"
+                            />
+                        </div>
+
+                        {/* Botón Eliminar */}
+                        <div className="col-span-1 flex justify-end mt-2 md:mt-0">
+                            <button onClick={() => onRemoveProduct(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full" aria-label={`Eliminar ${p.name}`}>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                        </div>
                     </div>
                 ))}
-                <div className="grid grid-cols-12 gap-2 items-center pt-3">
-                    <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="col-span-5 p-2 border rounded-md" aria-label="Nombre nuevo ítem"/>
-                    <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="col-span-2 p-2 border rounded-md text-center" aria-label="Cantidad nuevo ítem" min="1"/>
-                    <span className="col-span-1 text-center self-center">$</span>
-                    <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="col-span-3 p-2 border rounded-md" aria-label="Precio nuevo ítem" min="0"/>
-                    <button onClick={handleAddNewItemClick} className="col-span-1 text-white bg-green-500 hover:bg-green-600 rounded-full p-1 h-8 w-8 flex items-center justify-center" aria-label="Agregar ítem"> <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg> </button>
+                
+                {/* El resto del componente (agregar nuevo ítem, descuentos, total, botones) sigue igual... */}
+                 <div className="flex flex-col md:grid md:grid-cols-12 md:gap-x-4 md:items-center pt-4">
+                    <div className="col-span-4">
+                        <input type="text" placeholder="Nombre ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-2 border rounded-md bg-gray-50" aria-label="Nombre nuevo ítem"/>
+                    </div>
+                    <div className="flex items-center gap-x-4 mt-2 md:mt-0 md:col-span-8">
+                        <div className="w-1/3 md:w-auto md:col-span-2">
+                            <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="w-full p-2 border rounded-md text-center bg-gray-50" aria-label="Cantidad nuevo ítem" min="1"/>
+                        </div>
+                        <div className="flex-grow md:col-span-3 relative">
+                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input type="number" placeholder="Precio" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="w-full p-2 border rounded-md text-right pl-6 bg-gray-50" aria-label="Precio nuevo ítem" min="0"/>
+                        </div>
+                        <div className="md:col-span-1">
+                            <button onClick={handleAddNewItemClick} className="p-2 text-white bg-green-500 hover:bg-green-600 rounded-full" aria-label="Agregar ítem">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
+            
             <div className="bg-white p-4 rounded-xl shadow-md mb-6">
                 <h2 className="text-lg font-bold text-blue-600 mb-4">Aplicar Descuento</h2>
                 <div className="flex flex-col sm:flex-row gap-3">
-                    <input type="number" name="percentage" placeholder="% de Descuento" value={discountPercentage || ''} onChange={handleDiscountChange} className="flex-grow p-3 border rounded-md" min="0" max="100" aria-label="Porcentaje descuento"/>
-                    <input type="number" name="cap" placeholder="Tope de Descuento ($)" value={discountCap || ''} onChange={handleDiscountChange} className="flex-grow p-3 border rounded-md" min="0" aria-label="Tope descuento"/>
+                    <input type="number" name="percentage" placeholder="% de Descuento" value={localDiscounts.percentage} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="flex-grow p-3 border rounded-md" min="0" max="100" aria-label="Porcentaje descuento"/>
+                    <input type="number" name="cap" placeholder="Tope de Descuento ($)" value={localDiscounts.cap} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="flex-grow p-3 border rounded-md" min="0" aria-label="Tope descuento"/>
                 </div>
             </div>
+            
             <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-6">
                 <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
                 {actualDiscount > 0 && (<div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Descuento ({discountPercentage}%):</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
                 <div className="flex justify-between text-lg"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
                 <div className="flex justify-between text-2xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
             </div>
+            
             <div className="flex flex-col sm:flex-row gap-4">
                 <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
                 <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
@@ -1339,6 +1510,7 @@ const ReviewStep = ({
         </div>
     );
 };
+
 
     // VERSIÓN FINAL Y CORREGIDA de AssigningStep
 const AssigningStep = ({
