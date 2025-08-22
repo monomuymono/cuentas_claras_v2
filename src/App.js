@@ -9,39 +9,46 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 // --- FUNCIÓN AUXILIAR PARA IDs ÚNICOS ---
 const generateUniqueId = (prefix = 'id') => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-// --- FUNCIÓN "TRADUCTORA" DE NÚMEROS (VERSIÓN FINAL-FINAL) ---
+// --- FUNCIÓN "TRADUCTORA" DE NÚMEROS (VERSIÓN FINAL, AHORA SÍ) ---
 const parseChileanNumber = (str) => {
-  // Verificación inicial por si no es un string
   if (typeof str !== 'string' || !str) {
     return Number(str) || 0;
   }
 
   const cleanStr = str.trim();
 
-  // Heurística robusta: ¿El string termina con el patrón de un decimal chileno?
-  // (una coma seguida de 1 o 2 dígitos exactamente al final del string)
-  const hasChileanDecimal = /,\d{1,2}$/.test(cleanStr);
+  const lastDot = cleanStr.lastIndexOf('.');
+  const lastComma = cleanStr.lastIndexOf(',');
 
-  let parsableString;
-
-  if (hasChileanDecimal) {
-    // Si SÍ tiene decimales, convertimos la ÚLTIMA coma en un punto
-    // y luego eliminamos cualquier otro caracter que no sea un número o ese punto.
-    const dotDecimalString = cleanStr.substring(0, cleanStr.lastIndexOf(',')) + '.' + cleanStr.substring(cleanStr.lastIndexOf(',') + 1);
-    parsableString = dotDecimalString.replace(/[^\d.]/g, '');
-    
-  } else {
-    // Si NO tiene decimales (como "6,900" o "10.000"),
-    // la forma más segura es eliminar TODO lo que no sea un dígito.
-    parsableString = cleanStr.replace(/\D/g, '');
+  // CASO 1: Formato internacional detectado (el punto es el último separador).
+  // Ejemplos: "1,234.56" o "1234.56"
+  if (lastDot > lastComma) {
+    // Se eliminan las comas de miles y se parsea.
+    const parsableString = cleanStr.replace(/,/g, '');
+    const num = parseFloat(parsableString);
+    return isNaN(num) ? 0 : num;
   }
-  
-  // Si el string quedó vacío, devolvemos 0
+
+  // CASO 2: Formato chileno con decimales detectado.
+  // La coma es el último separador Y la parte decimal NO tiene 3 dígitos.
+  // Ejemplos: "1.234,56" o "123,45"
+  if (lastComma > lastDot) {
+    const partAfterComma = cleanStr.substring(lastComma + 1);
+    if (partAfterComma.length !== 3) {
+      // Se eliminan los puntos de miles y se cambia la coma por un punto.
+      const parsableString = cleanStr.replace(/\./g, '').replace(',', '.');
+      const num = parseFloat(parsableString);
+      return isNaN(num) ? 0 : num;
+    }
+  }
+
+  // CASO 3 (POR DEFECTO): El número es un entero con separadores de miles.
+  // Cubre "12,450", "12.450", "1.234", y "1234".
+  // La forma más segura es eliminar todo lo que no sea un dígito.
+  const parsableString = cleanStr.replace(/\D/g, '');
   if (parsableString === '') {
     return 0;
   }
-
-  // Convertimos el string limpio a número
   const num = parseFloat(parsableString);
   return isNaN(num) ? 0 : num;
 };
