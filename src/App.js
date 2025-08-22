@@ -1355,7 +1355,7 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 // --- EN TU ARCHIVO App.js ---
-// Reemplaza tu componente ReviewStep completo con esta nueva versión
+// Reemplaza tu componente ReviewStep completo con esta versión final
 
 const ReviewStep = ({
     products,
@@ -1388,13 +1388,12 @@ const ReviewStep = ({
             const clientHeight = document.documentElement.clientHeight;
             const scrollY = window.scrollY;
             
-            // Si el contenido no es lo suficientemente grande para hacer scroll, el footer nunca se compacta.
             if (scrollHeight <= clientHeight) {
                 setIsFooterCompact(false);
                 return;
             }
 
-            const isAtBottom = scrollHeight - (scrollY + clientHeight) < 20; // Margen de 20px
+            const isAtBottom = scrollHeight - (scrollY + clientHeight) < 20;
 
             if (scrollY > 50 && !isAtBottom) {
                 setIsFooterCompact(true);
@@ -1404,13 +1403,12 @@ const ReviewStep = ({
         };
 
         window.addEventListener('scroll', handleScroll);
-        // Ejecutar una vez al inicio por si el contenido es corto
         handleScroll(); 
 
         return () => {
             window.removeEventListener('scroll', handleScroll);
         };
-    }, [products]); // Dependencia en products para re-evaluar si el contenido cambia de tamaño
+    }, [products]);
 
     const handlePriceInputChange = (productId, newDisplayValue) => {
         const product = products.get(productId);
@@ -1473,7 +1471,6 @@ const ReviewStep = ({
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
             </header>
             
-            {/* --- CAMBIO: SECCIÓN DE DESCUENTO OPTIMIZADA Y COMPACTA --- */}
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <label className="text-md font-bold text-blue-600 shrink-0">Aplicar Descuento:</label>
                 <div className="flex items-center gap-3 w-full">
@@ -1483,13 +1480,62 @@ const ReviewStep = ({
             </div>
             
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-4">
-                 {/* ... (El resto del mapeo de productos y el formulario no cambia) ... */}
+                <h2 className="text-lg font-bold">Ítems Cargados</h2>
+                <div className="hidden md:grid md:grid-cols-12 gap-x-4 px-2 text-sm font-bold text-gray-500 uppercase">
+                    <div className="col-span-5">Ítem</div>
+                    <div className="col-span-2 text-center">Cant.</div>
+                    <div className="col-span-5 text-right">Precio</div>
+                </div>
+
+                {/* --- SECCIÓN CORREGIDA: ESTO ES LO QUE FALTABA --- */}
+                {Array.from(products.values()).map(p => {
+                    const displayPrice = p.priceIsTotal ? (p.price || 0) * (p.quantity || 1) : (p.price || 0);
+                    return (
+                        <div key={p.id} className="grid grid-cols-12 gap-x-2 md:gap-x-4 items-center border-b border-gray-200 py-3">
+                            <div className="col-span-12 md:col-span-5">
+                                <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="w-full p-2 border rounded-md" aria-label="Nombre del ítem"/>
+                            </div>
+                            <div className="col-span-3 md:col-span-2 mt-2 md:mt-0">
+                                <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="w-full p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
+                            </div>
+                            <div className="col-span-9 md:col-span-5 mt-2 md:mt-0 flex items-center gap-2 justify-end">
+                                <span className="text-gray-400">$</span>
+                                <input type="text" inputMode="decimal" value={displayPrice.toLocaleString('es-CL')} onChange={e => handlePriceInputChange(p.id, e.target.value)} className="p-2 border rounded-md text-right w-24" aria-label="Precio"/>
+                                <div className="flex items-center" title="Marcar si el precio ingresado es por el total de las unidades">
+                                    <input type="checkbox" id={`is-total-${p.id}`} checked={p.priceIsTotal || false} onChange={() => handlePriceTypeToggle(p.id)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"/>
+                                    <label htmlFor={`is-total-${p.id}`} className="ml-2 text-xs text-gray-600">Es Total</label>
+                                </div>
+                                <button onClick={() => onRemoveProduct(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full" aria-label={`Eliminar ${p.name}`}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+                 <div className="flex flex-col md:grid md:grid-cols-12 md:gap-x-4 md:items-center pt-4">
+                    <div className="col-span-5">
+                        <input type="text" placeholder="Nombre nuevo ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-2 border rounded-md bg-gray-50" aria-label="Nombre nuevo ítem"/>
+                    </div>
+                    <div className="flex items-center gap-x-4 mt-2 md:mt-0 md:col-span-7">
+                        <div className="w-1/3 md:w-auto md:col-span-2">
+                            <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="w-full p-2 border rounded-md text-center bg-gray-50" aria-label="Cantidad nuevo ítem" min="1"/>
+                        </div>
+                        <div className="flex-grow md:col-span-3 relative">
+                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input type="text" inputMode="decimal" placeholder="Precio Unit." value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="w-full p-2 border rounded-md text-right pl-6 bg-gray-50" aria-label="Precio nuevo ítem" min="0"/>
+                        </div>
+                        <div className="md:col-span-1">
+                            <button onClick={handleAddNewItemClick} className="p-2 text-white bg-green-500 hover:bg-green-600 rounded-full" aria-label="Agregar ítem">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {/* --- FIN DE LA SECCIÓN CORREGIDA --- */}
             </div>
 
-            {/* --- CAMBIO: FOOTER FIJO CON LÓGICA Y TRANSICIONES MEJORADAS --- */}
             <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 shadow-top z-10">
                 <div className="max-w-4xl mx-auto p-4 transition-all duration-300 ease-in-out">
-                    {/* Contenedor para la vista expandida con animación */}
                     <div className={`transition-all duration-300 ease-in-out ${isFooterCompact ? 'opacity-0 max-h-0 overflow-hidden' : 'opacity-100 max-h-96'}`}>
                         <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
                             <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
@@ -1503,7 +1549,6 @@ const ReviewStep = ({
                         </div>
                     </div>
 
-                    {/* Contenedor para la vista compacta con animación */}
                     <div className={`transition-all duration-300 ease-in-out ${isFooterCompact ? 'opacity-100 max-h-96' : 'opacity-0 max-h-0 overflow-hidden'}`}>
                          <div className="flex justify-between items-center">
                             <div className="text-xl font-extrabold text-blue-800">
