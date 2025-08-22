@@ -706,11 +706,12 @@ const App = () => {
     // Maneja cambios en los campos de un producto existente (nombre, precio, cantidad)
     const handleProductChange = (productId, field, value) => {
         hasPendingChanges.current = true;
-        const newProducts = new Map(state.availableProducts);
+        // --- CAMBIO AQUÍ ---
+        const newProducts = new Map(state.masterProductList); 
         const product = newProducts.get(productId);
         if (product) {
             newProducts.set(productId, { ...product, [field]: value });
-            // Usa la acción existente para actualizar el estado y disparar el guardado
+            // Esta acción ahora actualizará correctamente el masterProductList
             dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
         }
     };
@@ -749,7 +750,8 @@ const handleRetrySave = () => {
     // Maneja la adición de un nuevo producto desde el formulario de ReviewStep
     const handleAddNewProduct = (newItem) => {
         hasPendingChanges.current = true;
-        const newProducts = new Map(state.availableProducts);
+        // --- CAMBIO AQUÍ ---
+        const newProducts = new Map(state.masterProductList);
         const newId = generateUniqueId('item');
         newProducts.set(newId, { ...newItem, id: newId });
         dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
@@ -758,7 +760,8 @@ const handleRetrySave = () => {
     // Maneja la eliminación de un producto
     const handleRemoveProduct = (productId) => {
         hasPendingChanges.current = true;
-        const newProducts = new Map(state.availableProducts);
+        // --- CAMBIO AQUÍ ---
+        const newProducts = new Map(state.masterProductList);
         newProducts.delete(productId);
         dispatch({ type: 'SET_PRODUCTS_FOR_REVIEW', payload: newProducts });
     };
@@ -1168,7 +1171,7 @@ const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
             case 'reviewing': 
                 return (
                     <ReviewStep
-                        products={availableProducts}
+                        products={masterProductList}
                         onProductChange={handleProductChange}
                         onAddNewProduct={handleAddNewProduct}
                         onRemoveProduct={handleRemoveProduct}
