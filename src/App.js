@@ -1037,15 +1037,15 @@ useEffect(() => {
         reader.readAsDataURL(file); 
     }; // Dentro de tu componente App
 
+// Reemplaza tu función analyzeImageWithGemini con esta versión corregida
+
 const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
   try {
-    // La URL ahora apunta a TU función serverless
     const apiUrl = '/api/analyzeImage'; 
 
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // Enviamos los datos de la imagen a nuestra función
       body: JSON.stringify({ base64ImageData, mimeType }), 
     });
       
@@ -1060,7 +1060,6 @@ const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
       throw new Error(result.error?.message || "No se pudo extraer información válida de la imagen.");
     }
     
-    // El resto de tu lógica para procesar el resultado no cambia
     const parsedData = JSON.parse(result.candidates[0].content.parts[0].text);
     if (!parsedData.items || !Array.isArray(parsedData.items)) {
       throw new Error("La respuesta de la API no contiene una lista de ítems válida.");
@@ -1069,18 +1068,32 @@ const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
     const newProductsMap = new Map();
     parsedData.items.forEach(item => {
         const name = item.name?.trim();
-        const price = parseChileanNumber(String(item.price));
+        
+        // --- SECCIÓN CORREGIDA ---
+        const totalValue = parseChileanNumber(String(item.price));
         const quantity = parseInt(item.quantity, 10) || 1;
-        if (name && !isNaN(price) && !isNaN(quantity) && quantity > 0) {
-            const existing = Array.from(newProductsMap.values()).find(p => p.name === name && p.price === price);
+
+        if (name && !isNaN(totalValue) && !isNaN(quantity) && quantity > 0) {
+            // Se busca un ítem existente por nombre para agruparlo
+            // Nota: Podrías hacer esta búsqueda más específica si también comparas el precio unitario
+            const existing = Array.from(newProductsMap.values()).find(p => p.name === name);
+            
             if (existing) {
-                newProductsMap.set(existing.id, { ...existing, quantity: existing.quantity + quantity });
+                // Si existe, se suma la cantidad y se recalcula el precio unitario promedio si es necesario
+                const newQuantity = existing.quantity + quantity;
+                // Esta es una forma simple de promediar, podrías ajustarla si necesitas otra lógica
+                const newPrice = ((existing.price * existing.quantity) + totalValue) / newQuantity;
+                newProductsMap.set(existing.id, { ...existing, quantity: newQuantity, price: newPrice });
             } else {
+                // Si no existe, se crea un nuevo ítem
                 const newId = generateUniqueId('item');
-                newProductsMap.set(newId, { id: newId, name, 
-                  price: totalValue / quantity, 
+                newProductsMap.set(newId, {
+                  id: newId,
+                  name, 
+                  price: totalValue / quantity, // Guardamos el precio unitario
                   quantity,
-                  priceIsTotal: True });
+                  priceIsTotal: true // Le indicamos a la UI que el precio inicial es el total
+                });
             }
         }
     });
