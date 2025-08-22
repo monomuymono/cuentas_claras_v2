@@ -1175,7 +1175,7 @@ const analyzeImageWithGemini = async (base64ImageData, mimeType) => {
                         onProductChange={handleProductChange}
                         onAddNewProduct={handleAddNewProduct}
                         onRemoveProduct={handleRemoveProduct}
-                        onConfirm={() => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: availableProducts })}
+                        onConfirm={() => dispatch({ type: 'SET_PRODUCTS_AND_ADVANCE', payload: masterProductList })}
                         onBack={handleResetAll}
                         discountPercentage={discountPercentage}
                         discountCap={discountCap}
