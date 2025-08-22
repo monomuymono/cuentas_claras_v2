@@ -9,29 +9,43 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 // --- FUNCIÓN AUXILIAR PARA IDs ÚNICOS ---
 const generateUniqueId = (prefix = 'id') => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-// --- NUEVA FUNCIÓN "TRADUCTORA" DE NÚMEROS (VERSIÓN MEJORADA) ---
+// --- FUNCIÓN "TRADUCTORA" DE NÚMEROS (VERSIÓN DEFINITIVA) ---
 const parseChileanNumber = (str) => {
-  // Si no es un texto, lo devolvemos como número por si acaso
   if (typeof str !== 'string') {
     return Number(str) || 0;
   }
-  
-  // 1. Quitar los espacios en blanco
-  let cleanStr = str.trim();
 
-  // 2. Reemplazar todos los puntos (separadores de miles) por nada.
-  // "1.234,56" -> "1234,56"
-  cleanStr = cleanStr.replace(/\./g, '');
+  // 1. Quitar todos los puntos, que siempre son separadores de miles en este contexto.
+  // Ejemplo: "1.234,56" -> "1234,56"
+  let cleanStr = str.replace(/\./g, '');
 
-  // 3. Reemplazar la coma decimal por un punto para que JS lo entienda.
-  // "1234,56" -> "1234.56"
-  // "5,000" -> "5000" (si no hay coma, no hace nada)
-  cleanStr = cleanStr.replace(/,/, '.');
+  // 2. Revisar la última coma para decidir si es decimal o de miles.
+  const lastCommaIndex = cleanStr.lastIndexOf(',');
 
-  // 4. Convertir a número. Si falla, devuelve 0.
+  // Si se encuentra una coma...
+  if (lastCommaIndex !== -1) {
+    const partAfterComma = cleanStr.substring(lastCommaIndex + 1);
+    
+    // 3. HEURÍSTICA CLAVE: Si la parte después de la última coma tiene exactamente 3 dígitos,
+    // es muy probable que sea un separador de miles (ej: "5,000").
+    if (partAfterComma.length === 3) {
+      // Si parece ser de miles, simplemente eliminamos TODAS las comas.
+      // Ejemplo: "5,000" -> "5000"
+      cleanStr = cleanStr.replace(/,/g, '');
+    } else {
+      // 4. Si no tiene 3 dígitos (ej: "123,45"), la tratamos como un decimal.
+      // Primero, eliminamos todas las comas que puedan ser de miles (todas menos la última).
+      const thousandsRemoved = cleanStr.substring(0, lastCommaIndex).replace(/,/g, '');
+      // Reconstruimos el número con un punto decimal.
+      cleanStr = thousandsRemoved + '.' + partAfterComma;
+    }
+  }
+
+  // 5. Convertir el string ya limpio a número.
   const num = parseFloat(cleanStr);
   return isNaN(num) ? 0 : num;
 };
+
 
 
 // --- CONSTANTES ---
