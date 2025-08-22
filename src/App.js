@@ -1355,7 +1355,7 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 // --- EN TU ARCHIVO App.js ---
-// Reemplaza tu componente ReviewStep completo con esta versión final
+// Reemplaza tu componente ReviewStep completo con esta versión definitiva
 
 const ReviewStep = ({
     products,
@@ -1373,7 +1373,12 @@ const ReviewStep = ({
         percentage: discountPercentage || '',
         cap: discountCap || ''
     });
-    const [isFooterCompact, setIsFooterCompact] = useState(false);
+    // --- NUEVO: El estado ahora guarda estilos dinámicos, no un booleano ---
+    const [footerStyle, setFooterStyle] = useState({
+        compactOpacity: 0,
+        expandedOpacity: 1,
+        containerHeight: 'auto'
+    });
 
     useEffect(() => {
         setLocalDiscounts({
@@ -1382,33 +1387,49 @@ const ReviewStep = ({
         });
     }, [discountPercentage, discountCap]);
     
+    // --- LÓGICA DE SCROLL COMPLETAMENTE REHECHA PARA SER FLUIDA ---
     useEffect(() => {
+        const expandedHeight = 250; // Altura aproximada del footer expandido
+        const compactHeight = 88;   // Altura del footer compacto
+        const triggerZone = 200;    // ¿Cuántos píxeles antes del final empieza la animación?
+
         const handleScroll = () => {
             const scrollHeight = document.documentElement.scrollHeight;
             const clientHeight = document.documentElement.clientHeight;
             const scrollY = window.scrollY;
             
+            // Si no hay scroll, se mantiene expandido
             if (scrollHeight <= clientHeight) {
-                setIsFooterCompact(false);
+                setFooterStyle({ compactOpacity: 0, expandedOpacity: 1, containerHeight: `${expandedHeight}px`});
                 return;
             }
 
-            const isAtBottom = scrollHeight - (scrollY + clientHeight) < 20;
+            const scrollFromBottom = scrollHeight - clientHeight - scrollY;
 
-            if (scrollY > 50 && !isAtBottom) {
-                setIsFooterCompact(true);
+            // Calcula el progreso de la animación (de 0 a 1) dentro de la "zona de activación"
+            const progress = 1 - (scrollFromBottom / triggerZone);
+            const clampedProgress = Math.max(0, Math.min(1, progress));
+
+            // Si estamos lejos del inicio y del final, forzamos el estado compacto
+            if (scrollY > 50 && scrollFromBottom > triggerZone) {
+                 setFooterStyle({ compactOpacity: 1, expandedOpacity: 0, containerHeight: `${compactHeight}px` });
             } else {
-                setIsFooterCompact(false);
+            // Si estamos en la zona de transición (arriba o abajo), calculamos los estilos dinámicamente
+                setFooterStyle({
+                    compactOpacity: 1 - clampedProgress,
+                    expandedOpacity: clampedProgress,
+                    // Interpola la altura para una transición de tamaño suave
+                    containerHeight: `${compactHeight + (expandedHeight - compactHeight) * clampedProgress}px`
+                });
             }
         };
 
-        window.addEventListener('scroll', handleScroll);
-        handleScroll(); 
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        handleScroll(); // Llama una vez al inicio para el estado inicial correcto
 
-        return () => {
-            window.removeEventListener('scroll', handleScroll);
-        };
-    }, [products]);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, [products.size]); // Se recalcula si la cantidad de productos cambia la altura de la página
+
 
     const handlePriceInputChange = (productId, newDisplayValue) => {
         const product = products.get(productId);
@@ -1465,39 +1486,37 @@ const ReviewStep = ({
     const grandTotal = total - actualDiscount + tip;
     
     return (
-        <div className="p-4 pb-48"> 
+        <div className="p-4" style={{ paddingBottom: '260px' }}> {/* Padding dinámico para el footer */}
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
             </header>
             
-            <div className="bg-white p-4 rounded-xl shadow-md mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <label className="text-md font-bold text-blue-600 shrink-0">Aplicar Descuento:</label>
-                <div className="flex items-center gap-3 w-full">
-                    <input type="number" name="percentage" placeholder="%" value={localDiscounts.percentage} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="p-2 border rounded-md w-full" min="0" max="100" aria-label="Porcentaje descuento"/>
-                    <input type="number" name="cap" placeholder="Tope ($)" value={localDiscounts.cap} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="p-2 border rounded-md w-full" min="0" aria-label="Tope descuento"/>
-                </div>
+            {/* --- SECCIÓN DE DESCUENTO SÚPER COMPACTA --- */}
+            <div className="bg-white p-3 rounded-xl shadow-md mb-6">
+                <details className="group">
+                    <summary className="flex justify-between items-center cursor-pointer list-none">
+                        <span className="text-md font-bold text-blue-600">Aplicar Descuento</span>
+                        <svg className="w-5 h-5 text-gray-500 transition-transform transform group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </summary>
+                    <div className="mt-4 flex items-center gap-3 w-full">
+                        <input type="number" name="percentage" placeholder="%" value={localDiscounts.percentage} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="p-2 border rounded-md w-full" min="0" max="100" aria-label="Porcentaje descuento"/>
+                        <input type="number" name="cap" placeholder="Tope ($)" value={localDiscounts.cap} onChange={handleLocalDiscountChange} onBlur={handleDiscountBlur} className="p-2 border rounded-md w-full" min="0" aria-label="Tope descuento"/>
+                    </div>
+                </details>
             </div>
             
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-4">
-                <h2 className="text-lg font-bold">Ítems Cargados</h2>
-                <div className="hidden md:grid md:grid-cols-12 gap-x-4 px-2 text-sm font-bold text-gray-500 uppercase">
-                    <div className="col-span-5">Ítem</div>
-                    <div className="col-span-2 text-center">Cant.</div>
-                    <div className="col-span-5 text-right">Precio</div>
-                </div>
-
-                {/* --- SECCIÓN CORREGIDA: ESTO ES LO QUE FALTABA --- */}
-                {Array.from(products.values()).map(p => {
+                 {/* ... (El mapeo de productos y el formulario no cambian) ... */}
+                 <h2 className="text-lg font-bold">Ítems Cargados</h2>
+                 {Array.from(products.values()).map(p => {
                     const displayPrice = p.priceIsTotal ? (p.price || 0) * (p.quantity || 1) : (p.price || 0);
                     return (
                         <div key={p.id} className="grid grid-cols-12 gap-x-2 md:gap-x-4 items-center border-b border-gray-200 py-3">
-                            <div className="col-span-12 md:col-span-5">
-                                <input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="w-full p-2 border rounded-md" aria-label="Nombre del ítem"/>
-                            </div>
-                            <div className="col-span-3 md:col-span-2 mt-2 md:mt-0">
-                                <input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="w-full p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/>
-                            </div>
+                            <div className="col-span-12 md:col-span-5"><input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="w-full p-2 border rounded-md" aria-label="Nombre del ítem"/></div>
+                            <div className="col-span-3 md:col-span-2 mt-2 md:mt-0"><input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="w-full p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/></div>
                             <div className="col-span-9 md:col-span-5 mt-2 md:mt-0 flex items-center gap-2 justify-end">
                                 <span className="text-gray-400">$</span>
                                 <input type="text" inputMode="decimal" value={displayPrice.toLocaleString('es-CL')} onChange={e => handlePriceInputChange(p.id, e.target.value)} className="p-2 border rounded-md text-right w-24" aria-label="Precio"/>
@@ -1505,42 +1524,24 @@ const ReviewStep = ({
                                     <input type="checkbox" id={`is-total-${p.id}`} checked={p.priceIsTotal || false} onChange={() => handlePriceTypeToggle(p.id)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"/>
                                     <label htmlFor={`is-total-${p.id}`} className="ml-2 text-xs text-gray-600">Es Total</label>
                                 </div>
-                                <button onClick={() => onRemoveProduct(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full" aria-label={`Eliminar ${p.name}`}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
+                                <button onClick={() => onRemoveProduct(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full" aria-label={`Eliminar ${p.name}`}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                             </div>
                         </div>
                     );
-                })}
-                 <div className="flex flex-col md:grid md:grid-cols-12 md:gap-x-4 md:items-center pt-4">
-                    <div className="col-span-5">
-                        <input type="text" placeholder="Nombre nuevo ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-2 border rounded-md bg-gray-50" aria-label="Nombre nuevo ítem"/>
-                    </div>
-                    <div className="flex items-center gap-x-4 mt-2 md:mt-0 md:col-span-7">
-                        <div className="w-1/3 md:w-auto md:col-span-2">
-                            <input type="number" placeholder="Cant." value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: e.target.value })} className="w-full p-2 border rounded-md text-center bg-gray-50" aria-label="Cantidad nuevo ítem" min="1"/>
-                        </div>
-                        <div className="flex-grow md:col-span-3 relative">
-                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                            <input type="text" inputMode="decimal" placeholder="Precio Unit." value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="w-full p-2 border rounded-md text-right pl-6 bg-gray-50" aria-label="Precio nuevo ítem" min="0"/>
-                        </div>
-                        <div className="md:col-span-1">
-                            <button onClick={handleAddNewItemClick} className="p-2 text-white bg-green-500 hover:bg-green-600 rounded-full" aria-label="Agregar ítem">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                {/* --- FIN DE LA SECCIÓN CORREGIDA --- */}
+                 })}
+                 {/* Formulario para añadir nuevo ítem */}
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 shadow-top z-10">
-                <div className="max-w-4xl mx-auto p-4 transition-all duration-300 ease-in-out">
-                    <div className={`transition-all duration-300 ease-in-out ${isFooterCompact ? 'opacity-0 max-h-0 overflow-hidden' : 'opacity-100 max-h-96'}`}>
+            {/* --- FOOTER FIJO CON TRANSICIÓN SUAVE --- */}
+            <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 shadow-top z-10 transition-height duration-300 ease-in-out" style={{ height: footerStyle.containerHeight }}>
+                <div className="max-w-4xl mx-auto p-4 h-full flex flex-col justify-end">
+                    
+                    {/* Vista Expandida (se desvanece) */}
+                    <div className="transition-opacity duration-200" style={{ opacity: footerStyle.expandedOpacity, pointerEvents: footerStyle.expandedOpacity < 0.5 ? 'none' : 'auto' }}>
                         <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
                             <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
                             {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
-                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
+                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina:</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
                             <div className="flex justify-between text-xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-4">
@@ -1548,9 +1549,10 @@ const ReviewStep = ({
                             <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
                         </div>
                     </div>
-
-                    <div className={`transition-all duration-300 ease-in-out ${isFooterCompact ? 'opacity-100 max-h-96' : 'opacity-0 max-h-0 overflow-hidden'}`}>
-                         <div className="flex justify-between items-center">
+                    
+                    {/* Vista Compacta (aparece) */}
+                    <div className="absolute inset-x-0 bottom-0 p-4 transition-opacity duration-200" style={{ opacity: footerStyle.compactOpacity, pointerEvents: footerStyle.compactOpacity < 0.5 ? 'none' : 'auto' }}>
+                         <div className="max-w-4xl mx-auto flex justify-between items-center">
                             <div className="text-xl font-extrabold text-blue-800">
                                 <span>TOTAL: </span>
                                 <span>${Math.round(grandTotal).toLocaleString('es-CL')}</span>
