@@ -1394,7 +1394,7 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 // --- EN TU ARCHIVO App.js ---
-// Reemplaza tu componente ReviewStep completo con esta versión final
+// Reemplaza tu componente ReviewStep completo con esta versión definitiva
 
 const ReviewStep = ({
     products,
@@ -1412,10 +1412,10 @@ const ReviewStep = ({
         percentage: discountPercentage || '',
         cap: discountCap || ''
     });
-    const [isFooterCompact, setIsFooterCompact] = useState(false);
     
-    // --- NUEVO: Referencia para el "centinela" al final de la lista ---
-    const sentinelRef = useRef(null);
+    // --- LÓGICA DE SCROLL MEJORADA ---
+    const [isFooterCompact, setIsFooterCompact] = useState(false);
+    const sentinelRef = useRef(null); // Ref para el "sensor" al final de la lista
 
     useEffect(() => {
         setLocalDiscounts({
@@ -1423,21 +1423,21 @@ const ReviewStep = ({
             cap: discountCap || ''
         });
     }, [discountPercentage, discountCap]);
-
-    // --- LÓGICA DE SCROLL REHECHA CON INTERSECTION OBSERVER (MÁS PRECISA Y EFICIENTE) ---
+    
+    // --- NUEVO EFECTO CON INTERSECTION OBSERVER ---
     useEffect(() => {
         const observer = new IntersectionObserver(
             ([entry]) => {
-                // Si el centinela NO está visible (estamos haciendo scroll en medio)
-                // Y ya hemos bajado un poco en la página, compactamos el footer.
-                if (!entry.isIntersecting && window.scrollY > 100) {
+                // entry.isIntersecting es true si el sensor está en pantalla.
+                // Si el sensor NO está visible Y hemos bajado un poco, compactamos el footer.
+                if (!entry.isIntersecting && window.scrollY > 150) {
                     setIsFooterCompact(true);
                 } else {
-                // Si el centinela SÍ está visible (llegamos al final) o estamos arriba del todo, lo expandimos.
+                // Si el sensor está visible (estamos al final) o estamos arriba, lo expandimos.
                     setIsFooterCompact(false);
                 }
             },
-            { threshold: 0.1 } // El callback se activa cuando el 10% del centinela es visible
+            { threshold: 0.1 } // Se activa cuando al menos un 10% del sensor es visible
         );
 
         const currentSentinel = sentinelRef.current;
@@ -1445,14 +1445,12 @@ const ReviewStep = ({
             observer.observe(currentSentinel);
         }
 
-        // Limpieza al desmontar el componente
         return () => {
             if (currentSentinel) {
                 observer.unobserve(currentSentinel);
             }
         };
-    }, [products.size]); // Re-observar si la lista de productos cambia
-
+    }, [products.size]); // Se re-ejecuta si la lista de productos cambia
 
     const handlePriceInputChange = (productId, newDisplayValue) => {
         const product = products.get(productId);
@@ -1509,7 +1507,7 @@ const ReviewStep = ({
     const grandTotal = total - actualDiscount + tip;
     
     return (
-        <div className="p-4 pb-48"> 
+        <div className="p-4 pb-64"> 
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
@@ -1562,14 +1560,14 @@ const ReviewStep = ({
                     </div>
                 </div>
             </div>
-            
-            {/* Div centinela invisible para el Intersection Observer */}
+
+            {/* --- NUEVO: "Sensor" invisible para el Intersection Observer --- */}
             <div ref={sentinelRef} style={{ height: '1px' }} />
 
-            <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 shadow-top z-10">
-                <div className="max-w-4xl mx-auto p-4 relative">
+            <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-top z-10 transition-all duration-300 ease-in-out`}>
+                <div className="max-w-4xl mx-auto p-4">
                     {/* Vista Expandida */}
-                    <div className={`transition-all duration-300 ease-in-out ${isFooterCompact ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
+                    <div className={`transition-opacity duration-300 ${isFooterCompact ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                         <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
                             <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
                             {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
@@ -1581,10 +1579,10 @@ const ReviewStep = ({
                             <button onClick={onConfirm} className="w-full py-3 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Todo Correcto, Continuar</button>
                         </div>
                     </div>
-                    
+
                     {/* Vista Compacta */}
-                    <div className={`absolute inset-0 p-4 flex justify-center items-center transition-all duration-300 ease-in-out ${isFooterCompact ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
-                         <div className="max-w-4xl w-full mx-auto flex justify-between items-center">
+                    <div className={`transition-opacity duration-300 ${isFooterCompact ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                         <div className="flex justify-between items-center">
                             <div className="flex items-center gap-3">
                                 <div className="text-xl font-extrabold text-blue-800">
                                     <span>TOTAL: </span>
