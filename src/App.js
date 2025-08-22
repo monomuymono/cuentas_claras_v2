@@ -9,19 +9,30 @@ if (typeof window !== 'undefined' && typeof window.process === 'undefined') {
 // --- FUNCIÓN AUXILIAR PARA IDs ÚNICOS ---
 const generateUniqueId = (prefix = 'id') => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-// --- NUEVA FUNCIÓN "TRADUCTORA" DE NÚMEROS ---
+// --- NUEVA FUNCIÓN "TRADUCTORA" DE NÚMEROS (VERSIÓN MEJORADA) ---
 const parseChileanNumber = (str) => {
   // Si no es un texto, lo devolvemos como número por si acaso
   if (typeof str !== 'string') {
     return Number(str) || 0;
   }
-  // 1. Quita todos los puntos (separadores de miles) -> "1.234,56" se convierte en "1234,56"
-  const withoutDots = str.replace(/\./g, '');
-  // 2. Reemplaza la coma decimal por un punto -> "1234,56" se convierte en "1234.56"
-  const withDotDecimal = withoutDots.replace(/,/, '.');
-  // 3. Convierte el texto limpio a un número de punto flotante
-  return parseFloat(withDotDecimal) || 0;
+  
+  // 1. Quitar los espacios en blanco
+  let cleanStr = str.trim();
+
+  // 2. Reemplazar todos los puntos (separadores de miles) por nada.
+  // "1.234,56" -> "1234,56"
+  cleanStr = cleanStr.replace(/\./g, '');
+
+  // 3. Reemplazar la coma decimal por un punto para que JS lo entienda.
+  // "1234,56" -> "1234.56"
+  // "5,000" -> "5000" (si no hay coma, no hace nada)
+  cleanStr = cleanStr.replace(/,/, '.');
+
+  // 4. Convertir a número. Si falla, devuelve 0.
+  const num = parseFloat(cleanStr);
+  return isNaN(num) ? 0 : num;
 };
+
 
 // --- CONSTANTES ---
 const TIP_PERCENTAGE = 0.10; // Propina del 10%
