@@ -1394,6 +1394,7 @@ const LoadingStep = ({ onImageUpload, onManualEntry, isImageProcessing, imagePro
     </div>
 );
 // --- EN TU ARCHIVO App.js ---
+// --- EN TU ARCHIVO App.js ---
 // Reemplaza tu componente ReviewStep completo con esta versión definitiva
 
 const ReviewStep = ({
@@ -1413,12 +1414,9 @@ const ReviewStep = ({
         cap: discountCap || ''
     });
     
-    // --- LÓGICA DE SCROLL SIMPLIFICADA ---
-    const [isAtBottom, setIsAtBottom] = useState(false);
-    const sentinelRef = useRef(null);
-
-    // El footer es compacto SIEMPRE Y CUANDO NO esté al final de la página.
-    const isFooterCompact = !isAtBottom;
+    // --- LÓGICA DE SCROLL SIMPLIFICADA Y CORREGIDA ---
+    const [isFooterExpanded, setIsFooterExpanded] = useState(true);
+    const sentinelRef = useRef(null); // Ref para el "sensor" al final de la lista
 
     useEffect(() => {
         setLocalDiscounts({
@@ -1429,25 +1427,29 @@ const ReviewStep = ({
     
     // --- EFECTO CON INTERSECTION OBSERVER ---
     useEffect(() => {
-        // Callback que se ejecuta cuando el sensor cambia su visibilidad
-        const observerCallback = ([entry]) => {
-            setIsAtBottom(entry.isIntersecting);
-        };
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                // Simplemente actualizamos el estado basándonos en si el sensor está visible o no.
+                setIsFooterExpanded(entry.isIntersecting);
+            },
+            { 
+                root: null, // Observa intersecciones en relación con el viewport
+                rootMargin: '0px',
+                threshold: 0.1 // Se activa cuando al menos el 10% del sensor es visible
+            }
+        );
 
-        const observer = new IntersectionObserver(observerCallback, { threshold: 0.1 });
         const currentSentinel = sentinelRef.current;
-
         if (currentSentinel) {
             observer.observe(currentSentinel);
         }
 
-        // Limpieza del observador
         return () => {
             if (currentSentinel) {
                 observer.unobserve(currentSentinel);
             }
         };
-    }, [products.size]);
+    }, [products.size]); // Re-observar si la lista de productos cambia
 
     const handlePriceInputChange = (productId, newDisplayValue) => {
         const product = products.get(productId);
@@ -1504,7 +1506,7 @@ const ReviewStep = ({
     const grandTotal = total - actualDiscount + tip;
     
     return (
-        <div className="p-4 pb-64"> 
+        <div className="p-4 pb-80"> {/* Aumentamos el padding para asegurar que el sensor sea visible */}
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
@@ -1560,10 +1562,10 @@ const ReviewStep = ({
             
             <div ref={sentinelRef} style={{ height: '1px' }} />
 
-            <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-top z-10 transition-all duration-300 ease-in-out ${isFooterCompact ? 'h-24' : 'h-auto'}`}>
+            <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-top z-10 transition-all duration-300 ease-in-out ${!isFooterExpanded ? 'h-24' : 'h-auto'}`}>
                 <div className="max-w-4xl mx-auto p-4 h-full flex flex-col justify-center">
                     <div className="relative w-full h-full">
-                        <div className={`transition-opacity duration-300 absolute inset-0 ${isFooterCompact ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                        <div className={`transition-opacity duration-300 absolute inset-0 ${!isFooterExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                             <div className="flex flex-col h-full justify-between">
                                 <div className="bg-blue-50 p-4 rounded-xl shadow-inner">
                                     <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
@@ -1577,7 +1579,7 @@ const ReviewStep = ({
                                 </div>
                             </div>
                         </div>
-                        <div className={`absolute inset-0 flex justify-between items-center transition-opacity duration-300 ${isFooterCompact ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        <div className={`absolute inset-0 flex justify-between items-center transition-opacity duration-300 ${!isFooterExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                             <div className="flex items-center gap-3">
                                 <div className="text-xl font-extrabold text-blue-800">
                                     <span>TOTAL: </span>
