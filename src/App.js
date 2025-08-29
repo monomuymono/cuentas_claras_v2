@@ -57,7 +57,7 @@ const parseChileanNumber = (str) => {
 
 // --- CONSTANTES ---
 const TIP_PERCENTAGE = 0.10; // Propina del 10%
-const MAX_COMENSALES = 20;
+const MAX_COMENSALES = 30;
 const ITEM_TYPES = {
     FULL: 'full',
     SHARED: 'shared'
