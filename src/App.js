@@ -437,7 +437,8 @@ function billReducer(state, action) {
                 availableProducts: action.payload,
                 lastUpdated: new Date().toISOString()
             };
-        case 'SET_PRODUCTS_FOR_REVIEW':
+        case 'SET_PRODUCTS_FOR_REVIEW': {
+          const newMasterList = new Map(action.payload);
             return {
                 ...state,
                 availableProducts: action.payload,
@@ -447,6 +448,7 @@ function billReducer(state, action) {
                 currentStep: 'reviewing',
                 lastUpdated: new Date().toISOString()
             };
+            }
         case 'SET_PRODUCTS_AND_ADVANCE':
             return {
                 ...state,
