@@ -437,8 +437,7 @@ function billReducer(state, action) {
                 availableProducts: action.payload,
                 lastUpdated: new Date().toISOString()
             };
-        case 'SET_PRODUCTS_FOR_REVIEW': {
-          const newMasterList = new Map(action.payload);
+        case 'SET_PRODUCTS_FOR_REVIEW': 
             return {
                 ...state,
                 availableProducts: action.payload,
@@ -448,8 +447,9 @@ function billReducer(state, action) {
                 currentStep: 'reviewing',
                 lastUpdated: new Date().toISOString()
             };
-            }
-        case 'SET_PRODUCTS_AND_ADVANCE':
+            
+        case 'SET_PRODUCTS_AND_ADVANCE': {
+          const newMasterList = new Map(action.payload);
             return {
                 ...state,
                 masterProductList: new Map(action.payload),
@@ -457,6 +457,7 @@ function billReducer(state, action) {
                 currentStep: 'assigning',
                 lastUpdated: new Date().toISOString()
             };
+            }
         case 'SYNC_STATE': {
             const serverStateData = action.payload;
             // CAMBIO SUTIL PERO IMPORTANTE:
