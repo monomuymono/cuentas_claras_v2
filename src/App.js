@@ -1415,9 +1415,28 @@ const ReviewStep = ({
         cap: discountCap || ''
     });
     
-    // --- LÓGICA DE SCROLL SIMPLIFICADA Y CORREGIDA ---
+    // --- NUEVO ESTADO LOCAL PARA MANEJAR LOS INPUTS DE FORMA INDEPENDIENTE ---
+    const [localProductInputs, setLocalProductInputs] = useState({});
+
+    // Efecto para inicializar y sincronizar el estado local con los productos
+    useEffect(() => {
+        const newInputs = {};
+        for (const p of products.values()) {
+            const displayPrice = p.priceIsTotal ? (p.price || 0) * (p.quantity || 1) : (p.price || 0);
+            // Guardamos el valor formateado solo si no lo estamos editando
+            if (!localProductInputs[p.id]) {
+                 newInputs[p.id] = displayPrice.toLocaleString('es-CL');
+            } else {
+                 newInputs[p.id] = localProductInputs[p.id];
+            }
+        }
+        setLocalProductInputs(newInputs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [products]);
+
+
     const [isFooterExpanded, setIsFooterExpanded] = useState(true);
-    const sentinelRef = useRef(null); // Ref para el "sensor" al final de la lista
+    const sentinelRef = useRef(null); 
 
     useEffect(() => {
         setLocalDiscounts({
@@ -1426,17 +1445,15 @@ const ReviewStep = ({
         });
     }, [discountPercentage, discountCap]);
     
-    // --- EFECTO CON INTERSECTION OBSERVER (LA SOLUCIÓN DEFINITIVA) ---
     useEffect(() => {
         const observer = new IntersectionObserver(
             ([entry]) => {
-                // Actualiza el estado basándose únicamente en si el sensor está visible.
                 setIsFooterExpanded(entry.isIntersecting);
             },
             { 
                 root: null,
                 rootMargin: "0px",
-                threshold: 0.1 // Se activa cuando el 10% del sensor es visible
+                threshold: 0.1 
             }
         );
 
@@ -1445,19 +1462,32 @@ const ReviewStep = ({
             observer.observe(currentSentinel);
         }
 
-        // Limpieza al desmontar el componente
         return () => {
             if (currentSentinel) {
                 observer.unobserve(currentSentinel);
             }
         };
-    }, [products.size]); // Re-observar si la lista de productos cambia
+    }, [products.size]); 
 
-    const handlePriceInputChange = (productId, newDisplayValue) => {
+    // --- MANEJADORES DE CAMBIOS ACTUALIZADOS ---
+
+    // 1. Actualiza el estado local (borrador) mientras escribes
+    const handleLocalPriceChange = (productId, value) => {
+        setLocalProductInputs(prev => ({
+            ...prev,
+            [productId]: value
+        }));
+    };
+
+    // 2. Procesa el valor y actualiza el estado global cuando sales del campo
+    const handlePriceInputBlur = (productId) => {
         const product = products.get(productId);
-        if (!product) return;
+        const newDisplayValue = localProductInputs[productId];
+        if (!product || newDisplayValue === undefined) return;
+
         const numericValue = parseChileanNumber(String(newDisplayValue));
         const quantity = parseInt(product.quantity, 10) || 1;
+
         if (product.priceIsTotal) {
             onProductChange(productId, 'price', numericValue / quantity);
         } else {
@@ -1473,9 +1503,10 @@ const ReviewStep = ({
 
     const handleAddNewItemClick = () => {
         if (!newItem.name.trim()) { alert('Por favor, ingresa un nombre válido.'); return; }
+        // Usamos la misma función de parseo para consistencia
         const price = parseChileanNumber(newItem.price);
         const quantity = parseInt(newItem.quantity, 10);
-        if (isNaN(price) || price <= 0) { alert('El precio debe ser un número positivo.'); return; }
+        if (isNaN(price) || price < 0) { alert('El precio debe ser un número válido.'); return; }
         if (isNaN(quantity) || quantity <= 0) { alert('La cantidad debe ser un número entero positivo.'); return; }
         onAddNewProduct({ 
             name: newItem.name.trim(), 
@@ -1501,6 +1532,7 @@ const ReviewStep = ({
         });
     };
 
+    // Los cálculos ahora usan los valores del estado global, no del local
     const total = Array.from(products.values()).reduce((sum, p) => (sum + (p.price || 0) * (p.quantity || 1)), 0);
     const potentialDiscount = total * (discountPercentage / 100);
     const actualDiscount = (discountPercentage > 0 && discountCap > 0) ? Math.min(potentialDiscount, discountCap) : (discountPercentage > 0 ? potentialDiscount : 0);
@@ -1508,7 +1540,7 @@ const ReviewStep = ({
     const grandTotal = total - actualDiscount + tip;
     
     return (
-        <div className="p-4 pb-80"> {/* Padding aumentado para asegurar que el sensor sea visible */}
+        <div className="p-4 pb-80">
             <header className="text-center mb-6">
                 <h1 className="text-3xl font-extrabold text-blue-700">Revisa y Ajusta la Cuenta</h1>
                 <p className="text-gray-600">Asegúrate que los ítems y precios coincidan con tu recibo.</p>
@@ -1518,7 +1550,7 @@ const ReviewStep = ({
                 <details className="group">
                     <summary className="flex justify-between items-center cursor-pointer list-none">
                         <span className="text-md font-bold text-blue-600">Aplicar Descuento</span>
-                        <svg className="w-5 h-5 text-gray-500 transition-transform transform group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-5 h-5 text-gray-500 transition-transform transform group-open:rotate-180" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </summary>
@@ -1531,15 +1563,22 @@ const ReviewStep = ({
             
             <div className="bg-white p-4 rounded-xl shadow-md mb-6 space-y-4">
                  <h2 className="text-lg font-bold">Ítems Cargados</h2>
-                 {Array.from(products.values()).map(p => {
-                    const displayPrice = p.priceIsTotal ? (p.price || 0) * (p.quantity || 1) : (p.price || 0);
-                    return (
+                 {Array.from(products.values()).map(p => (
                         <div key={p.id} className="grid grid-cols-12 gap-x-2 md:gap-x-4 items-center border-b border-gray-200 py-3">
                             <div className="col-span-12 md:col-span-5"><input type="text" value={p.name} onChange={e => onProductChange(p.id, 'name', e.target.value)} className="w-full p-2 border rounded-md" aria-label="Nombre del ítem"/></div>
                             <div className="col-span-3 md:col-span-2 mt-2 md:mt-0"><input type="number" value={p.quantity} onChange={e => onProductChange(p.id, 'quantity', e.target.value)} className="w-full p-2 border rounded-md text-center" aria-label="Cantidad" min="1"/></div>
                             <div className="col-span-9 md:col-span-5 mt-2 md:mt-0 flex items-center gap-2 justify-end">
                                 <span className="text-gray-400">$</span>
-                                <input type="text" inputMode="decimal" value={displayPrice.toLocaleString('es-CL')} onChange={e => handlePriceInputChange(p.id, e.target.value)} className="p-2 border rounded-md text-right w-24" aria-label="Precio"/>
+                                {/* --- CAMBIOS CLAVE AQUÍ --- */}
+                                <input 
+                                    type="text" 
+                                    inputMode="decimal" 
+                                    value={localProductInputs[p.id] || ''} 
+                                    onChange={e => handleLocalPriceChange(p.id, e.target.value)}
+                                    onBlur={() => handlePriceInputBlur(p.id)}
+                                    className="p-2 border rounded-md text-right w-24" 
+                                    aria-label="Precio"
+                                />
                                 <div className="flex items-center" title="Marcar si el precio ingresado es por el total de las unidades">
                                     <input type="checkbox" id={`is-total-${p.id}`} checked={p.priceIsTotal || false} onChange={() => handlePriceTypeToggle(p.id)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"/>
                                     <label htmlFor={`is-total-${p.id}`} className="ml-2 text-xs text-gray-600">Es Total</label>
@@ -1547,8 +1586,7 @@ const ReviewStep = ({
                                 <button onClick={() => onRemoveProduct(p.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full" aria-label={`Eliminar ${p.name}`}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                             </div>
                         </div>
-                    );
-                 })}
+                 ))}
                  <div className="flex flex-col md:grid md:grid-cols-12 md:gap-x-4 md:items-center pt-4">
                     <div className="col-span-5"><input type="text" placeholder="Nombre nuevo ítem" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full p-2 border rounded-md bg-gray-50" aria-label="Nombre nuevo ítem"/></div>
                     <div className="flex items-center gap-x-4 mt-2 md:mt-0 md:col-span-7">
@@ -1562,19 +1600,17 @@ const ReviewStep = ({
                 </div>
             </div>
             
-            {/* --- "Sensor" invisible para el Intersection Observer --- */}
             <div ref={sentinelRef} style={{ height: '1px' }} />
 
-            {/* --- FOOTER con transición de altura y opacidad controlada por CSS --- */}
             <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-top z-10 transition-all duration-300 ease-in-out ${isFooterExpanded ? 'h-auto' : 'h-24'}`}>
                 <div className="max-w-4xl mx-auto p-4 flex flex-col justify-center h-full">
-                    {/* Vista Expandida */}
                     <div className={`transition-opacity duration-300 ${isFooterExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
-                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${Math.round(total).toLocaleString('es-CL')}</span></div>
-                            {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${Math.round(actualDiscount).toLocaleString('es-CL')}</span></div>)}
-                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${Math.round(tip).toLocaleString('es-CL')}</span></div>
-                            <div className="flex justify-between text-xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${Math.round(grandTotal).toLocaleString('es-CL')}</span></div>
+                            {/* Aquí también puedes quitar Math.round si quieres ver decimales */}
+                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${total.toLocaleString('es-CL')}</span></div>
+                            {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${actualDiscount.toLocaleString('es-CL')}</span></div>)}
+                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${tip.toLocaleString('es-CL')}</span></div>
+                            <div className="flex justify-between text-xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${grandTotal.toLocaleString('es-CL')}</span></div>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
@@ -1582,16 +1618,16 @@ const ReviewStep = ({
                         </div>
                     </div>
                     
-                    {/* Vista Compacta */}
                     <div className={`absolute inset-0 flex justify-between items-center px-4 transition-opacity duration-300 ${isFooterExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                         <div className="flex items-center gap-3">
                             <div className="text-xl font-extrabold text-blue-800">
                                 <span>TOTAL: </span>
-                                <span>${Math.round(grandTotal).toLocaleString('es-CL')}</span>
+                                {/* Y aquí */}
+                                <span>${grandTotal.toLocaleString('es-CL')}</span>
                             </div>
                             {actualDiscount > 0 && (
                                 <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded-full">
-                                    -${Math.round(actualDiscount).toLocaleString('es-CL')}
+                                    -${actualDiscount.toLocaleString('es-CL')}
                                 </span>
                             )}
                         </div>
@@ -1602,6 +1638,7 @@ const ReviewStep = ({
         </div>
     );
 };
+
     // --- EN TU ARCHIVO App.js ---
 // Reemplaza tu componente AssigningStep completo con esta versión reordenada
 
