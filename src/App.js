@@ -57,11 +57,25 @@ const parseChileanNumber = (str) => {
 
 // --- CONSTANTES ---
 const TIP_PERCENTAGE = 0.10; // Propina del 10%
+const DECIMAL_PLACES = 2; // <<--- NUEVO PARÁMETRO PARA DECIMALES
 const MAX_COMENSALES = 30;
 const ITEM_TYPES = {
     FULL: 'full',
     SHARED: 'shared'
 };
+
+// --- NUEVA FUNCIÓN AUXILIAR DE FORMATEO ---
+const formatNumber = (num) => { // <<--- NUEVA FUNCIÓN
+  const number = Number(num);
+  if (isNaN(number)) {
+    return '0,00'; // Devuelve un valor por defecto formateado
+  }
+  return number.toLocaleString('es-CL', {
+    minimumFractionDigits: DECIMAL_PLACES,
+    maximumFractionDigits: DECIMAL_PLACES,
+  });
+};
+
 
 // --- COMPONENTES DE LA INTERFAZ ---
 
@@ -179,7 +193,8 @@ const ShareItemModal = ({ isOpen, onClose, availableProducts, comensales, onShar
                 <option value="" disabled>Selecciona un producto</option>
                 {sharableProducts.map(product => (
                   <option key={product.id} value={product.id}>
-                    {product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})
+                    {/* // <<-- MODIFICADO */ }
+                    {product.name} (${formatNumber(Number(product.price))}) (Disp: {Number(product.quantity)})
                   </option>
                 ))}
               </select>
@@ -249,21 +264,25 @@ const SummaryModal = ({ isOpen, onClose, summaryData, onPrint }) => {
               <h3 className="text-xl font-semibold text-gray-700 mb-2">{diner.name}</h3>
               <div className="flex justify-between text-gray-600">
                 <span>Consumo (sin propina):</span>
-                <span>${diner.totalSinPropina.toLocaleString('es-CL')}</span>
+                 {/* // <<-- MODIFICADO */ }
+                <span>${formatNumber(diner.totalSinPropina)}</span>
               </div>
               {diner.descuentoAplicado > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span>Descuento:</span>
-                  <span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span>
+                   {/* // <<-- MODIFICADO */ }
+                  <span>-${formatNumber(diner.descuentoAplicado)}</span>
                 </div>
               )}
               <div className="flex justify-between text-gray-600">
                 <span>Propina (10%):</span>
-                <span>${diner.propina.toLocaleString('es-CL')}</span>
+                 {/* // <<-- MODIFICADO */ }
+                <span>${formatNumber(diner.propina)}</span>
               </div>
               <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200">
                 <span>TOTAL A PAGAR:</span>
-                <span>${diner.totalConPropina.toLocaleString('es-CL')}</span>
+                 {/* // <<-- MODIFICADO */ }
+                <span>${formatNumber(diner.totalConPropina)}</span>
               </div>
             </div>
           ))}
@@ -1167,19 +1186,21 @@ const handleOpenSummaryModal = useCallback(() => {
 
         const totalConPropina = (totalSinPropinaComensal - descuentoAplicado) + propina;
 
+        // <<-- MODIFICADO: No se usa Math.round(), los valores se mantienen precisos.
+        // El redondeo se hará al mostrar los datos con formatNumber()
         return { 
             id: comensal.id, 
             name: comensal.name, 
             totalSinPropina: totalSinPropinaComensal, 
             propina: propina, 
-            descuentoAplicado: Math.round(descuentoAplicado), 
-            totalConPropina: Math.round(totalConPropina), 
+            descuentoAplicado: descuentoAplicado, 
+            totalConPropina: totalConPropina, 
             items: comensal.selectedItems 
         }; 
     }); 
     setSummaryData(data); 
     setIsSummaryModalOpen(true); 
-}, [comensales, discountPercentage, discountCap]); // <-- Dependencias que fuerzan la actualización de la función
+}, [comensales, discountPercentage, discountCap]);
   const handlePrint = () => {
         const printContent = document.getElementById('print-source-content');
         if (!printContent) return;
@@ -1273,24 +1294,27 @@ onRetrySave={handleRetrySave}
                                                     : `${item.quantity} × ${item.name}`}
                                             </span>
                                             <span>
-                                                ${(item.originalBasePrice * item.quantity).toLocaleString('es-CL')}
+                                                {/* // <<-- MODIFICADO */ }
+                                                ${formatNumber(item.originalBasePrice * item.quantity)}
                                             </span>
                                         </li>
                                     ))}
                                 </ul>
-                                <div className="flex justify-between text-gray-600"><span>Consumo (sin propina):</span><span>${diner.totalSinPropina.toLocaleString('es-CL')}</span></div>
-                                {diner.descuentoAplicado > 0 && (<div className="flex justify-between text-green-600"><span>Descuento:</span><span>-${diner.descuentoAplicado.toLocaleString('es-CL')}</span></div>)}
-                                <div className="flex justify-between text-gray-600"><span>Propina (10%):</span><span>${diner.propina.toLocaleString('es-CL')}</span></div>
-                                <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200"><span>TOTAL A PAGAR:</span><span>${diner.totalConPropina.toLocaleString('es-CL')}</span></div>
+                                 {/* // <<-- MODIFICADO */ }
+                                <div className="flex justify-between text-gray-600"><span>Consumo (sin propina):</span><span>${formatNumber(diner.totalSinPropina)}</span></div>
+                                {diner.descuentoAplicado > 0 && (<div className="flex justify-between text-green-600"><span>Descuento:</span><span>-${formatNumber(diner.descuentoAplicado)}</span></div>)}
+                                <div className="flex justify-between text-gray-600"><span>Propina (10%):</span><span>${formatNumber(diner.propina)}</span></div>
+                                <div className="flex justify-between text-xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-200"><span>TOTAL A PAGAR:</span><span>${formatNumber(diner.totalConPropina)}</span></div>
                             </div>
                         ))}
                     </div>
                     <div className="mt-8 pt-6 border-t-2 border-solid border-gray-800">
                         <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">TOTAL GENERAL</h3>
-                        <div className="flex justify-between text-lg text-gray-700"><span>Total Consumo (sin propina):</span><span>${summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0).toLocaleString('es-CL')}</span></div>
-                        <div className="flex justify-between text-lg text-green-600"><span>Total Descuento:</span><span>-${summaryData.reduce((sum, d) => sum + d.descuentoAplicado, 0).toLocaleString('es-CL')}</span></div>
-                        <div className="flex justify-between text-lg text-gray-700"><span>Total Propina:</span><span>${summaryData.reduce((sum, d) => sum + d.propina, 0).toLocaleString('es-CL')}</span></div>
-                        <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300"><span>GRAN TOTAL A PAGAR:</span><span>${summaryData.reduce((sum, d) => sum + d.totalConPropina, 0).toLocaleString('es-CL')}</span></div>
+                        {/* // <<-- MODIFICADO */ }
+                        <div className="flex justify-between text-lg text-gray-700"><span>Total Consumo (sin propina):</span><span>${formatNumber(summaryData.reduce((sum, d) => sum + d.totalSinPropina, 0))}</span></div>
+                        <div className="flex justify-between text-lg text-green-600"><span>Total Descuento:</span><span>-${formatNumber(summaryData.reduce((sum, d) => sum + d.descuentoAplicado, 0))}</span></div>
+                        <div className="flex justify-between text-lg text-gray-700"><span>Total Propina:</span><span>${formatNumber(summaryData.reduce((sum, d) => sum + d.propina, 0))}</span></div>
+                        <div className="flex justify-between text-2xl font-bold text-gray-800 mt-2 pt-2 border-t border-gray-300"><span>GRAN TOTAL A PAGAR:</span><span>${formatNumber(summaryData.reduce((sum, d) => sum + d.totalConPropina, 0))}</span></div>
                     </div>
                 </div>
             </div>
@@ -1425,7 +1449,7 @@ const ReviewStep = ({
             const displayPrice = p.priceIsTotal ? (p.price || 0) * (p.quantity || 1) : (p.price || 0);
             // Guardamos el valor formateado solo si no lo estamos editando
             if (!localProductInputs[p.id]) {
-                 newInputs[p.id] = displayPrice.toLocaleString('es-CL');
+                 newInputs[p.id] = formatNumber(displayPrice); // <<-- MODIFICADO
             } else {
                  newInputs[p.id] = localProductInputs[p.id];
             }
@@ -1550,7 +1574,7 @@ const ReviewStep = ({
                 <details className="group">
                     <summary className="flex justify-between items-center cursor-pointer list-none">
                         <span className="text-md font-bold text-blue-600">Aplicar Descuento</span>
-                        <svg className="w-5 h-5 text-gray-500 transition-transform transform group-open:rotate-180" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-5 h-5 text-gray-500 transition-transform transform group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </summary>
@@ -1606,11 +1630,11 @@ const ReviewStep = ({
                 <div className="max-w-4xl mx-auto p-4 flex flex-col justify-center h-full">
                     <div className={`transition-opacity duration-300 ${isFooterExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <div className="bg-blue-50 p-4 rounded-xl shadow-inner mb-4">
-                            {/* Aquí también puedes quitar Math.round si quieres ver decimales */}
-                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${total.toLocaleString('es-CL')}</span></div>
-                            {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${actualDiscount.toLocaleString('es-CL')}</span></div>)}
-                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${tip.toLocaleString('es-CL')}</span></div>
-                            <div className="flex justify-between text-xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${grandTotal.toLocaleString('es-CL')}</span></div>
+                             {/* // <<-- MODIFICADO */ }
+                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Subtotal:</span><span className="font-bold">${formatNumber(total)}</span></div>
+                            {actualDiscount > 0 && (<div className="flex justify-between text-base"><span className="font-semibold text-green-600">Descuento:</span><span className="font-bold text-green-600">-${formatNumber(actualDiscount)}</span></div>)}
+                            <div className="flex justify-between text-base"><span className="font-semibold text-gray-700">Propina ({TIP_PERCENTAGE*100}%):</span><span className="font-bold">${formatNumber(tip)}</span></div>
+                            <div className="flex justify-between text-xl font-extrabold text-blue-800 mt-2 pt-2 border-t border-blue-200"><span>TOTAL:</span><span>${formatNumber(grandTotal)}</span></div>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button onClick={onBack} className="w-full py-3 px-5 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300">Empezar de Nuevo</button>
@@ -1622,12 +1646,13 @@ const ReviewStep = ({
                         <div className="flex items-center gap-3">
                             <div className="text-xl font-extrabold text-blue-800">
                                 <span>TOTAL: </span>
-                                {/* Y aquí */}
-                                <span>${grandTotal.toLocaleString('es-CL')}</span>
+                                 {/* // <<-- MODIFICADO */ }
+                                <span>${formatNumber(grandTotal)}</span>
                             </div>
                             {actualDiscount > 0 && (
                                 <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded-full">
-                                    -${actualDiscount.toLocaleString('es-CL')}
+                                     {/* // <<-- MODIFICADO */ }
+                                    -${formatNumber(actualDiscount)}
                                 </span>
                             )}
                         </div>
@@ -1680,7 +1705,8 @@ const AssigningStep = ({
                     <label htmlFor={`product-select-${comensal.id}`} className="block text-sm font-medium text-gray-700 mb-1">Agregar Ítem:</label>
                     <select id={`product-select-${comensal.id}`} value="" onChange={(e) => onAddItem(comensal.id, e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm">
                         <option value="" disabled>Selecciona un producto</option>
-                        {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={product.id} value={product.id}>{product.name} (${Number(product.price).toLocaleString('es-CL')}) (Disp: {Number(product.quantity)})</option>))}
+                        {/* // <<-- MODIFICADO */ }
+                        {Array.from(availableProducts.values()).filter(p => Number(p.quantity) > 0).map(product => (<option key={product.id} value={product.id}>{product.name} (${formatNumber(Number(product.price))}) (Disp: {Number(product.quantity)})</option>))}
                     </select>
                 </div>
                 <div className="flex-grow min-h-[80px]">
@@ -1690,7 +1716,8 @@ const AssigningStep = ({
                                 <li key={`${item.id}-${item.shareInstanceId || index}-${index}`} className="flex justify-between items-center text-sm">
                                     <span className="font-medium text-gray-700">{item.type === ITEM_TYPES.SHARED ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
                                     <div className="flex items-center space-x-2">
-                                        <span className="text-gray-900">${(Number(item.originalBasePrice) * Number(item.quantity)).toLocaleString('es-CL')}</span>
+                                        {/* // <<-- MODIFICADO */ }
+                                        <span className="text-gray-900">${formatNumber(Number(item.originalBasePrice) * Number(item.quantity))}</span>
                                         <button onClick={() => onRemoveItem(comensal.id, item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                         </button>
@@ -1701,10 +1728,11 @@ const AssigningStep = ({
                     ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
                 </div>
                 <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
-                    <div className="flex justify-between text-sm text-gray-600"><span>Consumo:</span><span>${(totalSinPropina).toLocaleString('es-CL')}</span></div>
-                    {descuentoAplicado > 0 && (<div className="flex justify-between text-sm text-green-600"><span>Descuento ({discountPercentage}%):</span><span>-${Math.round(descuentoAplicado).toLocaleString('es-CL')}</span></div>)}
-                    <div className="flex justify-between text-sm text-gray-600"><span>Propina ({TIP_PERCENTAGE * 100}%):</span><span>${Math.round(propina).toLocaleString('es-CL')}</span></div>
-                    <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1"><span>TOTAL A PAGAR:</span><span className="text-2xl">${(totalAPagar).toLocaleString('es-CL')}</span></div>
+                     {/* // <<-- MODIFICADO */ }
+                    <div className="flex justify-between text-sm text-gray-600"><span>Consumo:</span><span>${formatNumber(totalSinPropina)}</span></div>
+                    {descuentoAplicado > 0 && (<div className="flex justify-between text-sm text-green-600"><span>Descuento ({discountPercentage}%):</span><span>-${formatNumber(descuentoAplicado)}</span></div>)}
+                    <div className="flex justify-between text-sm text-gray-600"><span>Propina ({TIP_PERCENTAGE * 100}%):</span><span>${formatNumber(propina)}</span></div>
+                    <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1"><span>TOTAL A PAGAR:</span><span className="text-2xl">${formatNumber(totalAPagar)}</span></div>
                 </div>
                 <div className="flex gap-2 mt-4">
                     <button onClick={() => onOpenClearComensalModal(comensal.id)} className="w-full bg-orange-100 text-orange-700 py-2 px-4 rounded-md shadow-sm hover:bg-orange-200 text-sm">Limpiar</button>
