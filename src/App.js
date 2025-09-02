@@ -451,7 +451,7 @@ function billReducer(state, action) {
             return {
                 ...state,
                 masterProductList: new Map(action.payload),
-                availableProducts: new Map(action.payload),
+                availableProducts: recalculateAvailableProducts(newMasterList, state.comensales),
                 currentStep: 'assigning',
                 lastUpdated: new Date().toISOString()
             };
