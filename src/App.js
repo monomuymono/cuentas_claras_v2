@@ -1170,8 +1170,9 @@ const handleOpenSummaryModal = useCallback(() => {
         return { 
             id: comensal.id, 
             name: comensal.name, 
-            totalSinPropina: Math.round(totalSinPropinaComensal), 
-            propina: Math.round(propina), 
+            totalSinPropina:
+            totalSinPropinaComensal, 
+            propina: propina, 
             descuentoAplicado: Math.round(descuentoAplicado), 
             totalConPropina: Math.round(totalConPropina), 
             items: comensal.selectedItems 
