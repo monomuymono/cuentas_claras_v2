@@ -1274,7 +1274,7 @@ onRetrySave={handleRetrySave}
                                                     : `${item.quantity} × ${item.name}`}
                                             </span>
                                             <span>
-                                                ${Math.round(item.originalBasePrice * item.quantity).toLocaleString('es-CL')}
+                                                ${(item.originalBasePrice * item.quantity).toLocaleString('es-CL')}
                                             </span>
                                         </li>
                                     ))}
@@ -1691,7 +1691,7 @@ const AssigningStep = ({
                                 <li key={`${item.id}-${item.shareInstanceId || index}-${index}`} className="flex justify-between items-center text-sm">
                                     <span className="font-medium text-gray-700">{item.type === ITEM_TYPES.SHARED ? `1/${Number(item.sharedByCount)} x ${item.name}` : `${Number(item.quantity)} x ${item.name}`}</span>
                                     <div className="flex items-center space-x-2">
-                                        <span className="text-gray-900">${Math.round(Number(item.originalBasePrice) * Number(item.quantity)).toLocaleString('es-CL')}</span>
+                                        <span className="text-gray-900">${(Number(item.originalBasePrice) * Number(item.quantity)).toLocaleString('es-CL')}</span>
                                         <button onClick={() => onRemoveItem(comensal.id, item.type === ITEM_TYPES.SHARED ? item.shareInstanceId : item.id)} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 focus:outline-none" aria-label="Remove item">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                         </button>
@@ -1702,10 +1702,10 @@ const AssigningStep = ({
                     ) : (<p className="text-center text-gray-500 text-sm py-4">Aún no hay ítems.</p>)}
                 </div>
                 <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
-                    <div className="flex justify-between text-sm text-gray-600"><span>Consumo:</span><span>${Math.round(totalSinPropina).toLocaleString('es-CL')}</span></div>
+                    <div className="flex justify-between text-sm text-gray-600"><span>Consumo:</span><span>${(totalSinPropina).toLocaleString('es-CL')}</span></div>
                     {descuentoAplicado > 0 && (<div className="flex justify-between text-sm text-green-600"><span>Descuento ({discountPercentage}%):</span><span>-${Math.round(descuentoAplicado).toLocaleString('es-CL')}</span></div>)}
                     <div className="flex justify-between text-sm text-gray-600"><span>Propina ({TIP_PERCENTAGE * 100}%):</span><span>${Math.round(propina).toLocaleString('es-CL')}</span></div>
-                    <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1"><span>TOTAL A PAGAR:</span><span className="text-2xl">${Math.round(totalAPagar).toLocaleString('es-CL')}</span></div>
+                    <div className="flex justify-between items-center text-xl font-bold text-blue-700 mt-1"><span>TOTAL A PAGAR:</span><span className="text-2xl">${(totalAPagar).toLocaleString('es-CL')}</span></div>
                 </div>
                 <div className="flex gap-2 mt-4">
                     <button onClick={() => onOpenClearComensalModal(comensal.id)} className="w-full bg-orange-100 text-orange-700 py-2 px-4 rounded-md shadow-sm hover:bg-orange-200 text-sm">Limpiar</button>
